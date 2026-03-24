@@ -1,0 +1,238 @@
+//! Message passing between actors.
+//!
+//! A [`Message`] is a type that can be sent between actors. It is a trait that can be derived
+//! for custom types. A specific message type can be sent to an actor only if the actor implements
+//! the corresponding [`Handler`] trait for the message type, which describes the action of the
+//! actor when it receives the message.
+//!
+
+use std::future::{self, Future};
+use std::sync::Arc;
+
+use tokio::sync::oneshot;
+use tracing::debug;
+
+use crate::actor::{Actor, ActorContext};
+use crate::envelope::DefaultEnvelopeProxy;
+
+/// Types that can be sent between actors.
+pub trait Message<EP = DefaultEnvelopeProxy<Self>>: Send + 'static {
+    type Result: Send + 'static;
+}
+
+impl Message for () {
+    type Result = ();
+}
+
+/// Describes how an actor handles a specific message type.
+pub trait Handler<M, EP = DefaultEnvelopeProxy<M>>: Actor
+where
+    M: Message<EP>,
+{
+    type Result: MessageResponse<Self, M, EP>;
+
+    /// Handles a message.
+    fn handle(
+        &mut self,
+        msg: M,
+        ctx: &mut Self::Context,
+    ) -> impl Future<Output = Self::Result> + Send;
+}
+
+// implement Message trait for a few common wrapper types
+
+impl<M, EP> Message<EP> for Box<M>
+where
+    M: Message<EP>,
+{
+    type Result = M::Result;
+}
+
+impl<M, EP> Message<EP> for Arc<M>
+where
+    M: Message<EP> + Sync,
+{
+    type Result = M::Result;
+}
+
+/// Types that can be sent as a response to a message.
+pub trait MessageResponse<A, M, EP = DefaultEnvelopeProxy<M>>: Send + 'static
+where
+    A: Actor,
+    M: Message<EP>,
+{
+    /// Handles the response.
+    fn handle(
+        self,
+        ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send;
+}
+
+// implement MessageResponse trait for a few common wrapper types
+
+impl<A, M, EP, T, E> MessageResponse<A, M, EP> for Result<T, E>
+where
+    A: Actor,
+    M: Message<EP, Result = Self>,
+    T: Send + 'static,
+    E: Send + 'static,
+{
+    fn handle(
+        self,
+        ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send {
+        match tx {
+            Some(tx) => {
+                let _ = tx.send(self);
+            }
+            None => {
+                // since this is a result, we log it if there is an error
+                if self.is_err() {
+                    debug!("Ignored an error in actor {}", ctx.index());
+                }
+            }
+        }
+
+        future::ready(())
+    }
+}
+
+impl<A, M, EP, T> MessageResponse<A, M, EP> for Option<T>
+where
+    A: Actor,
+    M: Message<EP, Result = Self>,
+    T: Send + 'static,
+{
+    fn handle(
+        self,
+        _ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send {
+        if let Some(tx) = tx {
+            let _ = tx.send(self);
+        }
+        future::ready(())
+    }
+}
+
+impl<A, M, EP, T> MessageResponse<A, M, EP> for Box<T>
+where
+    A: Actor,
+    M: Message<EP, Result = Self>,
+    T: Send + 'static,
+{
+    fn handle(
+        self,
+        _ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send {
+        if let Some(tx) = tx {
+            let _ = tx.send(self);
+        }
+        future::ready(())
+    }
+}
+
+impl<A, M, EP, T> MessageResponse<A, M, EP> for Arc<T>
+where
+    A: Actor,
+    M: Message<EP, Result = Self>,
+    T: Send + Sync + 'static,
+{
+    fn handle(
+        self,
+        _ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send {
+        if let Some(tx) = tx {
+            let _ = tx.send(self);
+        }
+        future::ready(())
+    }
+}
+
+impl<A, M, EP, T> MessageResponse<A, M, EP> for Vec<T>
+where
+    A: Actor,
+    M: Message<EP, Result = Self>,
+    T: Send + 'static,
+{
+    fn handle(
+        self,
+        _ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send {
+        if let Some(tx) = tx {
+            let _ = tx.send(self);
+        }
+        future::ready(())
+    }
+}
+
+macro_rules! impl_message_response_for {
+    ($type:ty) => {
+        impl<A, M, EP> MessageResponse<A, M, EP> for $type
+        where
+            A: Actor,
+            M: Message<EP, Result = Self>,
+        {
+            fn handle(
+                self,
+                _ctx: &mut A::Context,
+                tx: Option<oneshot::Sender<M::Result>>,
+            ) -> impl Future<Output = ()> + Send {
+                if let Some(tx) = tx {
+                    let _ = tx.send(self);
+                }
+                future::ready(())
+            }
+        }
+    };
+}
+
+impl_message_response_for!(());
+impl_message_response_for!(u8);
+impl_message_response_for!(u16);
+impl_message_response_for!(u32);
+impl_message_response_for!(u64);
+impl_message_response_for!(usize);
+impl_message_response_for!(i8);
+impl_message_response_for!(i16);
+impl_message_response_for!(i32);
+impl_message_response_for!(i64);
+impl_message_response_for!(isize);
+impl_message_response_for!(f32);
+impl_message_response_for!(f64);
+impl_message_response_for!(bool);
+impl_message_response_for!(String);
+
+/// A helper type which wraps the result of a message handler as a message response.
+///
+/// This is useful when the result type of a message does not implement [`MessageResponse`],
+/// and you can not implement [`MessageResponse`] for the type due to the orphan rule. In this
+/// case, you can wrap the result type with this type and use it as the
+/// [`Result`][Handler<M>::Result] associate type in the [`Handler<M>`] trait.
+#[derive(Debug)]
+pub struct MessageResult<M, EP = DefaultEnvelopeProxy<M>>(pub M::Result)
+where
+    M: Message<EP>,
+    EP: 'static;
+
+impl<A, M, EP> MessageResponse<A, M, EP> for MessageResult<M, EP>
+where
+    A: Actor,
+    M: Message<EP>,
+{
+    fn handle(
+        self,
+        _ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send {
+        if let Some(tx) = tx {
+            let _ = tx.send(self.0);
+        }
+        future::ready(())
+    }
+}

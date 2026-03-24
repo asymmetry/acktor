@@ -1,0 +1,28 @@
+[package]
+name = "cactor-derive"
+version = "1.0.0"
+description = "Derive Macros for the CActor Framework"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1.0"
+syn = "2.0"
+
+[dev-dependencies]
+anyhow = "1.0"
+pretty_assertions = "1.4"
+tokio = { version = "1.37", features = ["macros"] }
+
+cactor.workspace = true

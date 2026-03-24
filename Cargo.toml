@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["cactor", "cactor-derive"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+authors = ["Chao Gu"]
+license = "MIT"
+repository = "https://github.com/asymmetry/cactor"
+categories = ["asynchronous"]
+
+[workspace.dependencies]
+cactor = { version = "1.0", path = "./cactor" }
+cactor-derive = { version = "1.0", path = "./cactor-derive" }
+cactor-macros = { version = "1.0", path = "./cactor-macros" }
