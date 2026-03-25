@@ -157,6 +157,11 @@ where
     /// Sets a supervisor.
     fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<A>>>);
 
+    /// Runs the main processing loop of the actor.
+    ///
+    /// This method is called after [`post_start`][Actor::post_start] and drives the actor until
+    /// it stops. It is responsible for receiving messages from the mailbox and dispatching them
+    /// to the actor.
     fn processing(
         &mut self,
         actor: &mut A,

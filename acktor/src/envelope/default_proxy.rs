@@ -25,6 +25,7 @@ impl<M> DefaultEnvelopeProxy<M>
 where
     M: Message<Self>,
 {
+    /// Takes the message out of the envelope proxy, leaving [`None`] in its place.
     pub fn message(&mut self) -> Option<M> {
         self.message.take()
     }

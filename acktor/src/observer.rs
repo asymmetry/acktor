@@ -37,6 +37,7 @@ impl<Event> ObserverSet<Event>
 where
     Event: Message,
 {
+    /// Constructs a new empty [`ObserverSet`].
     pub fn new() -> Self {
         Self::default()
     }

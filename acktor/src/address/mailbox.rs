@@ -28,7 +28,7 @@ where
         self.rx.recv()
     }
 
-    /// Receives the next message from this mailbox.
+    /// Attempts to receive the next message from this mailbox without blocking.
     pub fn try_recv(&mut self) -> Result<Envelope<A>, TryRecvError> {
         self.rx.try_recv()
     }
