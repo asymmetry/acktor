@@ -16,7 +16,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = []
 derive = ["dep:cactor-derive"]
-tracing = ["tokio/tracing"]
+tokio-tracing = ["tokio/tracing"]
 bottleneck-warning = []
 
 [dependencies]

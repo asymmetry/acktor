@@ -264,7 +264,7 @@ where
         }
 
         let index = self.index();
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "tokio-tracing")]
         let label = self.label().to_string();
 
         let future = async move {
@@ -300,9 +300,9 @@ where
             .instrument(span.or_current())
             .boxed();
 
-        #[cfg(not(feature = "tracing"))]
+        #[cfg(not(feature = "tokio-tracing"))]
         let join_handle = tokio::spawn(future);
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "tokio-tracing")]
         let join_handle = tokio::task::Builder::new()
             .name(&label)
             .spawn(future)

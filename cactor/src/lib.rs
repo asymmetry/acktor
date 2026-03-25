@@ -34,10 +34,10 @@ pub mod derive {
     //! Derive macros for defining messages and message responses.
 
     /// Implements the [`Message`][crate::message::Message] trait for a type.
-    pub use actor_derive::Message;
+    pub use cactor_derive::Message;
 
     /// Implements the [`MessageResponse`][crate::message::MessageResponse] trait for a type.
-    pub use actor_derive::MessageResponse;
+    pub use cactor_derive::MessageResponse;
 }
 
 pub mod report {
