@@ -1,6 +1,6 @@
 [package]
 name = "acktor-derive"
-version = "1.0.0"
+version = "0.1.0"
 description = "Derive Macros for the Acktor Framework"
 edition.workspace = true
 rust-version.workspace = true
@@ -27,4 +27,4 @@ anyhow = "1.0"
 pretty_assertions = "1.4"
 tokio = { version = "1.37", features = ["macros"] }
 
-acktor.workspace = true
+# acktor.workspace = true

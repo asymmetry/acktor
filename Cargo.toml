@@ -13,5 +13,5 @@ keywords = ["actor", "async"]
 
 [workspace.dependencies]
 acktor = { version = "1.0", path = "./acktor" }
-acktor-derive = { version = "1.0", path = "./acktor-derive" }
+acktor-derive = { version = "0.1", path = "./acktor-derive" }
 acktor-macros = { version = "1.0", path = "./acktor-macros" }
