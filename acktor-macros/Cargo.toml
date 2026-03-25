@@ -1,6 +1,6 @@
 [package]
 name = "acktor-macros"
-description = "Declarative Macros for the Acktor Framework"
+description = "Internal macros for the acktor actor framework"
 version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true

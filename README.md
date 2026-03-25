@@ -1,6 +1,6 @@
 # acktor
 
-A pure-Rust actor framework built on top of the [Tokio](https://tokio.rs) async runtime, inspired by [Actors with Tokio](https://ryhl.io/blog/actors-with-tokio/) by Alice Ryhl.
+A pure-Rust actor framework built on top of the [Tokio](https://tokio.rs) async runtime, inspired by Alice Ryhl's [Actors with Tokio](https://ryhl.io/blog/actors-with-tokio/).
 
 ## About
 

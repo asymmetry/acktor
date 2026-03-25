@@ -1,5 +1,5 @@
 //! A pure-Rust actor framework built on top of the [Tokio](https://tokio.rs) async runtime,
-//! inspired by [Actors with Tokio](https://ryhl.io/blog/actors-with-tokio/) by Alice Ryhl.
+//! inspired by Alice Ryhl's [Actors with Tokio](https://ryhl.io/blog/actors-with-tokio/).
 //!
 //! `acktor` builds on the patterns described in Alice Ryhl's blog post and extends them into a
 //! structured library. Each actor runs as an independent `tokio` task with its own mailbox,

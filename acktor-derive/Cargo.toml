@@ -1,7 +1,7 @@
 [package]
 name = "acktor-derive"
 version = "1.0.0"
-description = "Derive Macros for the Acktor Framework"
+description = "Derive macros for the acktor actor framework"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true

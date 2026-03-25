@@ -1,3 +1,3 @@
 # acktor-derive
 
-Derive macros for the [`acktor`](https://github.com/asymmetry/acktor) framework.
+Derive macros for the [`acktor`](https://github.com/asymmetry/acktor) actor framework.
