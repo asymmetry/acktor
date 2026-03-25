@@ -1,7 +1,7 @@
 use pretty_assertions::assert_eq;
 
-use cactor::{Actor, Context, Signal, message::Handler};
-use cactor_derive::{Message, MessageResponse};
+use acktor::{Actor, Context, Signal, message::Handler};
+use acktor_derive::{Message, MessageResponse};
 
 #[derive(MessageResponse)]
 struct Sum(i64);

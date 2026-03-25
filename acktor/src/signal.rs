@@ -1,6 +1,6 @@
 use std::future::{self, Future};
 
-use cactor_macros::debug_trace;
+use acktor_macros::debug_trace;
 
 use crate::actor::{Actor, ActorContext};
 use crate::message::{Handler, Message};

@@ -1,6 +1,6 @@
 use pretty_assertions::assert_eq;
 
-use cactor::{
+use acktor::{
     Actor, Context,
     address::Recipient,
     message::{Handler, Message},

@@ -1,16 +1,17 @@
 [workspace]
 resolver = "2"
-members = ["cactor", "cactor-derive"]
+members = ["acktor", "acktor-derive"]
 
 [workspace.package]
 edition = "2024"
 rust-version = "1.85"
 authors = ["Chao Gu"]
 license = "MIT"
-repository = "https://github.com/asymmetry/cactor"
+repository = "https://github.com/asymmetry/acktor"
 categories = ["asynchronous"]
+keywords = ["actor", "async"]
 
 [workspace.dependencies]
-cactor = { version = "1.0", path = "./cactor" }
-cactor-derive = { version = "1.0", path = "./cactor-derive" }
-cactor-macros = { version = "1.0", path = "./cactor-macros" }
+acktor = { version = "1.0", path = "./acktor" }
+acktor-derive = { version = "1.0", path = "./acktor-derive" }
+acktor-macros = { version = "1.0", path = "./acktor-macros" }

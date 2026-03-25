@@ -5,7 +5,7 @@ use futures_util::future::{FutureExt, TryFutureExt};
 use tokio::task::JoinHandle;
 use tracing::{Instrument, Span, debug, error, error_span, warn};
 
-use cactor_macros::report;
+use acktor_macros::report;
 
 use crate::address::{Address, Mailbox, Recipient, Sender};
 use crate::supervisor::SupervisionEvent;
@@ -264,7 +264,7 @@ where
         }
 
         let index = self.index();
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "tokio-tracing")]
         let label = self.label().to_string();
 
         let future = async move {
@@ -300,9 +300,9 @@ where
             .instrument(span.or_current())
             .boxed();
 
-        #[cfg(not(feature = "tracing"))]
+        #[cfg(not(feature = "tokio-tracing"))]
         let join_handle = tokio::spawn(future);
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "tokio-tracing")]
         let join_handle = tokio::task::Builder::new()
             .name(&label)
             .spawn(future)

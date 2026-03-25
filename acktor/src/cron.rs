@@ -9,7 +9,7 @@ use std::time::Duration;
 use tokio::{sync::mpsc, task::JoinHandle, time};
 use tracing::{debug, warn};
 
-use cactor_macros::debug_trace;
+use acktor_macros::debug_trace;
 
 use crate::actor::{Actor, ActorContext, ActorState, Stopping};
 use crate::address::{Address, Mailbox, Recipient, SenderIndex};
