@@ -13,7 +13,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let result_type = result_type.into_token_stream();
 
     quote! {
-        impl #impl_generics ::cactor::message::Message for #name #ty_generics #where_clause {
+        impl #impl_generics ::acktor::message::Message for #name #ty_generics #where_clause {
             type Result = #result_type;
         }
     }

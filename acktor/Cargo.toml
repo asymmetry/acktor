@@ -1,5 +1,5 @@
 [package]
-name = "cactor"
+name = "acktor"
 version = "1.0.0"
 description = "Pure-Rust Actor Framework Built on Tokio Runtime"
 edition.workspace = true
@@ -7,6 +7,8 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+categories.workspace = true
+keywords.workspace = true
 exclude = ["examples/*", "tests/*"]
 
 [package.metadata.docs.rs]
@@ -15,7 +17,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-derive = ["dep:cactor-derive"]
+derive = ["dep:acktor-derive"]
+# this feature requires `tokio_unstable` flag
 tokio-tracing = ["tokio/tracing"]
 bottleneck-warning = []
 
@@ -25,8 +28,8 @@ rustc-hash = "2.1"
 tokio = { version = "1.37", features = ["macros", "rt", "sync", "time"] }
 tracing = "0.1"
 
-cactor-derive = { workspace = true, optional = true }
-cactor-macros = { workspace = true }
+acktor-derive = { workspace = true, optional = true }
+acktor-macros = { workspace = true }
 
 [dev-dependencies]
 anyhow = "1.0"

@@ -1,7 +1,7 @@
 use clap::Parser;
 use tokio::time::Instant;
 
-use cactor::{
+use acktor::{
     Actor, ActorContext, Context,
     address::Address,
     message::{Handler, Message},

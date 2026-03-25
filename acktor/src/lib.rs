@@ -34,10 +34,10 @@ pub mod derive {
     //! Derive macros for defining messages and message responses.
 
     /// Implements the [`Message`][crate::message::Message] trait for a type.
-    pub use cactor_derive::Message;
+    pub use acktor_derive::Message;
 
     /// Implements the [`MessageResponse`][crate::message::MessageResponse] trait for a type.
-    pub use cactor_derive::MessageResponse;
+    pub use acktor_derive::MessageResponse;
 }
 
 pub mod report {
@@ -45,11 +45,11 @@ pub mod report {
     //!
     //! This module provides a macro to report errors and their sources in a recursive way.
 
-    pub use cactor_macros::report;
+    pub use acktor_macros::report;
 }
 
 pub mod debug_trace {
     //! Debug trace macro.
 
-    pub use cactor_macros::debug_trace;
+    pub use acktor_macros::debug_trace;
 }

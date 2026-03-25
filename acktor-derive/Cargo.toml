@@ -1,12 +1,13 @@
 [package]
-name = "cactor-derive"
+name = "acktor-derive"
 version = "1.0.0"
-description = "Derive Macros for the CActor Framework"
+description = "Derive Macros for the Acktor Framework"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+categories.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
@@ -25,4 +26,4 @@ anyhow = "1.0"
 pretty_assertions = "1.4"
 tokio = { version = "1.37", features = ["macros"] }
 
-cactor.workspace = true
+acktor.workspace = true

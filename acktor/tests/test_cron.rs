@@ -6,7 +6,7 @@ use tokio::{
     time::{self, Instant},
 };
 
-use cactor::{
+use acktor::{
     Actor,
     address::Recipient,
     cron::{CronActor, CronActorContext, CronContext, CronSignal},

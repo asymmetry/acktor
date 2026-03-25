@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use pretty_assertions::assert_eq;
 
-use cactor::{
+use acktor::{
     Actor, ActorContext, Context,
     message::{Handler, Message},
     supervisor::{SupervisionEvent, Supervisor},

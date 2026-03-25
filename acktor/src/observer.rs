@@ -10,8 +10,8 @@ use std::ops::{Deref, DerefMut};
 use rustc_hash::FxHashSet as HashSet;
 use tracing::{debug, warn};
 
-use cactor_macros::debug_trace;
-pub use cactor_macros::{notify_observers, try_notify_observers};
+use acktor_macros::debug_trace;
+pub use acktor_macros::{notify_observers, try_notify_observers};
 
 use crate::actor::{Actor, ActorContext};
 use crate::address::{Recipient, Sender, SenderIndex};

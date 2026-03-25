@@ -5,7 +5,7 @@ use futures_util::future::{FutureExt, TryFutureExt};
 use tokio::task::JoinHandle;
 use tracing::{Instrument, Span, debug, error, error_span, warn};
 
-use cactor_macros::report;
+use acktor_macros::report;
 
 use crate::address::{Address, Mailbox, Recipient, Sender};
 use crate::supervisor::SupervisionEvent;

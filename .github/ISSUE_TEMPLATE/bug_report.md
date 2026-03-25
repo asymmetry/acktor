@@ -18,4 +18,4 @@ about: Report a bug
 
 - OS:
 - Rust version:
-- cactor version:
+- acktor version:
