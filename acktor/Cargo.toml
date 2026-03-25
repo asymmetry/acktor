@@ -1,6 +1,6 @@
 [package]
 name = "acktor"
-version = "1.0.0"
+version = "1.0.1"
 description = "Pure-Rust Actor Framework Built on Tokio Runtime"
 edition.workspace = true
 rust-version.workspace = true
