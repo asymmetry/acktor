@@ -32,9 +32,11 @@ pub enum Stopping {
 
 /// Describes an actor.
 pub trait Actor: Sized + Send + 'static {
+    /// The execution context type for this actor.
     type Context: ActorContext<Self>;
     // NOTE: this bound is choosen to be compatible with `std::error::Error`, `Box<dyn Error>`
     // and `anyhow::Error`
+    /// The error type returned by lifecycle hooks and message handlers.
     type Error: Into<Box<dyn Error + Send + Sync>> + Send + 'static;
 
     /// Invoked before an actor is spawned into the tokio runtime.
