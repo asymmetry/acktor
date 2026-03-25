@@ -1,0 +1,47 @@
+# Project Notes for Claude
+
+## Workspace Layout
+
+```
+acktor/                  # workspace root
+├── acktor/              # main library crate (published)
+│   ├── src/
+│   │   ├── lib.rs
+│   │   ├── actor.rs         # Actor + ActorContext traits, lifecycle
+│   │   ├── context.rs       # Context<A> — default ActorContext impl
+│   │   ├── message.rs       # Message, Handler, MessageResponse traits
+│   │   ├── address/         # Address<A>, Recipient<M>, Sender, Mailbox
+│   │   ├── envelope/        # Envelope + EnvelopeProxy (type erasure for messages)
+│   │   ├── cron.rs          # CronActor, CronContext, CronSignal
+│   │   ├── observer.rs      # SubjectActor, ObserverSet, Observer message
+│   │   ├── supervisor.rs    # SupervisionEvent, Supervisor message
+│   │   └── signal.rs        # Signal::Stop / Signal::Terminate
+├── acktor-derive/       # proc-macro crate: #[derive(Message, MessageResponse)]
+└── acktor-macros/       # proc-macro crate: report!, debug_trace!, notify_observers!
+```
+
+## Build & Test Commands
+
+```sh
+# Run all tests
+cargo test --workspace
+
+# Lint
+cargo clippy --workspace -- -D warnings
+
+# Format check
+cargo fmt --all -- --check
+
+# Build docs (requires nightly for docsrs attrs)
+RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --workspace --no-deps
+
+```
+
+## Key Design Decisions
+
+- Rust edition 2024, MSRV 1.85. No `async_trait` — uses RPITIT instead.
+- `Context<A>` is the default `ActorContext`; set `Actor::Context = Context<Self>`.
+- `Recipient<M>` is a type-erased address for sending message `M` to any actor.
+- Messages are sent through an `Envelope<A>` channel; `EnvelopeProxy` handles the type erasure.
+- Default mailbox capacity is 8 (`DEFAULT_MAILBOX_CAPACITY`).
+- Actor panics are caught with `catch_unwind` and logged without crashing the runtime.

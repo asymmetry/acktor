@@ -32,9 +32,11 @@ pub enum Stopping {
 
 /// Describes an actor.
 pub trait Actor: Sized + Send + 'static {
+    /// The execution context type for this actor.
     type Context: ActorContext<Self>;
     // NOTE: this bound is choosen to be compatible with `std::error::Error`, `Box<dyn Error>`
     // and `anyhow::Error`
+    /// The error type returned by lifecycle hooks and message handlers.
     type Error: Into<Box<dyn Error + Send + Sync>> + Send + 'static;
 
     /// Invoked before an actor is spawned into the tokio runtime.
@@ -157,6 +159,11 @@ where
     /// Sets a supervisor.
     fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<A>>>);
 
+    /// Runs the main processing loop of the actor.
+    ///
+    /// This method is called after [`post_start`][Actor::post_start] and drives the actor until
+    /// it stops. It is responsible for receiving messages from the mailbox and dispatching them
+    /// to the actor.
     fn processing(
         &mut self,
         actor: &mut A,

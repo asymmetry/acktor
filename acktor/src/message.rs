@@ -17,6 +17,7 @@ use crate::envelope::DefaultEnvelopeProxy;
 
 /// Types that can be sent between actors.
 pub trait Message<EP = DefaultEnvelopeProxy<Self>>: Send + 'static {
+    /// The type of the response produced when this message is handled.
     type Result: Send + 'static;
 }
 
@@ -29,6 +30,7 @@ pub trait Handler<M, EP = DefaultEnvelopeProxy<M>>: Actor
 where
     M: Message<EP>,
 {
+    /// The return type of the handler, which must implement [`MessageResponse`].
     type Result: MessageResponse<Self, M, EP>;
 
     /// Handles a message.

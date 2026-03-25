@@ -12,7 +12,7 @@ keywords.workspace = true
 exclude = ["examples/*", "tests/*"]
 
 [package.metadata.docs.rs]
-all-features = true
+features = ["derive", "bottleneck-warning"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]

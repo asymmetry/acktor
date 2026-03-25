@@ -37,6 +37,7 @@ impl<Event> ObserverSet<Event>
 where
     Event: Message,
 {
+    /// Constructs a new empty [`ObserverSet`].
     pub fn new() -> Self {
         Self::default()
     }
@@ -69,7 +70,7 @@ pub trait SubjectActor<Event>: Actor
 where
     Event: Message + Clone,
 {
-    /// Returns a mutable reference to the observers.
+    /// Returns a mutable reference to the set of observers for this event type.
     fn observers_mut(&mut self) -> &mut ObserverSet<Event>;
 
     /// Registers an observer.
