@@ -1,6 +1,6 @@
 [package]
 name = "acktor"
-version = "1.0.1"
+version = "1.0.2"
 description = "Pure-Rust Actor Framework Built on Tokio Runtime"
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
+readme = "../README.md"
 keywords.workspace = true
 exclude = ["examples/*", "tests/*"]
 
