@@ -1,0 +1,40 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: login to crates.io
+        run: cargo login $CRATES_IO_TOKEN
+        env:
+          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      - name: dry run publish acktor-macros
+        run: cargo publish -p acktor-macros --dry-run
+      - name: publish acktor-macros
+        run: cargo publish -p acktor-macros
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      - name: dry run publish acktor-derive
+        run: cargo publish -p acktor-derive --dry-run
+      - name: publish acktor-derive
+        run: cargo publish -p acktor-derive
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      - name: dry run publish acktor
+        run: cargo publish -p acktor --dry-run
+      - name: publish acktor
+        run: cargo publish -p acktor
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
