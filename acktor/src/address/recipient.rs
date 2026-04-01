@@ -3,9 +3,12 @@ use std::hash::{Hash, Hasher};
 use std::pin::Pin;
 
 use futures_util::future::FutureExt;
-use tokio::sync::mpsc::{
-    self,
-    error::{SendError, TrySendError},
+use tokio::sync::{
+    mpsc::{
+        self,
+        error::{SendError, TrySendError},
+    },
+    oneshot,
 };
 
 use super::address_impl::Address;
@@ -18,6 +21,11 @@ use crate::utils::new_address_id;
 /// A type which is used to send a specific message to an actor.
 ///
 /// This type allows you to save the sender without knowing the actor type.
+///
+/// A `Recipient` can be created from an [`Address`] for any message type, or from a raw
+/// [`mpsc::Sender`][tokio::sync::mpsc::Sender] via [`from_sender`][Recipient::from_sender]
+/// and [`create`][Recipient::create]. Note that the `from_sender` and `create` methods are
+/// only available for messages where `Result = ()`.
 pub struct Recipient<M, EP = DefaultEnvelopeProxy<M>>(pub Box<dyn Sender<M, EP> + Send + Sync>)
 where
     M: Message<EP>;
@@ -238,8 +246,18 @@ where
         self.tx.capacity()
     }
 
-    fn send(&self, _: M) -> Pin<Box<dyn Future<Output = SendResult<M, M::Result>> + Send>> {
-        unimplemented!("recipient not link to an actor should not be used to expect a response");
+    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M, M::Result>> + Send>> {
+        let tx = self.tx.clone();
+        async move {
+            tx.send(msg).await?;
+            // return a pre-resolved receiver to satisfy the SendResult return type.
+            // since M::Result is (), the response is immediately available.
+            let (tx, rx) = oneshot::channel();
+            let _ = tx.send(());
+
+            Ok(rx)
+        }
+        .boxed()
     }
 
     fn do_send(
@@ -249,16 +267,28 @@ where
         self.tx.send(msg).boxed()
     }
 
-    fn try_send(&self, _: M) -> TrySendResult<M, M::Result> {
-        unimplemented!("recipient not link to an actor should not be used to expect a response");
+    fn try_send(&self, msg: M) -> TrySendResult<M, M::Result> {
+        self.tx.try_send(msg)?;
+        // return a pre-resolved receiver to satisfy the TrySendResult return type.
+        // since M::Result is (), the response is immediately available.
+        let (tx, rx) = oneshot::channel();
+        let _ = tx.send(());
+
+        Ok(rx)
     }
 
     fn try_do_send(&self, msg: M) -> Result<(), TrySendError<M>> {
         self.tx.try_send(msg)
     }
 
-    fn blocking_send(&self, _: M) -> SendResult<M, M::Result> {
-        unimplemented!("recipient not link to an actor should not be used to expect a response");
+    fn blocking_send(&self, msg: M) -> SendResult<M, M::Result> {
+        self.tx.blocking_send(msg)?;
+        // return a pre-resolved receiver to satisfy the SendResult return type.
+        // since M::Result is (), the response is immediately available.
+        let (tx, rx) = oneshot::channel();
+        let _ = tx.send(());
+
+        Ok(rx)
     }
 
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {

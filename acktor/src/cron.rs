@@ -118,10 +118,6 @@ where
 
             let result = self.processing_one(actor, mailbox).await;
 
-            if result.is_err() && self.state() == ActorState::Running {
-                self.set_state(ActorState::Stopping);
-            }
-
             match self.state() {
                 ActorState::Stopping => {
                     match actor.stopping(self).await? {
@@ -169,9 +165,12 @@ where
                     let address = self.address();
                     let join_handle = tokio::spawn(async move {
                         time::sleep(duration).await;
-                        let _ = address.do_send(CronSignal::Resume).await;
+                        if let Err(e) = address.do_send(CronSignal::Resume).await {
+                            debug!("Failed to send Resume signal: {}", e);
+                        }
                     });
                     self.cron_join_handle = Some(join_handle);
+
                     true
                 }
             }
@@ -189,9 +188,11 @@ where
                         if self.state() == ActorState::Running {
                             self.set_state(ActorState::Stopping);
                         }
+
                         return Err(e);
                     }
                 }
+
                 None => {
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
@@ -203,15 +204,18 @@ where
                     envelope.handle(actor, self).await;
                     if let Some(e) = self.error.take() {
                         if self.state() == ActorState::Running {
-                            self.set_state(ActorState::Stopped);
+                            self.set_state(ActorState::Stopping);
                         }
+
                         return Err(e);
                     }
                 }
+
                 Err(mpsc::error::TryRecvError::Disconnected) => {
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
                 }
+
                 _ => {
                     tokio::task::yield_now().await;
                 }

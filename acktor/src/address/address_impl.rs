@@ -302,8 +302,7 @@ where
         A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
     {
         let (tx, rx) = oneshot::channel();
-        let _ = self
-            .permit
+        self.permit
             .send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)));
 
         Ok(rx)
@@ -317,8 +316,7 @@ where
         M: Message<EP>,
         A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
     {
-        let _ = self
-            .permit
+        self.permit
             .send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, None));
 
         Ok(())

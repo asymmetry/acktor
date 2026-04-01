@@ -92,10 +92,7 @@ pub use signal::Signal;
 pub mod derive {
     //! Derive macros for defining messages and message responses.
 
-    /// Implements the [`Message`][crate::message::Message] trait for a type.
     pub use acktor_derive::Message;
-
-    /// Implements the [`MessageResponse`][crate::message::MessageResponse] trait for a type.
     pub use acktor_derive::MessageResponse;
 }
 
