@@ -2,8 +2,7 @@ use anyhow::anyhow;
 use pretty_assertions::assert_eq;
 
 use acktor::{
-    Actor, ActorContext, Context,
-    message::{Handler, Message},
+    Actor, ActorContext, Context, Handler, Message,
     supervisor::{SupervisionEvent, Supervisor},
 };
 
@@ -15,12 +14,9 @@ impl Actor for A {
     type Error = anyhow::Error;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "()"]
 pub struct PingA;
-
-impl Message for PingA {
-    type Result = ();
-}
 
 impl Handler<PingA> for A {
     type Result = ();
@@ -38,12 +34,9 @@ impl Handler<PingA> for A {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "()"]
 pub struct TryPingA;
-
-impl Message for TryPingA {
-    type Result = ();
-}
 
 impl Handler<TryPingA> for A {
     type Result = ();
@@ -80,12 +73,9 @@ impl Handler<SupervisionEvent<A>> for B {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "bool"]
 pub struct CheckB;
-
-impl Message for CheckB {
-    type Result = bool;
-}
 
 impl Handler<CheckB> for B {
     type Result = bool;

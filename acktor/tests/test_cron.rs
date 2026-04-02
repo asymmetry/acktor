@@ -7,10 +7,8 @@ use tokio::{
 };
 
 use acktor::{
-    Actor,
-    address::Recipient,
+    Actor, Handler, Message, Recipient,
     cron::{CronActor, CronActorContext, CronContext, CronSignal},
-    message::{Handler, Message},
     observer::{ObserverSet, SubjectActor},
 };
 
@@ -55,12 +53,9 @@ impl CronActor for B {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "i32"]
 pub struct CheckB;
-
-impl Message for CheckB {
-    type Result = i32;
-}
 
 impl Handler<CheckB> for B {
     type Result = i32;

@@ -1,26 +1,17 @@
 use pretty_assertions::assert_eq;
 
 use acktor::{
-    Actor, Context,
-    address::Recipient,
-    message::{Handler, Message},
+    Actor, Context, Handler, Message, Recipient,
     observer::{Observer, ObserverSet, SubjectActor},
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Message)]
+#[result_type = "()"]
 pub struct M1;
 
-impl Message for M1 {
-    type Result = ();
-}
-
-#[derive(Debug, Clone, Copy)]
-
+#[derive(Debug, Clone, Copy, Message)]
+#[result_type = "()"]
 pub struct M2;
-
-impl Message for M2 {
-    type Result = ();
-}
 
 #[derive(Debug, Default)]
 pub struct A {
@@ -47,12 +38,9 @@ impl SubjectActor<M2> for A {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "()"]
 pub struct PingA;
-
-impl Message for PingA {
-    type Result = ();
-}
 
 impl Handler<PingA> for A {
     type Result = ();
@@ -62,12 +50,9 @@ impl Handler<PingA> for A {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "()"]
 pub struct TryPingA;
-
-impl Message for TryPingA {
-    type Result = ();
-}
 
 impl Handler<TryPingA> for A {
     type Result = ();
@@ -103,12 +88,9 @@ impl Handler<M2> for B {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "bool"]
 pub struct CheckB;
-
-impl Message for CheckB {
-    type Result = bool;
-}
 
 impl Handler<CheckB> for B {
     type Result = bool;

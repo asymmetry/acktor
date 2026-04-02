@@ -1,11 +1,7 @@
 use clap::Parser;
 use tokio::time::Instant;
 
-use acktor::{
-    Actor, ActorContext, Context,
-    address::Address,
-    message::{Handler, Message},
-};
+use acktor::{Actor, ActorContext, Address, Context, Handler, Message};
 
 // daisy chain actors together and pass a message around all nodes in the ring to benchmark actor
 // performance
@@ -31,12 +27,9 @@ impl Actor for Node {
     type Error = String;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "()"]
 pub struct Payload(usize);
-
-impl Message for Payload {
-    type Result = ();
-}
 
 impl Handler<Payload> for Node {
     type Result = ();

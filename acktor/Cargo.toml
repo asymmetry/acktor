@@ -17,10 +17,11 @@ features = ["derive", "bottleneck-warning"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = []
+default = ["derive"]
 derive = ["dep:acktor-derive"]
 # this feature requires `tokio_unstable` flag
 tokio-tracing = ["tokio/tracing"]
+# emits debug-level tracing logs when an observer's mailbox is full during notification
 bottleneck-warning = []
 
 [dependencies]

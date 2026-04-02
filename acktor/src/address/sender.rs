@@ -13,7 +13,7 @@ pub(crate) type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<
 
 /// Describes how to retrieve the index of a sender.
 ///
-/// Separate from the [`Sender`] trait so we do not need to use fully qualifed syntax to use
+/// Separate from the [`Sender`] trait so we do not need to use fully qualified syntax to use
 /// this trait.
 pub trait SenderIndex {
     /// Returns the index of the sender.
