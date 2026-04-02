@@ -74,22 +74,21 @@ pub mod errors {
 
 mod utils;
 
-pub mod actor;
-pub use actor::{Actor, ActorContext};
+mod actor;
+pub use actor::{Actor, ActorContext, ActorState, Stopping};
 
 mod context;
 pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
 
 pub mod address;
-pub use address::{Address, Recipient, Sender};
+pub use address::{Address, Recipient, Sender, SenderIndex};
+
+pub mod message;
+pub use message::{Handler, Message, MessageResponse, MessageResult};
 
 pub mod envelope;
 
-pub mod message;
-pub use message::{Handler, Message, MessageResponse};
-
 pub mod cron;
-
 pub mod observer;
 pub mod supervisor;
 
