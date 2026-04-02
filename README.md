@@ -1,5 +1,10 @@
 # acktor
 
+[![Crates.io](https://img.shields.io/crates/v/acktor)](https://crates.io/crates/acktor)
+[![docs.rs](https://img.shields.io/docsrs/acktor)](https://docs.rs/acktor)
+[![CI](https://github.com/asymmetry/acktor/actions/workflows/ci.yml/badge.svg)](https://github.com/asymmetry/acktor/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/crates/l/acktor)](LICENSE)
+
 A pure-Rust actor framework built on top of the [Tokio](https://tokio.rs) async runtime, inspired by Alice Ryhl's [Actors with Tokio](https://ryhl.io/blog/actors-with-tokio/).
 
 ## About
@@ -22,7 +27,7 @@ Requires Rust 1.85 or later.
 An example `Counter` actor that handles arithmetic messages might be the following:
 
 ```rust
-use acktor::{Actor, Context, Signal, message::{Handler, Message}};
+use acktor::{Actor, Context, Handler, Message, Signal};
 
 // 1. Define your actor
 #[derive(Debug)]
@@ -34,14 +39,11 @@ impl Actor for Counter {
 }
 
 // 2. Define a message
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "i64"]
 enum CounterMsg {
     Increment,
     Get,
-}
-
-impl Message for CounterMsg {
-    type Result = i64;
 }
 
 // 3. Implement the handler

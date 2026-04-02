@@ -39,7 +39,7 @@ where
     fn unpack(envelope: Envelope<A>) -> M;
 }
 
-/// Helps to save a message in an envelop as a boxed trait object.
+/// Helps to save a message in an envelope as a boxed trait object.
 pub trait EnvelopeProxy<A>: Send + 'static
 where
     A: Actor,

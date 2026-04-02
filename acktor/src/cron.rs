@@ -29,7 +29,7 @@ pub enum CronState {
 
 /// Describes the behavior of an actor which can execute repetitive tasks.
 pub trait CronActor: Actor {
-    /// Invoked to execute periodcal tasks when an actor is running.
+    /// Invoked to execute periodic tasks when an actor is running.
     ///
     /// A [`Duration`] is returned to specify the interval of the next execution.
     ///
@@ -67,7 +67,7 @@ where
     cron_state: CronState,
     cron_join_handle: Option<JoinHandle<()>>,
     supervisor: Option<Recipient<SupervisionEvent<A>>>,
-    error: Option<A::Error>, // if an error happenned during message handling
+    error: Option<A::Error>, // if an error happened during message handling
 }
 
 impl<A> CronContext<A>

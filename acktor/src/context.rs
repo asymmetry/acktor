@@ -21,7 +21,7 @@ where
     mailbox: Option<Mailbox<A>>,
     drain_mailbox: bool,
     supervisor: Option<Recipient<SupervisionEvent<A>>>,
-    error: Option<A::Error>, // if an error happenned during message handling
+    error: Option<A::Error>, // if an error happened during message handling
 }
 
 impl<A> Context<A>

@@ -34,7 +34,7 @@ pub enum Stopping {
 pub trait Actor: Sized + Send + 'static {
     /// The execution context type for this actor.
     type Context: ActorContext<Self>;
-    // NOTE: this bound is choosen to be compatible with `std::error::Error`, `Box<dyn Error>`
+    // NOTE: this bound is chosen to be compatible with `std::error::Error`, `Box<dyn Error>`
     // and `anyhow::Error`
     /// The error type returned by lifecycle hooks and message handlers.
     type Error: Into<Box<dyn Error + Send + Sync>> + Send + 'static;
@@ -178,7 +178,7 @@ where
 
     /// Drains the mailbox of the actor.
     ///
-    /// The default implementation does nothing. Users who needs this functionality should
+    /// The default implementation does nothing. Users who need this functionality should
     /// implement it in their own context.
     fn drain_mailbox(&mut self) {}
 
@@ -189,7 +189,7 @@ where
         self.set_state(ActorState::Stopping);
     }
 
-    /// Stops the actor and save the error for reporting.
+    /// Stops the actor and saves the error for reporting.
     ///
     /// This method will switch the actor to the [`Stopping`][ActorState::Stopping] state.
     fn stop_with_error(&mut self, error: A::Error) {
@@ -204,7 +204,7 @@ where
         self.set_state(ActorState::Stopped);
     }
 
-    /// Terminates the actor and save the error for reporting.
+    /// Terminates the actor and saves the error for reporting.
     ///
     /// This method will switch the actor to the [`Stopped`][ActorState::Stopped] state.
     fn terminate_with_error(&mut self, error: A::Error) {

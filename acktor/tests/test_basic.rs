@@ -1,9 +1,6 @@
 use pretty_assertions::assert_eq;
 
-use acktor::{
-    Actor, Context, Signal,
-    message::{Handler, Message},
-};
+use acktor::{Actor, Context, Handler, Message, Signal};
 
 #[derive(Debug)]
 pub struct Number(i64);
@@ -13,16 +10,13 @@ impl Actor for Number {
     type Error = anyhow::Error;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "i64"]
 pub enum Arithmetic {
     Add(i64),
     Subtract(i64),
     Multiply(i64),
     Divide(i64),
-}
-
-impl Message for Arithmetic {
-    type Result = i64;
 }
 
 impl Handler<Arithmetic> for Number {
@@ -39,14 +33,11 @@ impl Handler<Arithmetic> for Number {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[result_type = "i64"]
 pub enum Command {
     Get,
     Set(i64),
-}
-
-impl Message for Command {
-    type Result = i64;
 }
 
 impl Handler<Command> for Number {
