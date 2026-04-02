@@ -3,6 +3,9 @@ name: Coverage
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,7 +26,7 @@ jobs:
       - name: generate code coverage
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
       - name: upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: lcov.info
