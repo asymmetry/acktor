@@ -13,7 +13,6 @@ use crate::address::{Address, Recipient};
 use crate::message::{Handler, Message};
 
 /// A message which is used to report actor status to a supervisor.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum SupervisionEvent<A>
 where

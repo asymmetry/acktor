@@ -41,7 +41,7 @@ pub fn get_result_type(ast: &syn::DeriveInput) -> syn::Result<syn::Type> {
         }
         _ => Err(syn::Error::new_spanned(
             attr,
-            "The correct syntax is #[result_type(type)]",
+            "The correct syntax is #[result_type = \"Type\"]",
         )),
     }
 }

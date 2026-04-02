@@ -58,7 +58,7 @@ pub trait Actor: Sized + Send + 'static {
     /// Invoked after an actor is spawned into the tokio runtime.
     /// The actor should be in [`Starting`][ActorState::Starting] state.
     ///
-    /// This method is used to perform addtional initialization.
+    /// This method is used to perform additional initialization.
     /// In the default [`Context`][crate::context::Context] implementation, it is spawned into
     /// the tokio runtime and it is outside of the processing loop. Thus it will be invoked only
     /// once asynchronously. The actor will enter the [`Running`][ActorState::Running] state

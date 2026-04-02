@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["acktor", "acktor-derive"]
+members = ["acktor", "acktor-derive", "acktor-macros"]
 
 [workspace.package]
 edition = "2024"
