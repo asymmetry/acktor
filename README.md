@@ -3,6 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/acktor)](https://crates.io/crates/acktor)
 [![docs.rs](https://img.shields.io/docsrs/acktor)](https://docs.rs/acktor)
 [![CI](https://github.com/asymmetry/acktor/actions/workflows/ci.yml/badge.svg)](https://github.com/asymmetry/acktor/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/asymmetry/acktor/graph/badge.svg?token=DKT26DR5E8)](https://codecov.io/gh/asymmetry/acktor)
 [![License: MIT](https://img.shields.io/crates/l/acktor)](LICENSE)
 
 A pure-Rust actor framework built on top of the [Tokio](https://tokio.rs) async runtime, inspired by Alice Ryhl's [Actors with Tokio](https://ryhl.io/blog/actors-with-tokio/).
