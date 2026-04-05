@@ -15,6 +15,12 @@ use tracing::debug;
 use crate::actor::{Actor, ActorContext};
 use crate::envelope::DefaultEnvelopeProxy;
 
+mod result;
+pub use result::MessageResult;
+
+mod future_result;
+pub use future_result::FutureMessageResult;
+
 /// Types that can be sent between actors.
 pub trait Message<EP = DefaultEnvelopeProxy<Self>>: Send + 'static {
     /// The type of the response produced when this message is handled.
@@ -96,7 +102,6 @@ where
                 }
             }
         }
-
         future::ready(())
     }
 }
@@ -209,32 +214,3 @@ impl_message_response_for!(f32);
 impl_message_response_for!(f64);
 impl_message_response_for!(bool);
 impl_message_response_for!(String);
-
-/// A helper type which wraps the result of a message handler as a message response.
-///
-/// This is useful when the result type of a message does not implement [`MessageResponse`],
-/// and you can not implement [`MessageResponse`] for the type due to the orphan rule. In this
-/// case, you can wrap the result type with this type and use it as the
-/// [`Result`][Handler<M>::Result] associate type in the [`Handler<M>`] trait.
-#[derive(Debug)]
-pub struct MessageResult<M, EP = DefaultEnvelopeProxy<M>>(pub M::Result)
-where
-    M: Message<EP>,
-    EP: 'static;
-
-impl<A, M, EP> MessageResponse<A, M, EP> for MessageResult<M, EP>
-where
-    A: Actor,
-    M: Message<EP>,
-{
-    fn handle(
-        self,
-        _ctx: &mut A::Context,
-        tx: Option<oneshot::Sender<M::Result>>,
-    ) -> impl Future<Output = ()> + Send {
-        if let Some(tx) = tx {
-            let _ = tx.send(self.0);
-        }
-        future::ready(())
-    }
-}

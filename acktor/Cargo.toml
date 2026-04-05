@@ -1,6 +1,6 @@
 [package]
 name = "acktor"
-version = "1.0.6"
+version = "1.0.7"
 description = "Pure-Rust actor framework built on top of the Tokio async runtime"
 edition.workspace = true
 rust-version.workspace = true
@@ -31,7 +31,7 @@ tokio = { version = "1.37", features = ["macros", "rt", "sync", "time"] }
 tracing = "0.1"
 
 acktor-derive = { workspace = true, optional = true }
-acktor-macros = { workspace = true }
+acktor-macros = { workspace = true, default-features = true }
 
 [dev-dependencies]
 anyhow = "1.0"

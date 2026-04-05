@@ -84,16 +84,17 @@ pub mod address;
 pub use address::{Address, Recipient, Sender, SenderIndex};
 
 pub mod message;
-pub use message::{Handler, Message, MessageResponse, MessageResult};
+pub use message::{Handler, Message, MessageResponse};
 
 pub mod envelope;
 
-pub mod cron;
 pub mod observer;
 pub mod supervisor;
 
 mod signal;
 pub use signal::Signal;
+
+pub mod cron;
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
