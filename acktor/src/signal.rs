@@ -6,7 +6,8 @@ use crate::actor::{Actor, ActorContext};
 use crate::message::{Handler, Message};
 
 /// A message which is used to stop/terminate an actor.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Signal {
     /// Stop the actor.
     ///
@@ -23,6 +24,18 @@ pub enum Signal {
 
 impl Message for Signal {
     type Result = ();
+}
+
+impl TryFrom<u8> for Signal {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Signal::Stop),
+            1 => Ok(Signal::Terminate),
+            _ => Err(()),
+        }
+    }
 }
 
 impl<A> Handler<Signal> for A

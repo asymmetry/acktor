@@ -20,6 +20,7 @@ use crate::supervisor::SupervisionEvent;
 
 /// State of the repetitive task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum CronState {
     /// The task is running normally.
     Normal,
@@ -166,7 +167,7 @@ where
                     let join_handle = tokio::spawn(async move {
                         time::sleep(duration).await;
                         if let Err(e) = address.do_send(CronSignal::Resume).await {
-                            debug!("Failed to send Resume signal: {}", e);
+                            debug!("Could not send Resume signal: {}", e);
                         }
                     });
                     self.cron_join_handle = Some(join_handle);
@@ -334,12 +335,25 @@ where
 }
 
 /// A message which is used to pause/resume the repetitive task execution.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum CronSignal {
     /// Pause the repetitive task execution.
     Pause,
     /// Resume the repetitive task execution.
     Resume,
+}
+
+impl TryFrom<u8> for CronSignal {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(CronSignal::Pause),
+            1 => Ok(CronSignal::Resume),
+            _ => Err(()),
+        }
+    }
 }
 
 impl Message for CronSignal {

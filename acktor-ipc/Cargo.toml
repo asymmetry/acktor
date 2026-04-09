@@ -1,0 +1,61 @@
+[package]
+name = "acktor-ipc"
+version = "0.1.0"
+description = "Interprocess communication support for the acktor actor framework"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+exclude = ["examples/*"]
+
+[package.metadata.docs.rs]
+features = ["derive", "pipe", "websocket", "default-codec"]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["derive", "websocket", "default-codec"]
+derive = ["dep:acktor-derive"]
+# pre-implemented IPC methods
+# enable one of these features to select the IPC method to use or disable them all to
+# implement the IPC method manually
+pipe = [
+    "dep:interprocess",
+    "dep:tokio-util",
+    "futures-util/sink",
+    "tokio/io-util",
+]
+websocket = ["dep:tokio-tungstenite", "tokio/net"]
+# codec for primitive types
+# the default codec use zerocopy for some primitive types for efficiency, assuming a Rust-to-Rust
+# communication scenario
+default-codec = ["dep:zerocopy"]
+prost-codec = []                 # use prost for all types
+
+[dependencies]
+bytes = "1.6"
+futures-util = "0.3"
+prost = "0.14"
+rustc-hash = "2.1"
+thiserror = "2.0"
+tokio = { version = "1.37", features = ["macros", "rt", "sync"] }
+tracing = "0.1"
+
+interprocess = { version = "2.2", features = ["tokio"], optional = true }
+tokio-tungstenite = { version = "0.29", optional = true }
+tokio-util = { version = "0.7", features = ["codec"], optional = true }
+zerocopy = { version = "0.8", features = ["derive"], optional = true }
+
+acktor = { workspace = true }
+acktor-derive = { workspace = true, optional = true }
+acktor-ipc-proto = { workspace = true }
+
+[dev-dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+once_cell = "1.19"
+pretty_assertions = "1.4"
+rkyv = "0.8"
+tokio = { version = "1.37", features = ["rt-multi-thread", "signal"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

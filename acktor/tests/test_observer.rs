@@ -6,11 +6,11 @@ use acktor::{
 };
 
 #[derive(Debug, Clone, Copy, Message)]
-#[result_type = "()"]
+#[result_type(())]
 pub struct M1;
 
 #[derive(Debug, Clone, Copy, Message)]
-#[result_type = "()"]
+#[result_type(())]
 pub struct M2;
 
 #[derive(Debug, Default)]
@@ -39,7 +39,7 @@ impl SubjectActor<M2> for A {
 }
 
 #[derive(Debug, Message)]
-#[result_type = "()"]
+#[result_type(())]
 pub struct PingA;
 
 impl Handler<PingA> for A {
@@ -51,7 +51,7 @@ impl Handler<PingA> for A {
 }
 
 #[derive(Debug, Message)]
-#[result_type = "()"]
+#[result_type(())]
 pub struct TryPingA;
 
 impl Handler<TryPingA> for A {
@@ -89,7 +89,7 @@ impl Handler<M2> for B {
 }
 
 #[derive(Debug, Message)]
-#[result_type = "bool"]
+#[result_type(bool)]
 pub struct CheckB;
 
 impl Handler<CheckB> for B {

@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::fmt::{self, Debug};
 use std::pin::Pin;
 
 use futures_util::future::FutureExt;
@@ -12,13 +13,24 @@ use crate::message::{Handler, Message, MessageResponse};
 ///
 /// This proxy will invoke the actor's [`Handler<M>`] trait and return the result through
 /// an oneshot channel if provided.
-#[derive(Debug)]
 pub struct DefaultEnvelopeProxy<M>
 where
     M: Message<Self>,
 {
     pub(crate) message: Option<M>,
     pub(crate) tx: Option<oneshot::Sender<M::Result>>,
+}
+
+impl<M> Debug for DefaultEnvelopeProxy<M>
+where
+    M: Message<Self>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "DefaultEnvelopeProxy<{}>",
+            crate::utils::type_name::<M>()?
+        ))
+    }
 }
 
 impl<M> DefaultEnvelopeProxy<M>

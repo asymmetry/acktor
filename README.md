@@ -41,7 +41,7 @@ impl Actor for Counter {
 
 // 2. Define a message
 #[derive(Debug, Message)]
-#[result_type = "i64"]
+#[result_type(i64)]
 enum CounterMsg {
     Increment,
     Get,

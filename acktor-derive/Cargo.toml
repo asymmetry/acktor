@@ -8,7 +8,6 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-exclude = ["tests/*"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -21,10 +20,3 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1.0"
 syn = "2.0"
-
-[dev-dependencies]
-anyhow = "1.0"
-pretty_assertions = "1.4"
-tokio = { version = "1.37", features = ["macros"] }
-
-acktor.workspace = true

@@ -23,7 +23,7 @@
 //! }
 //!
 //! #[derive(Debug, Message)]
-//! #[result_type = "i64"]
+//! #[result_type(i64)]
 //! enum CounterMsg {
 //!     Increment,
 //!     Get,
@@ -72,7 +72,7 @@ pub mod errors {
     pub use tokio::sync::mpsc::error::{SendError, TryRecvError, TrySendError};
 }
 
-mod utils;
+pub mod utils;
 
 mod actor;
 pub use actor::{Actor, ActorContext, ActorState, Stopping};

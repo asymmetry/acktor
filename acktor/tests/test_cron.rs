@@ -54,7 +54,7 @@ impl CronActor for B {
 }
 
 #[derive(Debug, Message)]
-#[result_type = "i32"]
+#[result_type(i32)]
 pub struct CheckB;
 
 impl Handler<CheckB> for B {

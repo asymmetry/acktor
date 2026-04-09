@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package actor_message;
+
+// A message which is used to send a message to a remote actor and wait for a response.
+// The remote actor should response with the given tag.
+message Send {
+  // The index of the recipient actor in the remote process.
+  uint64 actor_id = 1;
+  // The message to be sent.
+  bytes message = 2;
+  // The tag to be used in the reply.
+  uint64 tag = 3;
+}
+
+// A message which is used to send a message to a remote actor without expecting a
+// response.
+message DoSend {
+  // The index of the recipient actor in the remote process.
+  uint64 actor_id = 1;
+  // The message to be sent.
+  bytes message = 2;
+}
+
+// A message which is used to reply to a message sent by `Send` command.
+message Reply {
+  // The tag of the message to be replied.
+  uint64 tag = 1;
+  // The message to be sent in the reply.
+  bytes message = 2;
+}
+
+// A message which is used to communicate with remote actors.
+message ActorMessage {
+  oneof message {
+    // Sends a message to a remote actor and wait for a response.
+    Send send = 1;
+    // Sends a message to a remote actor without expecting a response.
+    DoSend do_send = 2;
+    // Replies to a message sent by `Send` command.
+    Reply reply = 3;
+  }
+}

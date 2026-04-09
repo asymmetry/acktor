@@ -11,11 +11,11 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     generics.params.push(parse_quote!(_A: acktor::Actor));
     generics
         .params
-        .push(parse_quote!(_M: acktor::message::Message<Result = #name #ty_generics>));
+        .push(parse_quote!(_M: acktor::Message<Result = #name #ty_generics>));
     let (impl_generics, _, _) = generics.split_for_impl();
 
     quote! {
-        impl #impl_generics ::acktor::message::MessageResponse<_A, _M> for #name #ty_generics #where_clause {
+        impl #impl_generics ::acktor::MessageResponse<_A, _M> for #name #ty_generics #where_clause {
             async fn handle(self, _: &mut _A::Context, tx: Option<::tokio::sync::oneshot::Sender<Self>>) {
                 if let Some(tx) = tx {
                     let _ = tx.send(self);

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+import "actor_message.proto";
+import "node_message.proto";
+
+package ipc_message;
+
+// IPC message.
+message IpcMessage {
+  oneof message {
+    // A message which is used to communicate with remote nodes directly.
+    node_message.NodeMessage node = 1;
+    // A message which is used to communicate with remote actors.
+    actor_message.ActorMessage actor = 2;
+  }
+}

@@ -1,6 +1,7 @@
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::pin::Pin;
+use std::sync::Arc;
 
 use futures_util::future::FutureExt;
 use tokio::sync::{
@@ -26,24 +27,18 @@ use crate::utils::new_address_id;
 /// [`mpsc::Sender`][tokio::sync::mpsc::Sender] via [`from_sender`][Recipient::from_sender]
 /// and [`create`][Recipient::create]. Note that the `from_sender` and `create` methods are
 /// only available for messages where `Result = ()`.
-pub struct Recipient<M, EP = DefaultEnvelopeProxy<M>>(pub Box<dyn Sender<M, EP> + Send + Sync>)
+pub struct Recipient<M, EP = DefaultEnvelopeProxy<M>>(pub Arc<dyn Sender<M, EP> + Send + Sync>)
 where
     M: Message<EP>;
 
-impl<M, EP> fmt::Debug for Recipient<M, EP>
+impl<M, EP> Debug for Recipient<M, EP>
 where
     M: Message<EP>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct(&format!(
-            "Recipient<{}>",
-            std::any::type_name::<M>()
-                .rsplit("::")
-                .next()
-                .ok_or(fmt::Error)?
-        ))
-        .field("index", &self.0.index())
-        .finish()
+        f.debug_tuple(&format!("Recipient<{}>", crate::utils::type_name::<M>()?))
+            .field(&self.0.index())
+            .finish()
     }
 }
 
@@ -53,7 +48,7 @@ where
     EP: 'static,
 {
     fn clone(&self) -> Self {
-        Self(self.0.boxed())
+        Self(self.0.clone())
     }
 }
 
@@ -85,7 +80,7 @@ where
     M: Message<EP>,
 {
     /// Constructs a recipient from a trait object of [`Sender`].
-    pub fn new(tx: Box<dyn Sender<M, EP> + Send + Sync>) -> Self {
+    pub fn new(tx: Arc<dyn Sender<M, EP> + Send + Sync>) -> Self {
         Self(tx)
     }
 }
@@ -96,9 +91,9 @@ where
 {
     /// Constructs a recipient from a [`mpsc::Sender`].
     pub fn from_sender(tx: mpsc::Sender<M>) -> Self {
-        Self(Box::new(RecipientProxy {
-            tx,
+        Self(Arc::new(RecipientProxy {
             index: new_address_id(),
+            tx,
         }))
     }
 
@@ -106,9 +101,9 @@ where
     pub fn create(capacity: usize) -> (Self, mpsc::Receiver<M>) {
         let (tx, rx) = mpsc::channel(capacity);
         (
-            Self(Box::new(RecipientProxy {
-                tx,
+            Self(Arc::new(RecipientProxy {
                 index: new_address_id(),
+                tx,
             })),
             rx,
         )
@@ -123,7 +118,7 @@ where
     A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
 {
     fn from(addr: Address<A>) -> Self {
-        Self::new(Box::new(addr))
+        Self::new(Arc::new(addr))
     }
 }
 
@@ -174,10 +169,6 @@ where
 
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {
         self.0.blocking_do_send(msg)
-    }
-
-    fn boxed(&self) -> Box<dyn Sender<M, EP> + Send + Sync> {
-        self.0.boxed()
     }
 }
 
@@ -293,9 +284,5 @@ where
 
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {
         self.tx.blocking_send(msg)
-    }
-
-    fn boxed(&self) -> Box<dyn Sender<M> + Send + Sync> {
-        Box::new(self.clone())
     }
 }

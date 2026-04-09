@@ -1,6 +1,9 @@
 use pretty_assertions::assert_eq;
 
-use acktor::{Actor, Context, Handler, Message, Signal};
+use acktor::{Actor, Context, Handler, Message, MessageResponse, Signal};
+
+#[derive(Debug, MessageResponse)]
+pub struct Res(i64);
 
 #[derive(Debug)]
 pub struct Number(i64);
@@ -11,7 +14,7 @@ impl Actor for Number {
 }
 
 #[derive(Debug, Message)]
-#[result_type = "i64"]
+#[result_type(Res)]
 pub enum Arithmetic {
     Add(i64),
     Subtract(i64),
@@ -20,7 +23,7 @@ pub enum Arithmetic {
 }
 
 impl Handler<Arithmetic> for Number {
-    type Result = i64;
+    type Result = Res;
 
     async fn handle(&mut self, msg: Arithmetic, _ctx: &mut Self::Context) -> Self::Result {
         match msg {
@@ -29,12 +32,12 @@ impl Handler<Arithmetic> for Number {
             Arithmetic::Multiply(n) => self.0 *= n,
             Arithmetic::Divide(n) => self.0 /= n,
         }
-        self.0
+        Res(self.0)
     }
 }
 
 #[derive(Debug, Message)]
-#[result_type = "i64"]
+#[result_type(i64)]
 pub enum Command {
     Get,
     Set(i64),
@@ -58,7 +61,13 @@ impl Handler<Command> for Number {
 async fn test_basic() {
     let (address, join_handle) = Number(16).run("Number").unwrap();
 
-    address.do_send(Arithmetic::Add(32)).await.unwrap();
+    let result = address
+        .send(Arithmetic::Add(32))
+        .await
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(result.0, 48);
     address.do_send(Arithmetic::Subtract(64)).await.unwrap();
 
     let result = address.send(Command::Get).await.unwrap().await.unwrap();
@@ -68,13 +77,9 @@ async fn test_basic() {
 
     join_handle.await.unwrap();
 
+    // test create and Signal::Terminate
+
     let (address, join_handle) = Number::create("Number", |_| Ok(Number(16))).unwrap();
-
-    address.do_send(Arithmetic::Add(32)).await.unwrap();
-    address.do_send(Arithmetic::Subtract(64)).await.unwrap();
-
-    let result = address.send(Command::Get).await.unwrap().await.unwrap();
-    assert_eq!(result, -16);
 
     address.do_send(Signal::Terminate).await.unwrap();
 

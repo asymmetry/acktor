@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt::Display;
 use std::panic::AssertUnwindSafe;
 
 use futures_util::future::{FutureExt, TryFutureExt};
@@ -21,8 +22,24 @@ pub enum ActorState {
     Stopped,
 }
 
+impl TryFrom<u8> for ActorState {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(ActorState::Unstarted),
+            1 => Ok(ActorState::Starting),
+            2 => Ok(ActorState::Running),
+            3 => Ok(ActorState::Stopping),
+            4 => Ok(ActorState::Stopped),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Return value of [`Actor::stopping`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Stopping {
     /// The actor could not resume by itself. Stop the actor.
     Stop,
@@ -37,7 +54,7 @@ pub trait Actor: Sized + Send + 'static {
     // NOTE: this bound is chosen to be compatible with `std::error::Error`, `Box<dyn Error>`
     // and `anyhow::Error`
     /// The error type returned by lifecycle hooks and message handlers.
-    type Error: Into<Box<dyn Error + Send + Sync>> + Send + 'static;
+    type Error: Into<Box<dyn Error + Send + Sync>> + Display + Send + 'static;
 
     /// Invoked before an actor is spawned into the tokio runtime.
     /// The actor should be in [`Unstarted`][ActorState::Unstarted] state.

@@ -14,7 +14,7 @@ pub(crate) type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<
 /// Describes how to retrieve the index of a sender.
 ///
 /// Separate from the [`Sender`] trait so we do not need to use fully qualified syntax to use
-/// this trait.
+/// this trait when multiple [`Sender`] traits are in scope.
 pub trait SenderIndex {
     /// Returns the index of the sender.
     fn index(&self) -> usize;
@@ -59,7 +59,4 @@ where
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>>;
-
-    /// Returns the sender as a boxed trait object.
-    fn boxed(&self) -> Box<dyn Sender<M, EP> + Send + Sync>;
 }

@@ -73,7 +73,10 @@ where
     A: Actor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Envelope").field(&format_args!("_")).finish()
+        f.write_fmt(format_args!(
+            "Envelope<{}>",
+            crate::utils::type_name::<A>()?
+        ))
     }
 }
 

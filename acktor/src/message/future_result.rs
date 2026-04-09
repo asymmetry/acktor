@@ -1,3 +1,4 @@
+use std::fmt::{self, Debug};
 use std::future;
 use std::pin::Pin;
 
@@ -18,6 +19,18 @@ where
     M: Message<EP>,
 {
     future: Pin<Box<dyn Future<Output = M::Result> + Send>>,
+}
+
+impl<M, EP> Debug for FutureMessageResult<M, EP>
+where
+    M: Message<EP>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "FutureMessageResult<{}>",
+            crate::utils::type_name::<M>()?
+        ))
+    }
 }
 
 impl<M, EP> FutureMessageResult<M, EP>

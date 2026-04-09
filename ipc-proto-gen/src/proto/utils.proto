@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package utils;
+
+// A message which represents a Result type in Rust.
+message ResultMessage {
+  oneof result {
+    // The ok message.
+    bytes ok = 1;
+    // The err message.
+    string err = 2;
+  }
+}
+
+// A message which represents an Option type in Rust.
+message OptionMessage {
+  optional bytes option = 1;
+}
+
+// Packed repeated messages for Vec<T> encoding.
+message BoolVec   { repeated bool   values = 1; }
+message Int32Vec  { repeated int32  values = 1; }
+message Int64Vec  { repeated int64  values = 1; }
+message Uint32Vec { repeated uint32 values = 1; }
+message Uint64Vec { repeated uint64 values = 1; }
+message FloatVec  { repeated float  values = 1; }
+message DoubleVec { repeated double values = 1; }
+
+// A message which represents a tuple of up to 10 elements.
+message TupleMessage {
+  optional bytes t0 = 1;
+  optional bytes t1 = 2;
+  optional bytes t2 = 3;
+  optional bytes t3 = 4;
+  optional bytes t4 = 5;
+  optional bytes t5 = 6;
+  optional bytes t6 = 7;
+  optional bytes t7 = 8;
+  optional bytes t8 = 9;
+  optional bytes t9 = 10;
+}

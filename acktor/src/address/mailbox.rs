@@ -1,3 +1,5 @@
+use std::fmt::{self, Debug};
+
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::actor::Actor;
@@ -6,12 +8,20 @@ use crate::envelope::Envelope;
 /// A type which holds a queue of messages to be processed by an actor.
 ///
 /// Mailbox is the receiver side of the communication channel of an actor.
-#[derive(Debug)]
 pub struct Mailbox<A>
 where
     A: Actor,
 {
     rx: mpsc::Receiver<Envelope<A>>,
+}
+
+impl<A> Debug for Mailbox<A>
+where
+    A: Actor,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("Mailbox<{}>", crate::utils::type_name::<A>()?))
+    }
 }
 
 impl<A> Mailbox<A>

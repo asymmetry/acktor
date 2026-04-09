@@ -32,15 +32,9 @@ where
     A: Actor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct(&format!(
-            "Address<{}>",
-            std::any::type_name::<A>()
-                .rsplit("::")
-                .next()
-                .ok_or(fmt::Error)?
-        ))
-        .field("index", &self.index)
-        .finish()
+        f.debug_tuple(&format!("Address<{}>", crate::utils::type_name::<A>()?))
+            .field(&self.index)
+            .finish()
     }
 }
 
@@ -272,10 +266,6 @@ where
 
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {
         self.blocking_do_send(msg)
-    }
-
-    fn boxed(&self) -> Box<dyn Sender<M, EP> + Send + Sync> {
-        Box::new(self.clone())
     }
 }
 
