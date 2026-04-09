@@ -16,11 +16,8 @@ pub use node::Node;
 
 mod session;
 
-// mod remote_actor;
-// pub use remote_actor::RemoteActor;
-
 mod remote_address;
-pub use remote_address::RemoteAddress;
+pub use remote_address::{RemoteAddress, RemoteSender};
 
 pub mod remote_message;
 pub use remote_message::RemoteMessage;

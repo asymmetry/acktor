@@ -17,7 +17,25 @@ pub(crate) type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<
 /// this trait when multiple [`Sender`] traits are in scope.
 pub trait SenderIndex {
     /// Returns the index of the sender.
-    fn index(&self) -> usize;
+    fn index(&self) -> u64;
+
+    /// Returns `true` if this sender refers to an actor in another process.
+    ///
+    /// The MSB of the u64 actor id is reserved by [`acktor-ipc`] crate to tag remote
+    /// addresses.
+    ///
+    /// [`acktor-ipc`]: https://docs.rs/acktor-ipc/latest/acktor_ipc
+    #[inline]
+    fn is_remote(&self) -> bool {
+        self.index() >> 63 != 0
+    }
+}
+
+impl SenderIndex for u64 {
+    #[inline]
+    fn index(&self) -> u64 {
+        *self
+    }
 }
 
 /// Describes how to send a message.

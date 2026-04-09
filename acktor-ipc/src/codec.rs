@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 
-use acktor::{Actor, Address};
+use acktor::{Actor, Address, SenderIndex};
 
 use crate::remote_address::{RemoteAddress, RemoteSender};
 
@@ -61,23 +61,25 @@ where
 {
     #[inline]
     fn encoded_len(&self) -> usize {
-        prost::Message::encoded_len(&(self.index() as u64))
+        prost::Message::encoded_len(&self.index())
     }
 
     #[inline]
     fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
-        let index = self.index() as u64;
-        prost::Message::encode(&index, buf).map_err(Into::into)
+        prost::Message::encode(&self.index(), buf).map_err(Into::into)
     }
 }
 
 impl Decode for RemoteAddress {
     #[inline]
     fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-        let index = <u64 as prost::Message>::decode(buf)?;
+        let actor_id = <u64 as prost::Message>::decode(buf)?;
+        if actor_id.is_remote() {
+            return Err(DecodeError::DecodeRemoteAddress);
+        }
         let session = context.ok_or::<DecodeError>("missing decode context".into())?;
 
-        Ok(RemoteAddress::new(index as usize, session.clone()))
+        Ok(RemoteAddress::new(actor_id, session.clone()))
     }
 }
 

@@ -17,7 +17,7 @@ use super::sender::{SendResult, Sender, SenderIndex, TrySendResult};
 use crate::actor::Actor;
 use crate::envelope::{DefaultEnvelopeProxy, FromEnvelope, ToEnvelope};
 use crate::message::Message;
-use crate::utils::new_address_id;
+use crate::utils::create_actor_id;
 
 /// A type which is used to send a specific message to an actor.
 ///
@@ -92,7 +92,7 @@ where
     /// Constructs a recipient from a [`mpsc::Sender`].
     pub fn from_sender(tx: mpsc::Sender<M>) -> Self {
         Self(Arc::new(RecipientProxy {
-            index: new_address_id(),
+            index: create_actor_id(),
             tx,
         }))
     }
@@ -102,7 +102,7 @@ where
         let (tx, rx) = mpsc::channel(capacity);
         (
             Self(Arc::new(RecipientProxy {
-                index: new_address_id(),
+                index: create_actor_id(),
                 tx,
             })),
             rx,
@@ -126,7 +126,7 @@ impl<M, EP> SenderIndex for Recipient<M, EP>
 where
     M: Message<EP>,
 {
-    fn index(&self) -> usize {
+    fn index(&self) -> u64 {
         self.0.index()
     }
 }
@@ -177,7 +177,7 @@ struct RecipientProxy<M>
 where
     M: Message<Result = ()>,
 {
-    index: usize,
+    index: u64,
     tx: mpsc::Sender<M>,
 }
 
@@ -220,7 +220,7 @@ impl<M> SenderIndex for RecipientProxy<M>
 where
     M: Message<Result = ()>,
 {
-    fn index(&self) -> usize {
+    fn index(&self) -> u64 {
         self.index
     }
 }

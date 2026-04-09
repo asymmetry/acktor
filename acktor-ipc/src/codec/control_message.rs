@@ -15,6 +15,15 @@ use super::{Decode, DecodeContext, Encode};
 use crate::remote_address::RemoteAddress;
 use crate::remote_message::{RemoteObserver, RemoteSupervisionEvent, RemoteSupervisor};
 
+#[inline]
+fn check_actor_id(actor_id: u64) -> Result<u64, DecodeError> {
+    if actor_id.is_remote() {
+        Err(DecodeError::DecodeRemoteAddress)
+    } else {
+        Ok(actor_id)
+    }
+}
+
 impl Encode for Signal {
     #[inline]
     fn encoded_len(&self) -> usize {
@@ -38,9 +47,9 @@ impl Decode for Signal {
         match message.message {
             Some(proto::ControlMessageType::Signal(signal)) => {
                 Signal::try_from(signal.signal as u8)
-                    .map_err(|_| "invalid value in the signal message".into())
+                    .map_err(|_| "invalid signal value in the `Signal` message".into())
             }
-            _ => Err("missing field `message` in the signal message".into()),
+            _ => Err("message is not a `Signal` message".into()),
         }
     }
 }
@@ -62,7 +71,12 @@ where
     #[inline]
     fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
         let supervisor = match self {
-            Supervisor::Set(recipient) => proto::Supervisor::set(recipient.index()),
+            Supervisor::Set(recipient) => {
+                if recipient.is_remote() {
+                    return Err(EncodeError::EncodeRemoteAddress);
+                }
+                proto::Supervisor::set(recipient.index())
+            }
             Supervisor::Unset => proto::Supervisor::unset(),
         };
         let message = ControlMessage::supervisor(supervisor);
@@ -79,13 +93,13 @@ impl Decode for RemoteSupervisor {
             Some(proto::ControlMessageType::Supervisor(supervisor)) => {
                 match supervisor.supervisor {
                     Some(proto::SupervisorType::Set(actor_id)) => Ok(RemoteSupervisor::Set(
-                        RemoteAddress::new(actor_id as usize, session.clone()),
+                        RemoteAddress::new(check_actor_id(actor_id)?, session.clone()),
                     )),
                     Some(proto::SupervisorType::Unset(())) => Ok(RemoteSupervisor::Unset),
-                    None => Err("missing field `supervisor` in the supervisor message".into()),
+                    None => Err("missing field `supervisor` in the `Supervisor` message".into()),
                 }
             }
-            _ => Err("missing field `message` in the supervisor message".into()),
+            _ => Err("message is not a `Supervisor` message".into()),
         }
     }
 }
@@ -107,8 +121,18 @@ where
     #[inline]
     fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
         let observer = match self {
-            Observer::Register(recipient) => proto::Observer::register(recipient.index()),
-            Observer::Unregister(recipient) => proto::Observer::unregister(recipient.index()),
+            Observer::Register(recipient) => {
+                if recipient.is_remote() {
+                    return Err(EncodeError::EncodeRemoteAddress);
+                }
+                proto::Observer::register(recipient.index())
+            }
+            Observer::Unregister(recipient) => {
+                if recipient.is_remote() {
+                    return Err(EncodeError::EncodeRemoteAddress);
+                }
+                proto::Observer::unregister(recipient.index())
+            }
         };
         let message = ControlMessage::observer(observer);
         prost::Message::encode(&message, buf).map_err(Into::into)
@@ -123,14 +147,14 @@ impl Decode for RemoteObserver {
         match message.message {
             Some(proto::ControlMessageType::Observer(observer)) => match observer.observer {
                 Some(proto::ObserverType::Register(actor_id)) => Ok(RemoteObserver::Register(
-                    RemoteAddress::new(actor_id as usize, session.clone()),
+                    RemoteAddress::new(check_actor_id(actor_id)?, session.clone()),
                 )),
                 Some(proto::ObserverType::Unregister(actor_id)) => Ok(RemoteObserver::Unregister(
-                    RemoteAddress::new(actor_id as usize, session.clone()),
+                    RemoteAddress::new(check_actor_id(actor_id)?, session.clone()),
                 )),
-                None => Err("missing field `observer` in the observer message".into()),
+                None => Err("missing field `observer` in the `Observer` message".into()),
             },
-            _ => Err("missing field `message` in the observer message".into()),
+            _ => Err("message is not an `Observer` message".into()),
         }
     }
 }
@@ -158,9 +182,9 @@ impl Decode for CronSignal {
         match message.message {
             Some(proto::ControlMessageType::CronSignal(cron_signal)) => {
                 CronSignal::try_from(cron_signal.signal as u8)
-                    .map_err(|_| "invalid value in the cron_signal message".into())
+                    .map_err(|_| "invalid signal value in the `CronSignal` message".into())
             }
-            _ => Err("missing field `message` in the cron_signal message".into()),
+            _ => Err("message is not a `CronSignal` message".into()),
         }
     }
 }
@@ -231,34 +255,37 @@ where
 impl Decode for RemoteSupervisionEvent {
     #[inline]
     fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-        let session = context
-            .ok_or::<DecodeError>("missing decode context for supervision_event message".into())?;
+        let session = context.ok_or::<DecodeError>("missing decode context".into())?;
         let message: ControlMessage = prost::Message::decode(buf)?;
         match message.message {
             Some(proto::ControlMessageType::SupervisionEvent(event)) => match event.event {
                 Some(proto::SupervisionEventType::Warn(warn)) => Ok(RemoteSupervisionEvent::Warn(
-                    RemoteAddress::new(warn.actor_id as usize, session.clone()),
+                    RemoteAddress::new(check_actor_id(warn.actor_id)?, session.clone()),
                     warn.err,
                 )),
+
                 Some(proto::SupervisionEventType::Terminated(terminated)) => {
                     Ok(RemoteSupervisionEvent::Terminated(
-                        RemoteAddress::new(terminated.actor_id as usize, session.clone()),
+                        RemoteAddress::new(check_actor_id(terminated.actor_id)?, session.clone()),
                         terminated.err,
                     ))
                 }
+
                 Some(proto::SupervisionEventType::State(state)) => {
                     Ok(RemoteSupervisionEvent::State(
-                        RemoteAddress::new(state.actor_id as usize, session.clone()),
+                        RemoteAddress::new(check_actor_id(state.actor_id)?, session.clone()),
                         ActorState::try_from(state.state as u8).map_err(|_| {
-                            DecodeError::from("invalid value in the supervision_event message")
+                            DecodeError::from(
+                                "invalid actor state value in the `SupervisionEvent` message",
+                            )
                         })?,
                     ))
                 }
-                None => {
-                    Err("missing field `supervision_event` in the supervision_event message".into())
-                }
+
+                None => Err("missing field `event` in the `SupervisionEvent` message".into()),
             },
-            _ => Err("missing field `message` in the supervision_event message".into()),
+
+            _ => Err("message is not a `SupervisionEvent` message".into()),
         }
     }
 }

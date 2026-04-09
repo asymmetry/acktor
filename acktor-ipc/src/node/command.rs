@@ -24,7 +24,7 @@ pub struct AddActor(pub Recipient<RemoteMessage>);
 /// A command which is used to remove a local actor from a node.
 #[derive(Debug, Message)]
 #[result_type(())]
-pub struct RemoveActor(pub usize);
+pub struct RemoveActor(pub u64);
 
 /// A command which is used by a node to actively connect to another node like a client.
 ///
@@ -73,5 +73,5 @@ pub struct GetRemoteActor {
 #[result_type(Result<RemoteAddress>)]
 pub struct CreateRemoteAddress {
     pub session_label: String,
-    pub actor_index: usize,
+    pub actor_index: u64,
 }

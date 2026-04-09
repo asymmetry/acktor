@@ -129,7 +129,7 @@ where
         match result.result {
             Some(ResultType::Ok(ok)) => Ok(Ok(T::decode(ok, context)?)),
             Some(ResultType::Err(err)) => Ok(Err(E::from(err))),
-            _ => Err("missing field `result` in the result message".into()),
+            _ => Err("missing field `result` in the `Result` message".into()),
         }
     }
 }

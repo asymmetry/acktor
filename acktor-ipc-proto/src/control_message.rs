@@ -78,9 +78,9 @@ mod supervisor {
 
     impl Supervisor {
         #[inline]
-        pub fn set(actor_id: usize) -> Self {
+        pub fn set(actor_id: u64) -> Self {
             Self {
-                supervisor: Some(SupervisorType::Set(actor_id as u64)),
+                supervisor: Some(SupervisorType::Set(actor_id)),
             }
         }
 
@@ -100,16 +100,16 @@ mod observer {
 
     impl Observer {
         #[inline]
-        pub fn register(actor_id: usize) -> Self {
+        pub fn register(actor_id: u64) -> Self {
             Self {
-                observer: Some(ObserverType::Register(actor_id as u64)),
+                observer: Some(ObserverType::Register(actor_id)),
             }
         }
 
         #[inline]
-        pub fn unregister(actor_id: usize) -> Self {
+        pub fn unregister(actor_id: u64) -> Self {
             Self {
-                observer: Some(ObserverType::Unregister(actor_id as u64)),
+                observer: Some(ObserverType::Unregister(actor_id)),
             }
         }
     }
@@ -153,32 +153,26 @@ mod supervision_event {
 
     impl SupervisionEvent {
         #[inline]
-        pub fn warn(actor_id: usize, err: String) -> Self {
+        pub fn warn(actor_id: u64, err: String) -> Self {
             Self {
-                event: Some(SupervisionEventType::Warn(Warn {
-                    actor_id: actor_id as u64,
-                    err,
-                })),
+                event: Some(SupervisionEventType::Warn(Warn { actor_id, err })),
             }
         }
 
         #[inline]
-        pub fn terminated(actor_id: usize, err: Option<String>) -> Self {
+        pub fn terminated(actor_id: u64, err: Option<String>) -> Self {
             Self {
                 event: Some(SupervisionEventType::Terminated(Terminated {
-                    actor_id: actor_id as u64,
+                    actor_id,
                     err,
                 })),
             }
         }
 
         #[inline]
-        pub fn state(actor_id: usize, state: i32) -> Self {
+        pub fn state(actor_id: u64, state: i32) -> Self {
             Self {
-                event: Some(SupervisionEventType::State(State {
-                    actor_id: actor_id as u64,
-                    state,
-                })),
+                event: Some(SupervisionEventType::State(State { actor_id, state })),
             }
         }
     }

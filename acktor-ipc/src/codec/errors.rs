@@ -8,6 +8,9 @@ pub enum EncodeError {
     #[error(transparent)]
     ProstEncodeError(#[from] prost::EncodeError),
 
+    #[error("remote address cannot be encoded in a remote message")]
+    EncodeRemoteAddress,
+
     #[error("could not encode the message: {description}")]
     Other { description: Cow<'static, str> },
 }
@@ -36,6 +39,9 @@ pub enum DecodeError {
 
     #[error("could not decode the message: {description}")]
     ZerocopyError { description: Cow<'static, str> },
+
+    #[error("remote message should not contain a remote address")]
+    DecodeRemoteAddress,
 
     #[error("could not decode the message: {description}")]
     Other { description: Cow<'static, str> },

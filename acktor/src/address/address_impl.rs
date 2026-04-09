@@ -16,14 +16,14 @@ use super::sender::{SendResult, Sender, SenderIndex, TrySendResult};
 use crate::actor::Actor;
 use crate::envelope::{Envelope, FromEnvelope, ToEnvelope};
 use crate::message::Message;
-use crate::utils::new_address_id;
+use crate::utils::create_actor_id;
 
 /// A type which is used to send messages to an actor.
 pub struct Address<A>
 where
     A: Actor,
 {
-    index: usize,
+    index: u64,
     tx: mpsc::Sender<Envelope<A>>,
 }
 
@@ -80,13 +80,13 @@ where
     /// Wraps a message sender to form an address.
     pub fn new(tx: mpsc::Sender<Envelope<A>>) -> Self {
         Self {
-            index: new_address_id(),
+            index: create_actor_id(),
             tx,
         }
     }
 
     /// Returns the index of the address.
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> u64 {
         self.index
     }
 
@@ -221,7 +221,7 @@ impl<A> SenderIndex for Address<A>
 where
     A: Actor,
 {
-    fn index(&self) -> usize {
+    fn index(&self) -> u64 {
         self.index
     }
 }

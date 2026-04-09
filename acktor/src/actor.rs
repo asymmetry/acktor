@@ -153,7 +153,7 @@ where
     fn new(label: String) -> Self;
 
     /// Returns the index of the actor.
-    fn index(&self) -> usize;
+    fn index(&self) -> u64;
 
     /// Returns the label of the actor.
     fn label(&self) -> &str;

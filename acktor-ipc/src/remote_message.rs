@@ -38,7 +38,7 @@ impl Debug for RemoteMessageKind {
 #[derive(Message)]
 #[result_type(())]
 pub struct RemoteMessage {
-    pub actor_id: usize,
+    pub actor_id: u64,
     pub message: Bytes,
     pub kind: RemoteMessageKind,
     pub context: Option<DecodeContext>,
@@ -65,7 +65,7 @@ impl Debug for RemoteMessage {
 }
 
 impl RemoteMessage {
-    pub fn do_send(actor_id: usize, message: Bytes) -> Self {
+    pub fn do_send(actor_id: u64, message: Bytes) -> Self {
         Self {
             actor_id,
             message,
@@ -74,7 +74,7 @@ impl RemoteMessage {
         }
     }
 
-    pub fn send(actor_id: usize, message: Bytes, tx: oneshot::Sender<Bytes>) -> Self {
+    pub fn send(actor_id: u64, message: Bytes, tx: oneshot::Sender<Bytes>) -> Self {
         Self {
             actor_id,
             message,

@@ -77,6 +77,12 @@ pub enum SessionError {
     #[error("could not send the outbound remote message to the remote node")]
     SendOutboundMessageFailed(#[from] io::Error),
 
+    #[error("invalid node message reply tag: {0}")]
+    InvalidNodeMessageReplyTag(u64),
+
+    #[error("invalid actor message reply tag: {0}")]
+    InvalidActorMessageReplyTag(u64),
+
     #[error("{0}")]
     RemoteNodeError(String),
 

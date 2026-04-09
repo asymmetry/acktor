@@ -14,7 +14,7 @@ use acktor::{
 use acktor_ipc_proto::{actor_message, ipc_message, node_message};
 
 use crate::codec::{Decode, Encode};
-use crate::errors::SessionError;
+use crate::errors::{DecodeError, SessionError};
 use crate::ipc_method::IpcConnection;
 use crate::node::LocalActors;
 use crate::remote_address::RemoteAddress;
@@ -27,7 +27,8 @@ use context::SessionContext;
 
 type Result<T> = std::result::Result<T, SessionError>;
 
-#[doc(hidden)]
+pub(crate) type RemoteActors = HashMap<String, RemoteAddress>;
+
 #[derive(Message)]
 #[result_type(())]
 pub struct RemoteMessageResult {
@@ -51,7 +52,7 @@ where
 {
     connection: C,
     local_actors: LocalActors,
-    remote_actors: HashMap<String, RemoteAddress>,
+    remote_actors: RemoteActors,
     tag: u64, // unique tag generator
     actor_msg_reply_map: HashMap<u64, oneshot::Sender<Bytes>>,
     node_msg_reply_map: HashMap<u64, (String, oneshot::Sender<Result<RemoteAddress>>)>,
@@ -64,6 +65,9 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Session")
             .field("connection", &acktor::utils::type_name::<C>()?)
+            .field("local_actors", &self.local_actors)
+            .field("remote_actors", &self.remote_actors)
+            .field("tag", &self.tag)
             .finish()
     }
 }
@@ -104,62 +108,83 @@ where
         match node_msg.message {
             Some(node_message::NodeMessageType::Command(_command)) => {
                 // TODO: handle incoming node commands (CreateActor, GetActor)
+
+                Ok(())
             }
 
             Some(node_message::NodeMessageType::Reply(reply)) => match reply.reply {
-                Some(node_message::NodeReplyType::CreateActor(result)) => {
-                    let Some((label, sender)) = self.node_msg_reply_map.remove(&result.tag) else {
-                        // TODO: return error
-                        return Ok(());
+                Some(node_message::NodeReplyType::CreateActor(
+                    node_message::CreateActorResult { tag, result },
+                )) => {
+                    let Some((label, sender)) = self.node_msg_reply_map.remove(&tag) else {
+                        return Err(SessionError::InvalidNodeMessageReplyTag(tag));
                     };
 
-                    match result.result {
+                    let result = match result {
+                        Some(node_message::CreateActorResultType::Ok(actor_id))
+                            if actor_id.is_remote() =>
+                        {
+                            Err(DecodeError::DecodeRemoteAddress.into())
+                        }
                         Some(node_message::CreateActorResultType::Ok(actor_id)) => {
-                            let remote_address =
-                                RemoteAddress::new(actor_id as usize, ctx.remote_sender());
+                            let remote_address = RemoteAddress::new(actor_id, ctx.remote_sender());
                             self.remote_actors.insert(label, remote_address.clone());
 
-                            let _ = sender.send(Ok(remote_address));
+                            Ok(remote_address)
                         }
-
                         Some(node_message::CreateActorResultType::Err(e)) => {
-                            let _ = sender.send(Err(SessionError::RemoteNodeError(e)));
+                            Err(SessionError::RemoteNodeError(e))
                         }
-
-                        _ => {}
-                    }
-                }
-
-                Some(node_message::NodeReplyType::GetActor(result)) => {
-                    let Some((label, sender)) = self.node_msg_reply_map.remove(&result.tag) else {
-                        // TODO: return error
-                        return Ok(());
+                        _ => Err(DecodeError::from(
+                            "missing field `result` in `CreateActorResult` message",
+                        )
+                        .into()),
                     };
 
-                    match result.result {
-                        Some(node_message::GetActorResultType::Ok(actor_id)) => {
-                            let remote_address =
-                                RemoteAddress::new(actor_id as usize, ctx.remote_sender());
-                            self.remote_actors.insert(label, remote_address.clone());
-
-                            let _ = sender.send(Ok(remote_address));
-                        }
-
-                        Some(node_message::GetActorResultType::Err(e)) => {
-                            let _ = sender.send(Err(SessionError::RemoteNodeError(e)));
-                        }
-
-                        _ => {}
-                    }
+                    sender
+                        .send(result)
+                        .map_err(|_| SessionError::SendMessageError("channel closed".into()))
                 }
 
-                _ => {}
+                Some(node_message::NodeReplyType::GetActor(node_message::GetActorResult {
+                    tag,
+                    result,
+                })) => {
+                    let Some((label, sender)) = self.node_msg_reply_map.remove(&tag) else {
+                        return Err(SessionError::InvalidNodeMessageReplyTag(tag));
+                    };
+
+                    let result = match result {
+                        Some(node_message::GetActorResultType::Ok(actor_id))
+                            if actor_id.is_remote() =>
+                        {
+                            Err(DecodeError::DecodeRemoteAddress.into())
+                        }
+                        Some(node_message::GetActorResultType::Ok(actor_id)) => {
+                            let remote_address = RemoteAddress::new(actor_id, ctx.remote_sender());
+                            self.remote_actors.insert(label, remote_address.clone());
+
+                            Ok(remote_address)
+                        }
+                        Some(node_message::GetActorResultType::Err(e)) => {
+                            Err(SessionError::RemoteNodeError(e))
+                        }
+                        _ => Err(DecodeError::from(
+                            "missing field `result` in `GetActorResult` message",
+                        )
+                        .into()),
+                    };
+
+                    sender
+                        .send(result)
+                        .map_err(|_| SessionError::SendMessageError("channel closed".into()))
+                }
+
+                _ => Err(DecodeError::from("missing field `reply` in `NodeReply` message").into()),
             },
 
-            _ => {}
+            _ => Err(DecodeError::from("missing field `message` in `NodeMessage` message").into()),
         }
-
-        Ok(())
     }
 
     /// Handles an inbound remote message.
@@ -175,7 +200,10 @@ where
                     message,
                     tag,
                 } = send;
-                let actor_id = actor_id as usize;
+
+                if actor_id.is_remote() {
+                    return Err(DecodeError::DecodeRemoteAddress.into());
+                }
 
                 let Some(recipient) = self.local_actors.get(&actor_id) else {
                     // TODO: return error
@@ -207,11 +235,16 @@ where
                     })
                     .in_current_span(),
                 );
+
+                Ok(())
             }
 
             Some(actor_message::ActorMessageType::DoSend(do_send)) => {
                 let actor_message::DoSend { actor_id, message } = do_send;
-                let actor_id = actor_id as usize;
+
+                if actor_id.is_remote() {
+                    return Err(DecodeError::DecodeRemoteAddress.into());
+                }
 
                 let Some(recipient) = self.local_actors.get(&actor_id) else {
                     // TODO: return error
@@ -226,19 +259,21 @@ where
                         context: Some(ctx.decode_context()),
                     })
                     .await
-                    .map_err(|e| SessionError::ForwardInboundMessageFailed(e.into()))?;
+                    .map_err(|e| SessionError::ForwardInboundMessageFailed(e.into()))
             }
 
             Some(actor_message::ActorMessageType::Reply(actor_message::Reply { tag, message })) => {
                 if let Some(sender) = self.actor_msg_reply_map.remove(&tag) {
-                    let _ = sender.send(message);
+                    sender
+                        .send(message)
+                        .map_err(|_| SessionError::SendMessageError("channel closed".into()))
+                } else {
+                    Err(SessionError::InvalidActorMessageReplyTag(tag))
                 }
             }
 
-            _ => {}
+            _ => Err(DecodeError::from("missing field `message` in `ActorMessage` message").into()),
         }
-
-        Ok(())
     }
 
     async fn handle_ipc_message(
@@ -413,17 +448,14 @@ where
                 let tag = self.next_tag();
                 (
                     ipc_message::IpcMessage::actor_message(actor_message::ActorMessage::send(
-                        actor_id as u64,
-                        message,
-                        tag,
+                        actor_id, message, tag,
                     )),
                     Some(tag),
                 )
             }
             RemoteMessageKind::DoSend => (
                 ipc_message::IpcMessage::actor_message(actor_message::ActorMessage::do_send(
-                    actor_id as u64,
-                    message,
+                    actor_id, message,
                 )),
                 None,
             ),

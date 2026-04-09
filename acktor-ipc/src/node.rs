@@ -33,7 +33,7 @@ use context::NodeContext;
 
 type Result<T> = std::result::Result<T, NodeError>;
 
-pub(crate) type LocalActors = HashMap<usize, Recipient<RemoteMessage>>;
+pub(crate) type LocalActors = HashMap<u64, Recipient<RemoteMessage>>;
 
 /// An actor which helps to manage the IPC connections.
 ///
@@ -65,7 +65,9 @@ where
                     }
                 ),
             )
+            .field("local_actors", &self.local_actors)
             .field("sessions", &self.sessions)
+            // .field("session_join_handles", &self.session_join_handles)
             .field(
                 "observers",
                 &format_args!("ObserverSet({})", self.observers.len()),

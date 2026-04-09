@@ -19,8 +19,8 @@ use crate::ipc_method::IpcConnection;
 use crate::remote_message::RemoteMessage;
 use crate::session::Session;
 
-pub(crate) type SendResult<M, R> = Result<oneshot::Receiver<R>, SendError<M>>;
-pub(crate) type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<M>>;
+type SendResult<M, R> = Result<oneshot::Receiver<R>, SendError<M>>;
+type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<M>>;
 
 /// A trait for types that can send [`RemoteMessage`]s to a remote actor over an IPC connection.
 ///
@@ -35,8 +35,12 @@ pub trait RemoteSender: SenderIndex + Sender<RemoteMessage> {}
 /// type easily. This will allow us to use this type as payload of some control messages like
 /// [`supervisor::Supervisor`][acktor::supervisor::Supervisor] or
 /// [`observer::Observer`][acktor::observer::Observer].
+///
+/// **NOTE**: user should not forward a received [`RemoteAddress`] over IPC, it is a meaningless
+/// operation.
 pub struct RemoteAddress {
-    remote_actor_id: usize, // index of the corresponding actor in the remote process
+    index: u64,           // computed once at construction, see [`RemoteAddress::new`]
+    remote_actor_id: u64, // index of the corresponding actor in the remote node
     session: Arc<dyn RemoteSender + Send + Sync>,
 }
 
@@ -53,6 +57,7 @@ impl Clone for RemoteAddress {
     #[inline]
     fn clone(&self) -> Self {
         Self {
+            index: self.index,
             remote_actor_id: self.remote_actor_id,
             session: self.session.clone(),
         }
@@ -72,16 +77,26 @@ impl Eq for RemoteAddress {}
 impl Hash for RemoteAddress {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.remote_actor_id.hash(state);
-        self.session.index().hash(state);
+        self.index.hash(state)
     }
 }
 
 impl RemoteAddress {
+    /// High bit of the 64-bit id space, reserved to tag a [`SenderIndex::index`] value as
+    /// remote address.
+    const REMOTE_FLAG: u64 = 1 << 63;
+
     /// Constructs a new [`RemoteAddress`] with the specified remote actor index and the address
     /// of the IPC connection session actor.
-    pub fn new(remote_actor_id: usize, session: Arc<dyn RemoteSender + Send + Sync>) -> Self {
+    ///
+    /// The `index` is computed by reversing the bits of `session.index()` into bits
+    /// 0..62 (small session ids occupy the high bits, growing downward) and XORing with
+    /// `remote_actor_id` (small ids occupy the low bits, growing upward). Bit 63 is reserved
+    /// for [`REMOTE_FLAG`][Self::REMOTE_FLAG].
+    pub fn new(remote_actor_id: u64, session: Arc<dyn RemoteSender + Send + Sync>) -> Self {
+        let index = Self::REMOTE_FLAG | ((session.index().reverse_bits() >> 1) ^ remote_actor_id);
         Self {
+            index,
             remote_actor_id,
             session,
         }
@@ -104,9 +119,8 @@ where
 
 impl SenderIndex for RemoteAddress {
     #[inline]
-    fn index(&self) -> usize {
-        // FIXME: this is not quite right if we have super many actors
-        (self.session.index() << 32) + self.remote_actor_id
+    fn index(&self) -> u64 {
+        self.index
     }
 }
 

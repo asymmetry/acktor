@@ -1,5 +1,5 @@
 use std::fmt;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::task::JoinHandle;
 use tracing::{debug, warn};
@@ -7,11 +7,21 @@ use tracing::{debug, warn};
 use crate::address::{Recipient, Sender, SenderIndex};
 use crate::signal::Signal;
 
-static ADDRESS_INDEX_ALLOCATOR: AtomicUsize = AtomicUsize::new(0);
+static ACTOR_ID_ALLOCATOR: AtomicU64 = AtomicU64::new(0);
+
+/// Maximum value `create_actor_id` may return. The MSB of the u64 actor id is reserved.
+#[doc(hidden)]
+pub const MAX_ACTOR_ID: u64 = (1 << 63) - 1;
 
 #[inline]
-pub(crate) fn new_address_id() -> usize {
-    ADDRESS_INDEX_ALLOCATOR.fetch_add(1, Ordering::AcqRel)
+pub(crate) fn create_actor_id() -> u64 {
+    let id = ACTOR_ID_ALLOCATOR.fetch_add(1, Ordering::Relaxed);
+    debug_assert!(
+        id <= MAX_ACTOR_ID,
+        "actor id space exhausted (more than {} actors allocated in this process)",
+        MAX_ACTOR_ID
+    );
+    id
 }
 
 #[doc(hidden)]

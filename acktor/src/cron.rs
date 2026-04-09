@@ -235,7 +235,7 @@ where
         Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
     }
 
-    fn index(&self) -> usize {
+    fn index(&self) -> u64 {
         self.doorplate.index()
     }
 
