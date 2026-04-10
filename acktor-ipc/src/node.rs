@@ -37,34 +37,23 @@ pub(crate) type LocalActors = HashMap<u64, Recipient<RemoteMessage>>;
 
 /// An actor which helps to manage the IPC connections.
 ///
-/// The node requires an [`IpcListener`] to handle IPC connections.
-pub struct Node<L>
-where
-    L: IpcListener,
-{
-    listener: Option<L>,
+/// The node can hold multiple [`IpcListener`]s to accept incoming IPC connections on several
+/// endpoints in parallel. Outbound connections are initiated by sending a
+/// [`Connect<C>`][command::Connect] command.
+#[derive(Default)]
+pub struct Node {
+    listeners: Vec<Box<dyn IpcListener>>,
     local_actors: LocalActors,
-    sessions: HashMap<String, Address<Session<L::Connection>>>,
+    sessions: HashMap<String, Address<Session>>,
     session_join_handles: HashMap<Recipient<Signal>, JoinHandle<()>>,
     observers: ObserverSet<NodeEvent>,
 }
 
-impl<L> Debug for Node<L>
-where
-    L: IpcListener,
-{
+impl Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let endpoints: Vec<&str> = self.listeners.iter().map(|l| l.local_endpoint()).collect();
         f.debug_struct("Node")
-            .field(
-                "listener",
-                &format_args!(
-                    "{}",
-                    match &self.listener {
-                        Some(_) => utils::type_name::<L>()?,
-                        None => "None",
-                    }
-                ),
-            )
+            .field("listeners", &endpoints)
             .field("local_actors", &self.local_actors)
             .field("sessions", &self.sessions)
             // .field("session_join_handles", &self.session_join_handles)
@@ -76,33 +65,18 @@ where
     }
 }
 
-impl<L> Default for Node<L>
-where
-    L: IpcListener,
-{
-    fn default() -> Self {
-        Self {
-            listener: None,
-            sessions: HashMap::default(),
-            session_join_handles: HashMap::default(),
-            observers: ObserverSet::default(),
-            local_actors: HashMap::default(),
-        }
-    }
-}
-
-impl<L> Node<L>
-where
-    L: IpcListener,
-{
+impl Node {
     /// Constructs a new [`Node`].
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Sets the IPC listener of the node.
-    pub fn with_listener(mut self, listener: L) -> Self {
-        self.listener = Some(listener);
+    /// Adds an IPC listener to the node.
+    pub fn with_listener<L>(mut self, listener: L) -> Self
+    where
+        L: IpcListener,
+    {
+        self.listeners.push(Box::new(listener));
         self
     }
 
@@ -115,13 +89,17 @@ where
         self
     }
 
+    pub(crate) fn listeners(&self) -> &[Box<dyn IpcListener>] {
+        &self.listeners
+    }
+
     async fn create_session(
         &mut self,
-        connection: L::Connection,
+        connection: Box<dyn IpcConnection>,
         session_label: Option<String>,
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<()> {
-        let endpoint = connection.endpoint().to_string();
+        let endpoint = connection.peer_endpoint().to_string();
 
         let (address, join_handle) = Session::create(endpoint.clone(), |child_ctx| {
             child_ctx.set_supervisor(Some(ctx.address().into()));
@@ -131,25 +109,22 @@ where
 
         let session_id = address.index();
 
-        self.sessions.insert(endpoint, address.clone());
+        self.sessions.insert(endpoint.clone(), address.clone());
         if let Some(label) = session_label {
             self.sessions.insert(label, address.clone());
         }
         self.session_join_handles
             .insert(address.into(), join_handle);
 
-        self.notify_observers(NodeEvent::SessionCreated(session_id))
+        self.notify_observers(NodeEvent::SessionCreated(session_id, endpoint))
             .await;
 
         Ok(())
     }
 }
 
-impl<L> Actor for Node<L>
-where
-    L: IpcListener,
-{
-    type Context = NodeContext<L>;
+impl Actor for Node {
+    type Context = NodeContext;
     type Error = NodeError;
 
     async fn post_start(&mut self, _ctx: &mut Self::Context) -> Result<()> {
@@ -172,16 +147,13 @@ where
     }
 }
 
-impl<L> SubjectActor<NodeEvent> for Node<L>
-where
-    L: IpcListener,
-{
+impl SubjectActor<NodeEvent> for Node {
     fn observers_mut(&mut self) -> &mut ObserverSet<NodeEvent> {
         &mut self.observers
     }
 }
 
-impl<L> Handler<command::SetListener<L>> for Node<L>
+impl<L> Handler<command::AddListener<L>> for Node
 where
     L: IpcListener,
 {
@@ -189,22 +161,31 @@ where
 
     async fn handle(
         &mut self,
-        msg: command::SetListener<L>,
+        msg: command::AddListener<L>,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        debug_trace!(
-            "Handle command SetListener<{}>",
-            utils::type_name::<L>().unwrap_or("L")
-        );
+        debug_trace!("Handle command {:?}", msg);
 
-        self.listener = Some(msg.0);
+        self.listeners.push(Box::new(msg.0));
     }
 }
 
-impl<L> Handler<command::AddActor> for Node<L>
-where
-    L: IpcListener,
-{
+impl Handler<command::RemoveListener> for Node {
+    type Result = ();
+
+    async fn handle(
+        &mut self,
+        msg: command::RemoveListener,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        debug_trace!("Handle command {:?}", msg);
+
+        let endpoint = msg.0;
+        self.listeners.retain(|l| l.local_endpoint() != endpoint);
+    }
+}
+
+impl Handler<command::AddActor> for Node {
     type Result = ();
 
     async fn handle(&mut self, msg: command::AddActor, _ctx: &mut Self::Context) -> Self::Result {
@@ -222,10 +203,7 @@ where
     }
 }
 
-impl<L> Handler<command::RemoveActor> for Node<L>
-where
-    L: IpcListener,
-{
+impl Handler<command::RemoveActor> for Node {
     type Result = ();
 
     async fn handle(
@@ -243,31 +221,30 @@ where
     }
 }
 
-impl<L> Handler<command::Connect> for Node<L>
+impl<T> Handler<command::Connect<T>> for Node
 where
-    L: IpcListener,
+    T: IpcConnection,
 {
     type Result = Result<()>;
 
-    async fn handle(&mut self, msg: command::Connect, ctx: &mut Self::Context) -> Self::Result {
+    async fn handle(&mut self, msg: command::Connect<T>, ctx: &mut Self::Context) -> Self::Result {
         debug_trace!("Handle command {:?}", msg);
 
         let command::Connect {
             endpoint,
             session_label,
+            ..
         } = msg;
 
-        let connection = L::Connection::connect(&endpoint).await?;
+        let connection = T::connect(&endpoint).await?;
+        let connection: Box<dyn IpcConnection> = Box::new(connection);
         self.create_session(connection, session_label, ctx).await?;
 
         Ok(())
     }
 }
 
-impl<L> Handler<command::CreateRemoteActor> for Node<L>
-where
-    L: IpcListener,
-{
+impl Handler<command::CreateRemoteActor> for Node {
     type Result = FutureMessageResult<command::CreateRemoteActor>;
 
     async fn handle(
@@ -311,10 +288,7 @@ where
     }
 }
 
-impl<L> Handler<command::GetRemoteActor> for Node<L>
-where
-    L: IpcListener,
-{
+impl Handler<command::GetRemoteActor> for Node {
     type Result = FutureMessageResult<command::GetRemoteActor>;
 
     async fn handle(
@@ -351,10 +325,7 @@ where
     }
 }
 
-impl<L> Handler<command::CreateRemoteAddress> for Node<L>
-where
-    L: IpcListener,
-{
+impl Handler<command::CreateRemoteAddress> for Node {
     type Result = Result<RemoteAddress>;
 
     async fn handle(
@@ -378,16 +349,12 @@ where
     }
 }
 
-impl<L, C> Handler<SupervisionEvent<Session<C>>> for Node<L>
-where
-    L: IpcListener<Connection = C>,
-    C: IpcConnection,
-{
+impl Handler<SupervisionEvent<Session>> for Node {
     type Result = ();
 
     async fn handle(
         &mut self,
-        msg: SupervisionEvent<Session<C>>,
+        msg: SupervisionEvent<Session>,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
         debug_trace!("Handle supervision event {:?}", msg);

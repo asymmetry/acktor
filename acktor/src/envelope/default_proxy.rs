@@ -28,7 +28,7 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
             "DefaultEnvelopeProxy<{}>",
-            crate::utils::type_name::<M>()?
+            crate::utils::type_name::<M>()
         ))
     }
 }

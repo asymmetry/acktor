@@ -1,20 +1,44 @@
 //! Commands which can be used to interact with a node.
 
+use std::fmt::{self, Debug};
+use std::marker::PhantomData;
+
 use acktor::{Message, Recipient};
 
 use crate::errors::NodeError;
-use crate::ipc_method::IpcListener;
+use crate::ipc_method::{IpcConnection, IpcListener};
 use crate::remote_address::RemoteAddress;
 use crate::remote_message::RemoteMessage;
 
 type Result<T> = std::result::Result<T, NodeError>;
 
-/// A command which is used to set the IPC listener of a node.
-#[derive(Debug, Message)]
+/// A command which is used to add an IPC listener to a node.
+///
+/// A node can hold multiple listeners at once so that it can accept inbound connections on
+/// several endpoints in parallel.
+#[derive(Message)]
 #[result_type(())]
-pub struct SetListener<L>(pub L)
+pub struct AddListener<L>(pub L)
 where
     L: IpcListener;
+
+impl<L> Debug for AddListener<L>
+where
+    L: IpcListener,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple(&format!("AddListener<{}>", acktor::utils::type_name::<L>()))
+            .field(&self.0.local_endpoint())
+            .finish()
+    }
+}
+
+/// A command which is used to remove an IPC listener from a node.
+///
+/// The listener is identified by its local endpoint.
+#[derive(Debug, Message)]
+#[result_type(())]
+pub struct RemoveListener(pub String);
 
 /// A command which is used to add a local actor to a node.
 #[derive(Debug, Message)]
@@ -32,11 +56,41 @@ pub struct RemoveActor(pub u64);
 /// as the actor label of the new session actor. The user can provide a `session_label` as
 /// an alias to the endpoint, both labels can be used to refer to the session actor in the other
 /// commands.
-#[derive(Debug, Message)]
+#[derive(Message)]
 #[result_type(Result<()>)]
-pub struct Connect {
+pub struct Connect<C>
+where
+    C: IpcConnection,
+{
     pub endpoint: String,
     pub session_label: Option<String>,
+    pub _phantom: PhantomData<fn(C) -> C>,
+}
+
+impl<C> Debug for Connect<C>
+where
+    C: IpcConnection,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct(&format!("Connect<{}>", acktor::utils::type_name::<C>()))
+            .field("endpoint", &self.endpoint)
+            .field("session_label", &self.session_label)
+            .finish()
+    }
+}
+
+impl<C> Connect<C>
+where
+    C: IpcConnection,
+{
+    /// Constructs a new [`Connect`] command for the connection type `C`.
+    pub fn new(endpoint: String, session_label: Option<String>) -> Self {
+        Self {
+            endpoint,
+            session_label,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 /// A command which is used by a local actor to create an actor in a remote node.

@@ -46,11 +46,8 @@ impl Debug for RemoteMessageResult {
 }
 
 /// An actor which manages the IPC connection to a remote endpoint.
-pub struct Session<C>
-where
-    C: IpcConnection,
-{
-    connection: C,
+pub struct Session {
+    connection: Box<dyn IpcConnection>,
     local_actors: LocalActors,
     remote_actors: RemoteActors,
     tag: u64, // unique tag generator
@@ -58,13 +55,10 @@ where
     node_msg_reply_map: HashMap<u64, (String, oneshot::Sender<Result<RemoteAddress>>)>,
 }
 
-impl<C> Debug for Session<C>
-where
-    C: IpcConnection,
-{
+impl Debug for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Session")
-            .field("connection", &acktor::utils::type_name::<C>()?)
+            .field("connection", &self.connection.peer_endpoint())
             .field("local_actors", &self.local_actors)
             .field("remote_actors", &self.remote_actors)
             .field("tag", &self.tag)
@@ -72,12 +66,9 @@ where
     }
 }
 
-impl<C> Session<C>
-where
-    C: IpcConnection,
-{
+impl Session {
     /// Constructs a new [`Session`].
-    pub fn new(connection: C, local_actors: LocalActors) -> Self {
+    pub fn new(connection: Box<dyn IpcConnection>, local_actors: LocalActors) -> Self {
         Self {
             connection,
             local_actors,
@@ -90,7 +81,7 @@ where
 
     fn next_tag(&mut self) -> u64 {
         let tag = self.tag;
-        self.tag += 1;
+        self.tag = self.tag.wrapping_add(1);
         tag
     }
 
@@ -201,12 +192,14 @@ where
                     tag,
                 } = send;
 
+                // TODO: we should forward any error as a remote message result back to the sender
+
                 if actor_id.is_remote() {
                     return Err(DecodeError::DecodeRemoteAddress.into());
                 }
 
                 let Some(recipient) = self.local_actors.get(&actor_id) else {
-                    // TODO: return error
+                    // TODO: this is an error
                     return Ok(());
                 };
 
@@ -298,15 +291,12 @@ where
     }
 }
 
-impl<C> Actor for Session<C>
-where
-    C: IpcConnection,
-{
-    type Context = SessionContext<C>;
+impl Actor for Session {
+    type Context = SessionContext;
     type Error = SessionError;
 
     async fn post_start(&mut self, _ctx: &mut Self::Context) -> Result<()> {
-        info!("Session {} is started", self.connection.endpoint());
+        info!("Session {} is started", self.connection.peer_endpoint());
 
         Ok(())
     }
@@ -314,16 +304,13 @@ where
     async fn post_stop(&mut self, _ctx: &mut Self::Context) -> Result<()> {
         self.connection.close().await?;
 
-        info!("Session {} is stopped", self.connection.endpoint());
+        info!("Session {} is stopped", self.connection.peer_endpoint());
 
         Ok(())
     }
 }
 
-impl<C> Handler<command::AddActor> for Session<C>
-where
-    C: IpcConnection,
-{
+impl Handler<command::AddActor> for Session {
     type Result = ();
 
     async fn handle(&mut self, msg: command::AddActor, _ctx: &mut Self::Context) -> Self::Result {
@@ -334,10 +321,7 @@ where
     }
 }
 
-impl<C> Handler<command::RemoveActor> for Session<C>
-where
-    C: IpcConnection,
-{
+impl Handler<command::RemoveActor> for Session {
     type Result = ();
 
     async fn handle(
@@ -351,10 +335,7 @@ where
     }
 }
 
-impl<C> Handler<command::CreateRemoteActor> for Session<C>
-where
-    C: IpcConnection,
-{
+impl Handler<command::CreateRemoteActor> for Session {
     type Result = ();
 
     async fn handle(
@@ -386,10 +367,7 @@ where
     }
 }
 
-impl<C> Handler<command::GetRemoteActor> for Session<C>
-where
-    C: IpcConnection,
-{
+impl Handler<command::GetRemoteActor> for Session {
     type Result = ();
 
     async fn handle(
@@ -422,10 +400,7 @@ where
     }
 }
 
-impl<C> Handler<RemoteMessage> for Session<C>
-where
-    C: IpcConnection,
-{
+impl Handler<RemoteMessage> for Session {
     type Result = ();
 
     /// Handles an outbound remote message.
@@ -474,10 +449,7 @@ where
     }
 }
 
-impl<C> Handler<RemoteMessageResult> for Session<C>
-where
-    C: IpcConnection,
-{
+impl Handler<RemoteMessageResult> for Session {
     type Result = ();
 
     async fn handle(

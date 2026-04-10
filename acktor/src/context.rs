@@ -150,28 +150,6 @@ where
         self.try_notify_supervisor(SupervisionEvent::State(self.address(), state));
     }
 
-    fn supervisor(&self) -> Option<&Recipient<SupervisionEvent<A>>> {
-        self.supervisor.as_ref()
-    }
-
-    fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<A>>>) {
-        match supervisor {
-            Some(supervisor) => {
-                if supervisor.index() == self.index() {
-                    warn!("Could not set the actor itself as its supervisor");
-                    return;
-                }
-                debug!("Set actor {} as supervisor", supervisor.index());
-                self.supervisor = Some(supervisor);
-            }
-            None => {
-                if self.supervisor.take().is_some() {
-                    debug!("Unset supervisor");
-                }
-            }
-        }
-    }
-
     async fn processing(&mut self, actor: &mut A, mut mailbox: Mailbox<A>) -> Result<(), A::Error> {
         actor.post_start(self).await?;
 
@@ -194,6 +172,28 @@ where
         result_post_stop?;
 
         Ok(())
+    }
+
+    fn supervisor(&self) -> Option<&Recipient<SupervisionEvent<A>>> {
+        self.supervisor.as_ref()
+    }
+
+    fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<A>>>) {
+        match supervisor {
+            Some(supervisor) => {
+                if supervisor.index() == self.index() {
+                    warn!("Could not set the actor itself as its supervisor");
+                    return;
+                }
+                debug!("Set actor {} as supervisor", supervisor.index());
+                self.supervisor = Some(supervisor);
+            }
+            None => {
+                if self.supervisor.take().is_some() {
+                    debug!("Unset supervisor");
+                }
+            }
+        }
     }
 
     fn set_error(&mut self, error: A::Error) {

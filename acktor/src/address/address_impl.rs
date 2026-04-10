@@ -32,7 +32,7 @@ where
     A: Actor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(&format!("Address<{}>", crate::utils::type_name::<A>()?))
+        f.debug_tuple(&format!("Address<{}>", crate::utils::type_name::<A>()))
             .field(&self.index)
             .finish()
     }

@@ -1,4 +1,3 @@
-use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::task::JoinHandle;
@@ -26,12 +25,9 @@ pub(crate) fn create_actor_id() -> u64 {
 
 #[doc(hidden)]
 #[inline]
-pub fn type_name<T>() -> Result<&'static str, fmt::Error> {
-    let type_name = std::any::type_name::<T>()
-        .split("<")
-        .next()
-        .ok_or(fmt::Error)?;
-    type_name.rsplit("::").next().ok_or(fmt::Error)
+pub fn type_name<T>() -> &'static str {
+    let type_name = std::any::type_name::<T>().split("<").next().unwrap();
+    type_name.rsplit("::").next().unwrap()
 }
 
 /// Terminates an actor by sending it a [`Signal::Terminate`] message and awaiting its [`JoinHandle`].

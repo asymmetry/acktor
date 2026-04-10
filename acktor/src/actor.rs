@@ -170,12 +170,6 @@ where
     /// Sets the state of the actor.
     fn set_state(&mut self, state: ActorState);
 
-    /// Returns the address of the supervisor.
-    fn supervisor(&self) -> Option<&Recipient<SupervisionEvent<A>>>;
-
-    /// Sets a supervisor.
-    fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<A>>>);
-
     /// Runs the main processing loop of the actor.
     ///
     /// This method is called after [`post_start`][Actor::post_start] and drives the actor until
@@ -188,6 +182,15 @@ where
     ) -> impl Future<Output = Result<(), A::Error>> + Send;
 
     // provided methods
+
+    /// Returns the address of the supervisor.
+    fn supervisor(&self) -> Option<&Recipient<SupervisionEvent<A>>> {
+        None
+    }
+
+    /// Sets a supervisor.
+    #[allow(unused_variables)]
+    fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<A>>>) {}
 
     /// Sets an error during message processing.
     #[allow(unused_variables)]

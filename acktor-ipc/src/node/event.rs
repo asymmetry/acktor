@@ -4,6 +4,6 @@ use acktor::Message;
 #[derive(Debug, Clone, Message)]
 #[result_type(())]
 pub enum NodeEvent {
-    SessionCreated(u64),
+    SessionCreated(u64, String),
     SessionDeleted(u64),
 }

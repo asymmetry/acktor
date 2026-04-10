@@ -63,7 +63,6 @@ impl From<String> for DecodeError {
     }
 }
 
-#[cfg(feature = "default-codec")]
 impl<A, S, V> From<zerocopy::ConvertError<A, S, V>> for DecodeError
 where
     A: std::fmt::Display + std::fmt::Debug,
@@ -77,7 +76,6 @@ where
     }
 }
 
-#[cfg(feature = "default-codec")]
 impl<Src, Dst> From<zerocopy::AlignmentError<Src, Dst>> for DecodeError
 where
     Src: std::ops::Deref,
@@ -90,7 +88,6 @@ where
     }
 }
 
-#[cfg(feature = "default-codec")]
 impl<Src, Dst> From<zerocopy::SizeError<Src, Dst>> for DecodeError
 where
     Src: std::ops::Deref,
@@ -103,7 +100,6 @@ where
     }
 }
 
-#[cfg(feature = "default-codec")]
 impl<Src, Dst> From<zerocopy::ValidityError<Src, Dst>> for DecodeError
 where
     Dst: zerocopy::KnownLayout + zerocopy::TryFromBytes + ?Sized,

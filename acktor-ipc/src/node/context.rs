@@ -1,31 +1,32 @@
+use std::io::Error as IoError;
+
+use futures_util::future::select_all;
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, Recipient,
+    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY,
     address::Mailbox,
     envelope::{Envelope, EnvelopeProxy},
     macros::report,
-    supervisor::SupervisionEvent,
 };
 
 use super::Node;
-use crate::ipc_method::IpcListener;
+use crate::ipc_method::IpcConnection;
 
-pub struct NodeContext<L>
-where
-    L: IpcListener,
-{
-    label: String,
-    state: ActorState,
-    doorplate: Address<Node<L>>,
-    mailbox: Option<Mailbox<Node<L>>>,
+enum LoopEvent {
+    Envelope(Option<Envelope<Node>>),
+    Accept(Result<Box<dyn IpcConnection>, IoError>, String),
 }
 
-impl<L> NodeContext<L>
-where
-    L: IpcListener,
-{
+pub struct NodeContext {
+    label: String,
+    state: ActorState,
+    doorplate: Address<Node>,
+    mailbox: Option<Mailbox<Node>>,
+}
+
+impl NodeContext {
     /// Constructs a new [`NodeContext`] with a specific capacity.
     pub fn with_capacity(label: String, capacity: usize) -> Self {
         let (tx, rx) = mpsc::channel(capacity);
@@ -35,8 +36,8 @@ where
     /// Constructs a new [`NodeContext`] with a specific [`channel`][mpsc::channel].
     pub fn with_channel(
         label: String,
-        tx: mpsc::Sender<Envelope<Node<L>>>,
-        rx: mpsc::Receiver<Envelope<Node<L>>>,
+        tx: mpsc::Sender<Envelope<Node>>,
+        rx: mpsc::Receiver<Envelope<Node>>,
     ) -> Self {
         Self {
             label,
@@ -46,7 +47,7 @@ where
         }
     }
 
-    async fn handle_envelope(&mut self, actor: &mut Node<L>, envelope: Option<Envelope<Node<L>>>) {
+    async fn handle_envelope(&mut self, actor: &mut Node, envelope: Option<Envelope<Node>>) {
         match envelope {
             Some(mut envelope) => {
                 envelope.handle(actor, self).await;
@@ -60,33 +61,46 @@ where
 
     async fn processing_loop(
         &mut self,
-        actor: &mut Node<L>,
-        mailbox: &mut Mailbox<Node<L>>,
-    ) -> Result<(), <Node<L> as Actor>::Error> {
+        actor: &mut Node,
+        mailbox: &mut Mailbox<Node>,
+    ) -> Result<(), <Node as Actor>::Error> {
         while self.state() == ActorState::Running {
-            if let Some(listener) = actor.listener.as_ref() {
-                tokio::select! {
-                    envelope = mailbox.recv() => {
-                        self.handle_envelope(actor, envelope).await;
-                    }
-                    connection = listener.accept() => {
-                        match connection {
-                            Ok(connection) => {
-                                if let Err(e) = actor
-                                    .create_session(connection, None, self)
-                                    .await
-                                {
-                                    warn!("Could not create new session: {}", report!(e));
-                                }
-                            }
-                            Err(e) => {
-                                warn!("Could not accept connection: {}", report!(e));
-                            }
+            // Compute the next event in a scoped block so the `select_all` future (which
+            // borrows `actor.listeners()`) is dropped before we reborrow `actor` mutably.
+            let event = {
+                let listeners = actor.listeners();
+
+                if listeners.is_empty() {
+                    LoopEvent::Envelope(mailbox.recv().await)
+                } else {
+                    let accepts = listeners.iter().map(|l| l.accept());
+
+                    tokio::select! {
+                        envelope = mailbox.recv() => LoopEvent::Envelope(envelope),
+                        (result, index, _) = select_all(accepts) => {
+                            let endpoint = listeners[index].local_endpoint();
+                            LoopEvent::Accept(result, endpoint.to_string())
                         }
                     }
                 }
-            } else {
-                self.handle_envelope(actor, mailbox.recv().await).await;
+            };
+
+            match event {
+                LoopEvent::Envelope(envelope) => {
+                    self.handle_envelope(actor, envelope).await;
+                }
+                LoopEvent::Accept(Ok(connection), _) => {
+                    if let Err(e) = actor.create_session(connection, None, self).await {
+                        warn!("Could not create new session: {}", report!(e));
+                    }
+                }
+                LoopEvent::Accept(Err(e), endpoint) => {
+                    warn!(
+                        "Could not accept connection on {}: {}",
+                        endpoint,
+                        report!(e),
+                    );
+                }
             }
         }
 
@@ -94,10 +108,7 @@ where
     }
 }
 
-impl<L> ActorContext<Node<L>> for NodeContext<L>
-where
-    L: IpcListener,
-{
+impl ActorContext<Node> for NodeContext {
     fn new(label: String) -> Self {
         Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
     }
@@ -110,11 +121,11 @@ where
         self.label.as_str()
     }
 
-    fn address(&self) -> Address<Node<L>> {
+    fn address(&self) -> Address<Node> {
         self.doorplate.clone()
     }
 
-    fn take_mailbox(&mut self) -> Option<Mailbox<Node<L>>> {
+    fn take_mailbox(&mut self) -> Option<Mailbox<Node>> {
         self.mailbox.take()
     }
 
@@ -126,17 +137,11 @@ where
         self.state = state;
     }
 
-    fn supervisor(&self) -> Option<&Recipient<SupervisionEvent<Node<L>>>> {
-        None
-    }
-
-    fn set_supervisor(&mut self, _supervisor: Option<Recipient<SupervisionEvent<Node<L>>>>) {}
-
     async fn processing(
         &mut self,
-        actor: &mut Node<L>,
-        mut mailbox: Mailbox<Node<L>>,
-    ) -> Result<(), <Node<L> as Actor>::Error> {
+        actor: &mut Node,
+        mut mailbox: Mailbox<Node>,
+    ) -> Result<(), <Node as Actor>::Error> {
         actor.post_start(self).await?;
 
         debug!("Actor {} is started", self.index());

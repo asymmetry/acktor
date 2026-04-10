@@ -13,25 +13,18 @@ use acktor::{
 
 use super::Session;
 use crate::codec::DecodeContext;
-use crate::ipc_method::IpcConnection;
 use crate::remote_address::RemoteSender;
 
-pub struct SessionContext<C>
-where
-    C: IpcConnection,
-{
+pub struct SessionContext {
     label: String,
     state: ActorState,
-    doorplate: Address<Session<C>>,
-    mailbox: Option<Mailbox<Session<C>>>,
-    supervisor: Option<Recipient<SupervisionEvent<Session<C>>>>,
+    doorplate: Address<Session>,
+    mailbox: Option<Mailbox<Session>>,
+    supervisor: Option<Recipient<SupervisionEvent<Session>>>,
     remote_sender: Arc<dyn RemoteSender + Send + Sync>,
 }
 
-impl<C> SessionContext<C>
-where
-    C: IpcConnection,
-{
+impl SessionContext {
     /// Constructs a new [`SessionContext`] with a specific capacity.
     pub fn with_capacity(label: String, capacity: usize) -> Self {
         let (tx, rx) = mpsc::channel(capacity);
@@ -41,8 +34,8 @@ where
     /// Constructs a new [`SessionContext`] with a specific [`channel`][mpsc::channel].
     pub fn with_channel(
         label: String,
-        tx: mpsc::Sender<Envelope<Session<C>>>,
-        rx: mpsc::Receiver<Envelope<Session<C>>>,
+        tx: mpsc::Sender<Envelope<Session>>,
+        rx: mpsc::Receiver<Envelope<Session>>,
     ) -> Self {
         let address = Address::new(tx);
         Self {
@@ -65,9 +58,9 @@ where
 
     async fn processing_loop(
         &mut self,
-        actor: &mut Session<C>,
-        mailbox: &mut Mailbox<Session<C>>,
-    ) -> Result<(), <Session<C> as Actor>::Error> {
+        actor: &mut Session,
+        mailbox: &mut Mailbox<Session>,
+    ) -> Result<(), <Session as Actor>::Error> {
         while self.state() == ActorState::Running {
             tokio::select! {
                 envelope = mailbox.recv() => {
@@ -114,10 +107,7 @@ where
     }
 }
 
-impl<C> ActorContext<Session<C>> for SessionContext<C>
-where
-    C: IpcConnection,
-{
+impl ActorContext<Session> for SessionContext {
     fn new(label: String) -> Self {
         Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
     }
@@ -130,11 +120,11 @@ where
         self.label.as_str()
     }
 
-    fn address(&self) -> Address<Session<C>> {
+    fn address(&self) -> Address<Session> {
         self.doorplate.clone()
     }
 
-    fn take_mailbox(&mut self) -> Option<Mailbox<Session<C>>> {
+    fn take_mailbox(&mut self) -> Option<Mailbox<Session>> {
         self.mailbox.take()
     }
 
@@ -146,34 +136,11 @@ where
         self.state = state;
     }
 
-    fn supervisor(&self) -> Option<&Recipient<SupervisionEvent<Session<C>>>> {
-        self.supervisor.as_ref()
-    }
-
-    fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<Session<C>>>>) {
-        match supervisor {
-            Some(supervisor) => {
-                debug!("Set Actor {} as supervisor", supervisor.index());
-
-                if supervisor.index() == self.index() {
-                    warn!("Could not set the actor itself as its supervisor");
-                    return;
-                }
-                self.supervisor = Some(supervisor);
-            }
-            None => {
-                if self.supervisor.take().is_some() {
-                    debug!("Unset supervisor");
-                }
-            }
-        }
-    }
-
     async fn processing(
         &mut self,
-        actor: &mut Session<C>,
-        mut mailbox: Mailbox<Session<C>>,
-    ) -> Result<(), <Session<C> as Actor>::Error> {
+        actor: &mut Session,
+        mut mailbox: Mailbox<Session>,
+    ) -> Result<(), <Session as Actor>::Error> {
         actor.post_start(self).await?;
 
         debug!("Actor {} is started", self.index());
@@ -195,5 +162,28 @@ where
         result_post_stop?;
 
         Ok(())
+    }
+
+    fn supervisor(&self) -> Option<&Recipient<SupervisionEvent<Session>>> {
+        self.supervisor.as_ref()
+    }
+
+    fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<Session>>>) {
+        match supervisor {
+            Some(supervisor) => {
+                debug!("Set Actor {} as supervisor", supervisor.index());
+
+                if supervisor.index() == self.index() {
+                    warn!("Could not set the actor itself as its supervisor");
+                    return;
+                }
+                self.supervisor = Some(supervisor);
+            }
+            None => {
+                if self.supervisor.take().is_some() {
+                    debug!("Unset supervisor");
+                }
+            }
+        }
     }
 }

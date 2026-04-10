@@ -15,7 +15,6 @@ use tracing::{Instrument, warn};
 use acktor::{Address, Message, Recipient, Sender, SenderIndex};
 
 use crate::codec::{Decode, Encode};
-use crate::ipc_method::IpcConnection;
 use crate::remote_message::RemoteMessage;
 use crate::session::Session;
 
@@ -25,9 +24,10 @@ type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<M>>;
 /// A trait for types that can send [`RemoteMessage`]s to a remote actor over an IPC connection.
 ///
 /// This combines [`SenderIndex`] (for identifying the sender) with [`Sender<RemoteMessage>`]
-/// (for actually transmitting messages). It is implemented by [`Address<Session<C>>`] for any
-/// IPC connection type `C`.
+/// (for actually transmitting messages).
 pub trait RemoteSender: SenderIndex + Sender<RemoteMessage> {}
+
+impl RemoteSender for Address<Session> {}
 
 /// A type which is used to send messages to a remote actor.
 ///
@@ -277,5 +277,3 @@ where
         Recipient(Arc::new(address))
     }
 }
-
-impl<C> RemoteSender for Address<Session<C>> where C: IpcConnection {}

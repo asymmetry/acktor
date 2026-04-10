@@ -1,6 +1,8 @@
 //! Traits for Inter-Process Communication (IPC) and some pre-implemented IPC methods.
 
 use std::io::Error;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use bytes::Bytes;
 
@@ -12,12 +14,27 @@ pub mod pipe;
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod websocket;
 
-/// Describes the behavior of a listener which could accept incoming IPC connections.
+/// A boxed `Send` future returning `Result<T, std::io::Error>`, used as the return type
+/// of dyn-compatible trait methods in this module.
+pub type IoFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, Error>> + Send + 'a>>;
+
+/// Describes the behavior of an IPC listener which accepts incoming IPC connections.
+///
+/// A [`Node`][crate::node::Node] uses a listener to accept inbound connections. Outbound
+/// connections are initiated by calling [`IpcConnection::connect`] on a concrete connection
+/// type directly.
 pub trait IpcListener: Send + Sync + 'static {
-    type Connection: IpcConnection;
+    /// Returns the local endpoint the listener is bound to.
+    fn local_endpoint(&self) -> &str;
 
     /// Accepts an incoming IPC connection.
-    fn accept(&self) -> impl Future<Output = Result<Self::Connection, Error>> + Send;
+    ///
+    /// # Cancel safety
+    ///
+    /// The implementation should be cancel safe. If the method is used as the event in a
+    /// [`tokio::select!`](tokio::select) statement and some other branch completes first, then
+    /// it is guaranteed that no new connections were accepted by this method.
+    fn accept<'a>(&'a self) -> IoFuture<'a, Box<dyn IpcConnection>>;
 }
 
 /// Describes the behavior of an IPC connection.
@@ -31,27 +48,59 @@ pub trait IpcListener: Send + Sync + 'static {
 /// the underlying transport delivers bytes.
 pub trait IpcConnection: Send + Sync + 'static {
     /// Connects to an IPC listener at a specific endpoint.
+    ///
+    /// This is a constructor-style method that returns a concrete connection, so it requires
+    /// `Self: Sized`.
     fn connect(endpoint: &str) -> impl Future<Output = Result<Self, Error>> + Send
     where
         Self: Sized;
 
-    /// Returns the endpoint of the IPC connection.
-    fn endpoint(&self) -> &str;
+    /// Returns the peer endpoint of the IPC connection.
+    fn peer_endpoint(&self) -> &str;
 
     /// Closes the IPC connection.
-    fn close(&mut self) -> impl Future<Output = Result<(), Error>> + Send;
+    fn close<'a>(&'a mut self) -> IoFuture<'a, ()>;
 
     /// Sends a message to the other end of the connection.
     ///
     /// The entire `buf` is delivered as a single framed message.
-    fn send(&mut self, buf: Bytes) -> impl Future<Output = Result<(), Error>> + Send;
+    fn send<'a>(&'a mut self, buf: Bytes) -> IoFuture<'a, ()>;
 
     /// Receives the next message from the other end of the connection.
     ///
     /// Returns the message payload as a [`Bytes`] value; implementations should return a slice
     /// of their internal read buffer whenever possible to avoid copying.
     ///
-    /// The implementation should be cancel safe, i.e., if the future is dropped, no data should
-    /// be read from the connection.
-    fn recv(&mut self) -> impl Future<Output = Result<Bytes, Error>> + Send;
+    /// # Cancel safety
+    ///
+    /// The implementation should be cancel safe. If the method is used as the event in a
+    /// [`tokio::select!`](tokio::select) statement and some other branch completes first, then
+    /// it is guaranteed that no data was read from the underlying connection.
+    fn recv<'a>(&'a mut self) -> IoFuture<'a, Bytes>;
+}
+
+impl<T> IpcListener for Box<T>
+where
+    T: IpcListener + ?Sized,
+{
+    fn local_endpoint(&self) -> &str {
+        (**self).local_endpoint()
+    }
+
+    fn accept<'a>(&'a self) -> IoFuture<'a, Box<dyn IpcConnection>> {
+        (**self).accept()
+    }
+}
+
+impl<T> IpcListener for Arc<T>
+where
+    T: IpcListener + ?Sized,
+{
+    fn local_endpoint(&self) -> &str {
+        (**self).local_endpoint()
+    }
+
+    fn accept<'a>(&'a self) -> IoFuture<'a, Box<dyn IpcConnection>> {
+        (**self).accept()
+    }
 }

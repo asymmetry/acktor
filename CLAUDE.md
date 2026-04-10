@@ -35,6 +35,9 @@ cargo fmt --all -- --check
 # Build docs (requires nightly for docsrs attrs)
 RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --workspace --no-deps
 
+# Build with all features (requires the tokio_unstable cfg, because the
+# `tokio-tracing` feature uses `tokio::task::Builder` which is gated behind it)
+RUSTFLAGS="--cfg tokio_unstable" cargo build --workspace --all-features
 ```
 
 ## Generated Files

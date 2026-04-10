@@ -36,7 +36,7 @@ where
     M: Message<EP>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(&format!("Recipient<{}>", crate::utils::type_name::<M>()?))
+        f.debug_tuple(&format!("Recipient<{}>", crate::utils::type_name::<M>()))
             .field(&self.0.index())
             .finish()
     }
