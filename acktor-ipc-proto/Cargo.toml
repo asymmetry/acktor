@@ -14,5 +14,5 @@ bytes = "1.6"
 prost = "0.14"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+ahash = "0.8"
 crossbeam-channel = "0.5"
-rustc-hash = "2.1"

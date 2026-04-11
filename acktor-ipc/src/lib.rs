@@ -8,6 +8,8 @@ pub mod errors;
 pub mod ipc_method;
 pub use ipc_method::{IpcConnection, IpcListener};
 
+pub mod double_map;
+
 mod codec;
 pub use codec::{Decode, DecodeContext, Encode};
 

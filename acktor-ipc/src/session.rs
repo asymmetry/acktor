@@ -1,8 +1,8 @@
 use std::fmt::{self, Debug};
 
+use ahash::HashMap;
 use bytes::Bytes;
 use futures_util::TryFutureExt;
-use rustc_hash::FxHashMap as HashMap;
 use tokio::sync::oneshot;
 use tracing::{Instrument, info, warn};
 

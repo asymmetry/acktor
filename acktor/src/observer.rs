@@ -7,7 +7,7 @@ use std::fmt;
 use std::future::{self, Future};
 use std::ops::{Deref, DerefMut};
 
-use rustc_hash::FxHashSet as HashSet;
+use ahash::HashSet;
 use tracing::{debug, warn};
 
 use acktor_macros::debug_trace;

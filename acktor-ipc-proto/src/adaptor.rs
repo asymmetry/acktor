@@ -1,9 +1,9 @@
 use std::io;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use ahash::HashMap;
 use bytes::{Bytes, BytesMut};
 use crossbeam_channel::Sender;
-use rustc_hash::FxHashMap as HashMap;
 
 use crate::{actor_message, ipc_message};
 

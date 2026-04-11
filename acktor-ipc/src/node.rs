@@ -3,8 +3,8 @@
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
+use ahash::HashMap;
 use futures_util::future::join_all;
-use rustc_hash::FxHashMap as HashMap;
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{error, info, warn};
 
