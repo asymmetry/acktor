@@ -12,36 +12,34 @@ use tokio::sync::{
 };
 use tracing::{Instrument, warn};
 
-use acktor::{Address, Message, Recipient, Sender, SenderIndex};
+use acktor::{Address, Message, Recipient, Sender, SenderId};
 
-use crate::codec::{Decode, Encode};
+use crate::codec::{Decode, Encode, EncodeContext};
+use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_message::RemoteMessage;
 use crate::session::Session;
 
 type SendResult<M, R> = Result<oneshot::Receiver<R>, SendError<M>>;
 type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<M>>;
 
-/// A trait for types that can send [`RemoteMessage`]s to a remote actor over an IPC connection.
-///
-/// This combines [`SenderIndex`] (for identifying the sender) with [`Sender<RemoteMessage>`]
-/// (for actually transmitting messages).
-pub trait RemoteSender: SenderIndex + Sender<RemoteMessage> {}
-
-impl RemoteSender for Address<Session> {}
-
 /// A type which is used to send messages to a remote actor.
 ///
 /// [`Sender`] trait is implemented for this type, so it can be converted into a [`Recipient`]
-/// type easily. This will allow us to use this type as payload of some control messages like
-/// [`supervisor::Supervisor`][acktor::supervisor::Supervisor] or
-/// [`observer::Observer`][acktor::observer::Observer].
+/// type easily. This will allow us to store a remote address in the same place as a locals
+/// address, and send messages with it without caring about the underlying transport details.
 ///
-/// **NOTE**: user should not forward a received [`RemoteAddress`] over IPC, it is a meaningless
-/// operation.
+/// **NOTE**: user should not send a received [`RemoteAddress`] to another remote actor,
+/// it is considered as a meaningless operation.
 pub struct RemoteAddress {
-    index: u64,           // computed once at construction, see [`RemoteAddress::new`]
-    remote_actor_id: u64, // index of the corresponding actor in the remote node
-    session: Arc<dyn RemoteSender + Send + Sync>,
+    /// Computed once at construction, see [`RemoteAddress::new`].
+    index: u64,
+    /// Index of the corresponding actor in the remote node.
+    remote_actor_id: u64,
+    /// Address of the IPC connection session actor, used to send encoded messages to the remote
+    /// actor.
+    session: Address<Session>,
+    /// Pre-built encode context reused for every outbound message through this address.
+    encode_context: EncodeContext,
 }
 
 impl Debug for RemoteAddress {
@@ -60,6 +58,7 @@ impl Clone for RemoteAddress {
             index: self.index,
             remote_actor_id: self.remote_actor_id,
             session: self.session.clone(),
+            encode_context: self.encode_context.clone(),
         }
     }
 }
@@ -87,18 +86,23 @@ impl RemoteAddress {
     const REMOTE_FLAG: u64 = 1 << 63;
 
     /// Constructs a new [`RemoteAddress`] with the specified remote actor index and the address
-    /// of the IPC connection session actor.
+    /// of the IPC connection session actor. The `registry` is used to construct the encode context for this address.
     ///
     /// The `index` is computed by reversing the bits of `session.index()` into bits
     /// 0..62 (small session ids occupy the high bits, growing downward) and XORing with
     /// `remote_actor_id` (small ids occupy the low bits, growing upward). Bit 63 is reserved
     /// for [`REMOTE_FLAG`][Self::REMOTE_FLAG].
-    pub fn new(remote_actor_id: u64, session: Arc<dyn RemoteSender + Send + Sync>) -> Self {
+    pub fn new(
+        remote_actor_id: u64,
+        session: Address<Session>,
+        registry: RemoteActorRegistry,
+    ) -> Self {
         let index = Self::REMOTE_FLAG | ((session.index().reverse_bits() >> 1) ^ remote_actor_id);
         Self {
             index,
             remote_actor_id,
             session,
+            encode_context: EncodeContext::new(registry),
         }
     }
 }
@@ -117,7 +121,7 @@ where
     Ok(())
 }
 
-impl SenderIndex for RemoteAddress {
+impl SenderId for RemoteAddress {
     #[inline]
     fn index(&self) -> u64 {
         self.index
@@ -138,7 +142,7 @@ where
     }
 
     fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M, M::Result>> + Send + '_>> {
-        let msg_bytes = match msg.encode_to_bytes() {
+        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(_) => return Box::pin(future::ready(Err(SendError(msg)))),
         };
@@ -172,7 +176,7 @@ where
         &self,
         msg: M,
     ) -> Pin<Box<dyn Future<Output = Result<(), SendError<M>>> + Send + '_>> {
-        let msg_bytes = match msg.encode_to_bytes() {
+        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(_) => return Box::pin(future::ready(Err(SendError(msg)))),
         };
@@ -184,7 +188,7 @@ where
     }
 
     fn try_send(&self, msg: M) -> TrySendResult<M, M::Result> {
-        let msg_bytes = match msg.encode_to_bytes() {
+        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(_) => return Err(TrySendError::Closed(msg)),
         };
@@ -215,7 +219,7 @@ where
     }
 
     fn try_do_send(&self, msg: M) -> Result<(), TrySendError<M>> {
-        let msg_bytes = match msg.encode_to_bytes() {
+        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(_) => return Err(TrySendError::Closed(msg)),
         };
@@ -229,7 +233,7 @@ where
     }
 
     fn blocking_send(&self, msg: M) -> SendResult<M, M::Result> {
-        let msg_bytes = match msg.encode_to_bytes() {
+        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(_) => return Err(SendError(msg)),
         };
@@ -257,7 +261,7 @@ where
     }
 
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {
-        let msg_bytes = match msg.encode_to_bytes() {
+        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(_) => return Err(SendError(msg)),
         };

@@ -3,7 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
-use crate::address::{Recipient, Sender, SenderIndex};
+use crate::actor::ActorId;
+use crate::address::{Recipient, Sender, SenderId};
 use crate::signal::Signal;
 
 static ACTOR_ID_ALLOCATOR: AtomicU64 = AtomicU64::new(0);
@@ -13,11 +14,11 @@ static ACTOR_ID_ALLOCATOR: AtomicU64 = AtomicU64::new(0);
 pub const MAX_ACTOR_ID: u64 = (1 << 63) - 1;
 
 #[inline]
-pub(crate) fn create_actor_id() -> u64 {
+pub(crate) fn create_actor_id() -> ActorId {
     let id = ACTOR_ID_ALLOCATOR.fetch_add(1, Ordering::Relaxed);
     debug_assert!(
         id <= MAX_ACTOR_ID,
-        "actor id space exhausted (more than {} actors allocated in this process)",
+        "actor id space exhausted (more than {} actors allocated in the current process)",
         MAX_ACTOR_ID
     );
     id

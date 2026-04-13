@@ -12,12 +12,11 @@ use crate::remote_address::RemoteAddress;
 
 pub use acktor::{Signal as RemoteSignal, cron::CronSignal as RemoteCronSignal};
 
-/// The kind of remote message delivery.
+/// The kind of a remote message.
 pub enum RemoteMessageKind {
-    /// Fire-and-forget: no response is expected.
+    /// No response is expected for this message.
     DoSend,
-    /// Send with a reply channel: the receiver sends the response back through the
-    /// [`oneshot::Sender`][tokio::sync::oneshot::Sender].
+    /// The sender expects a response for this message.
     Send(oneshot::Sender<Bytes>),
 }
 
@@ -32,16 +31,17 @@ impl Debug for RemoteMessageKind {
 
 /// A unified remote message used for communication with remote actors.
 ///
-/// This is used both for outbound messages (sent by a local actor to a remote actor through
-/// [`Session`][crate::session::Session]) and for inbound messages (received from an IPC channel
-/// and forwarded to a local actor for processing).
+/// This is used both for outbound messages (sent by an actor in the current process to an actor
+/// in a peer process through [`Session`][crate::session::Session]) and for inbound messages
+/// (received from an IPC session and forwarded to an actor in the current process for
+/// processing).
 #[derive(Message)]
 #[result_type(())]
 pub struct RemoteMessage {
     pub actor_id: u64,
     pub message: Bytes,
     pub kind: RemoteMessageKind,
-    pub context: Option<DecodeContext>,
+    pub decode_context: Option<DecodeContext>,
 }
 
 impl Debug for RemoteMessage {
@@ -51,12 +51,12 @@ impl Debug for RemoteMessage {
             .field("message", &format_args!("Bytes({})", self.message.len()))
             .field("kind", &self.kind)
             .field(
-                "context",
+                "decode_context",
                 &format_args!(
                     "{}",
-                    match &self.context {
-                        Some(context) => format!("Session({})", context.index()),
-                        None => "None".into(),
+                    match &self.decode_context {
+                        Some(_) => "Some(..)",
+                        None => "None",
                     }
                 ),
             )
@@ -65,27 +65,29 @@ impl Debug for RemoteMessage {
 }
 
 impl RemoteMessage {
+    /// Constructs a new [`DoSend`][RemoteMessageKind::DoSend][`RemoteMessage`].
     pub fn do_send(actor_id: u64, message: Bytes) -> Self {
         Self {
             actor_id,
             message,
             kind: RemoteMessageKind::DoSend,
-            context: None,
+            decode_context: None,
         }
     }
 
+    /// Constructs a new [`Send`][RemoteMessageKind::Send][`RemoteMessage`].
     pub fn send(actor_id: u64, message: Bytes, tx: oneshot::Sender<Bytes>) -> Self {
         Self {
             actor_id,
             message,
             kind: RemoteMessageKind::Send(tx),
-            context: None,
+            decode_context: None,
         }
     }
 
     /// Sets the decode context on this message.
     pub fn with_context(mut self, context: DecodeContext) -> Self {
-        self.context = Some(context);
+        self.decode_context = Some(context);
         self
     }
 }

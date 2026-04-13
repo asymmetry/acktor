@@ -1,37 +1,27 @@
-use tokio::sync::oneshot;
+use acktor::Message;
 
-use acktor::{Message, Recipient};
-
+use crate::actor_handle::ActorHandle;
 use crate::errors::SessionError;
 use crate::remote_address::RemoteAddress;
-use crate::remote_message::RemoteMessage;
 
 type Result<T> = std::result::Result<T, SessionError>;
 
-/// A command which is used to add a local actor to a session.
+/// A command which is used to create an actor in a remote node.
+///
+/// The remote node needs to know how to create the actor with the given type and config. If
+/// the operation is successful, the provided `label` will be used as the actor label of the
+/// new actor created in the remote node.
 #[derive(Debug, Message)]
-#[result_type(())]
-pub struct AddActor(pub Recipient<RemoteMessage>);
-
-/// A command which is used to remove a local actor from a session.
-#[derive(Debug, Message)]
-#[result_type(())]
-pub struct RemoveActor(pub u64);
-
-/// A command which is used by a local actor to create an actor in a remote node.
-#[derive(Debug, Message)]
-#[result_type(())]
+#[result_type(Result<RemoteAddress>)]
 pub struct CreateRemoteActor {
     pub label: String,
     pub r#type: String,
     pub config: String,
-    pub tx: oneshot::Sender<Result<RemoteAddress>>,
 }
 
-/// A command which is used by a local actor to get the address of a remote actor.
+/// A command which is used to get the address of an actor in a remote node.
 #[derive(Debug, Message)]
-#[result_type(())]
+#[result_type(Result<RemoteAddress>)]
 pub struct GetRemoteActor {
-    pub label: String,
-    pub tx: oneshot::Sender<Result<RemoteAddress>>,
+    pub actor: ActorHandle,
 }

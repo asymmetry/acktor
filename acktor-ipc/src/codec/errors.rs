@@ -11,6 +11,9 @@ pub enum EncodeError {
     #[error("remote address cannot be encoded in a remote message")]
     EncodeRemoteAddress,
 
+    #[error("missing encode context")]
+    MissingEncodeContext,
+
     #[error("could not encode the message: {description}")]
     Other { description: Cow<'static, str> },
 }
@@ -42,6 +45,9 @@ pub enum DecodeError {
 
     #[error("remote message should not contain a remote address")]
     DecodeRemoteAddress,
+
+    #[error("missing decode context")]
+    MissingDecodeContext,
 
     #[error("could not decode the message: {description}")]
     Other { description: Cow<'static, str> },

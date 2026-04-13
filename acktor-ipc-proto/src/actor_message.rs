@@ -1,6 +1,9 @@
+use std::fmt::Display;
+
 use bytes::Bytes;
 
 pub use crate::proto::actor_message::actor_message::Message as ActorMessageType;
+pub use crate::proto::actor_message::reply::Result as ReplyResultType;
 pub use crate::proto::actor_message::{ActorMessage, DoSend, Reply, Send};
 
 impl ActorMessage {
@@ -23,9 +26,18 @@ impl ActorMessage {
     }
 
     #[inline]
-    pub fn reply(tag: u64, message: Bytes) -> Self {
+    pub fn reply<E>(tag: u64, result: Result<Bytes, E>) -> Self
+    where
+        E: Display,
+    {
         Self {
-            message: Some(ActorMessageType::Reply(Reply { tag, message })),
+            message: Some(ActorMessageType::Reply(Reply {
+                tag,
+                result: Some(match result {
+                    Ok(message) => ReplyResultType::Ok(message),
+                    Err(e) => ReplyResultType::Err(e.to_string()),
+                }),
+            })),
         }
     }
 }

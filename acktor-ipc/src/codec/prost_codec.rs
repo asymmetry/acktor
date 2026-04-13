@@ -5,7 +5,7 @@ use acktor_ipc_proto::utils::{
 };
 
 use super::errors::{DecodeError, EncodeError};
-use super::{Decode, DecodeContext, Encode};
+use super::{Decode, DecodeContext, Encode, EncodeContext};
 
 macro_rules! impl_encode_decode_for {
     ($type:ty) => {
@@ -16,14 +16,18 @@ macro_rules! impl_encode_decode_for {
             }
 
             #[inline]
-            fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+            fn encode(
+                &self,
+                buf: &mut BytesMut,
+                _ctx: Option<&EncodeContext>,
+            ) -> Result<(), EncodeError> {
                 prost::Message::encode(self, buf).map_err(Into::into)
             }
         }
 
         impl Decode for $type {
             #[inline]
-            fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+            fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 prost::Message::decode(buf).map_err(Into::into)
             }
         }
@@ -36,13 +40,17 @@ macro_rules! impl_encode_decode_for {
             }
 
             #[inline]
-            fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+            fn encode(
+                &self,
+                buf: &mut BytesMut,
+                _ctx: Option<&EncodeContext>,
+            ) -> Result<(), EncodeError> {
                 prost::Message::encode(&(*self as $wire_type), buf).map_err(Into::into)
             }
         }
 
         impl Decode for $type {
-            fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+            fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 let value = <$wire_type as prost::Message>::decode(buf)?;
                 <$type>::try_from(value).map_err(|e| e.to_string().into())
             }
@@ -83,7 +91,11 @@ macro_rules! impl_encode_decode_for_vec {
             }
 
             #[inline]
-            fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+            fn encode(
+                &self,
+                buf: &mut BytesMut,
+                _ctx: Option<&EncodeContext>,
+            ) -> Result<(), EncodeError> {
                 if self.is_empty() {
                     return Ok(());
                 }
@@ -105,7 +117,7 @@ macro_rules! impl_encode_decode_for_vec {
 
         impl Decode for Vec<$type> {
             #[inline]
-            fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+            fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 let message = <$msg as prost::Message>::decode(buf)?;
 
                 Ok(message.values)
@@ -127,7 +139,11 @@ macro_rules! impl_encode_decode_for_vec {
             }
 
             #[inline]
-            fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+            fn encode(
+                &self,
+                buf: &mut BytesMut,
+                _ctx: Option<&EncodeContext>,
+            ) -> Result<(), EncodeError> {
                 if self.is_empty() {
                     return Ok(());
                 }
@@ -149,7 +165,7 @@ macro_rules! impl_encode_decode_for_vec {
 
         impl Decode for Vec<$type> {
             #[inline]
-            fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+            fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 let message = <$msg as prost::Message>::decode(buf)?;
                 message
                     .values
@@ -171,7 +187,11 @@ macro_rules! impl_encode_decode_for_vec {
             }
 
             #[inline]
-            fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+            fn encode(
+                &self,
+                buf: &mut BytesMut,
+                _ctx: Option<&EncodeContext>,
+            ) -> Result<(), EncodeError> {
                 if self.is_empty() {
                     return Ok(());
                 }
@@ -190,7 +210,7 @@ macro_rules! impl_encode_decode_for_vec {
 
         impl Decode for Vec<$type> {
             #[inline]
-            fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+            fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 let message = <$msg as prost::Message>::decode(buf)?;
 
                 Ok(message.values)
@@ -232,12 +252,16 @@ macro_rules! impl_encode_decode_for_tuple {
             }
 
             #[inline]
-            fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+            fn encode(
+                &self,
+                buf: &mut BytesMut,
+                ctx: Option<&EncodeContext>,
+            ) -> Result<(), EncodeError> {
                 buf.reserve(self.encoded_len());
                 $({
                     buf.extend_from_slice(&[$tag]);
                     prost::encoding::encode_varint(self.$index.encoded_len() as u64, buf);
-                    self.$index.encode(buf)?;
+                    self.$index.encode(buf, ctx)?;
                 })+
 
                 Ok(())
@@ -249,7 +273,7 @@ macro_rules! impl_encode_decode_for_tuple {
             $($type: Decode,)+
         {
             #[inline]
-            fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+            fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 let message = <TupleMessage as prost::Message>::decode(buf)?;
 
                 Ok((
@@ -257,7 +281,7 @@ macro_rules! impl_encode_decode_for_tuple {
                         message.$field.ok_or(DecodeError::from(
                             concat!("missing field ", stringify!($field), " in tuple message")
                         ))?,
-                        context,
+                        ctx,
                     )?,)+
                 ))
             }

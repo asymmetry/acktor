@@ -3,13 +3,15 @@
 //! This module provides the [`Encode`] and [`Decode`] traits along with implementations for
 //! primitive types, standard library containers, and acktor types.
 
-use std::sync::Arc;
+use std::fmt::{self, Debug};
 
 use bytes::{Bytes, BytesMut};
 
-use acktor::{Actor, Address, SenderIndex};
+use acktor::{Address, SenderId};
 
-use crate::remote_address::{RemoteAddress, RemoteSender};
+use crate::remote_actor::{RemoteActor, RemoteActorRegistry};
+use crate::remote_address::RemoteAddress;
+use crate::session::Session;
 
 pub mod errors;
 use errors::{DecodeError, EncodeError};
@@ -24,8 +26,53 @@ mod default_codec;
 #[cfg(feature = "prost-codec")]
 mod prost_codec;
 
-/// Session reference used during decoding to reconstruct remote addresses.
-pub type DecodeContext = Arc<dyn RemoteSender + Send + Sync>;
+/// Context passed through every [`Encode::encode`] call.
+///
+/// Carries the remote actor registry so that when the address of an actor which can be reached
+/// over IPC is serialized for the first time, it can self-register in the registry.
+#[derive(Debug, Clone, Default)]
+pub struct EncodeContext {
+    /// The actor registry associated with this context.
+    pub registry: RemoteActorRegistry,
+}
+
+impl EncodeContext {
+    /// Constructs a new [`EncodeContext`] from the given actor registry.
+    pub fn new(registry: RemoteActorRegistry) -> Self {
+        Self { registry }
+    }
+}
+
+/// Context passed through every [`Decode::decode`] call.
+///
+/// Carries the IPC session actor address and the remote actor registry which are needed to
+/// reconstruct [`RemoteAddress`]s during decoding.
+#[derive(Clone)]
+pub struct DecodeContext {
+    /// The remote session associated with this context.
+    pub session: Address<Session>,
+    /// The actor registry associated with this context.
+    pub registry: RemoteActorRegistry,
+}
+
+impl Debug for DecodeContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DecodeContext")
+            .field(
+                "session",
+                &format_args!("Session({})", self.session.index()),
+            )
+            .field("registry", &self.registry)
+            .finish()
+    }
+}
+
+impl DecodeContext {
+    /// Constructs a new [`DecodeContext`] from the given remote session and the actor registry.
+    pub fn new(session: Address<Session>, registry: RemoteActorRegistry) -> Self {
+        Self { session, registry }
+    }
+}
 
 /// Describes how to encode a remote message.
 pub trait Encode {
@@ -33,12 +80,12 @@ pub trait Encode {
     fn encoded_len(&self) -> usize;
 
     /// Encodes the value into the provided buffer.
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError>;
+    fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError>;
 
     /// Encodes the value into a freshly allocated [`Bytes`].
-    fn encode_to_bytes(&self) -> Result<Bytes, EncodeError> {
+    fn encode_to_bytes(&self, ctx: Option<&EncodeContext>) -> Result<Bytes, EncodeError> {
         let mut buf = BytesMut::with_capacity(self.encoded_len());
-        self.encode(&mut buf)?;
+        self.encode(&mut buf, ctx)?;
 
         Ok(buf.freeze())
     }
@@ -47,17 +94,14 @@ pub trait Encode {
 /// Describes how to decode a remote message.
 pub trait Decode {
     /// Decodes the remote message from the provided buffer.
-    ///
-    /// The optional `context` parameter currently provides the IPC session address needed
-    /// to reconstruct remote addresses during decoding.
-    fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError>
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError>
     where
         Self: Sized;
 }
 
 impl<A> Encode for Address<A>
 where
-    A: Actor,
+    A: RemoteActor,
 {
     #[inline]
     fn encoded_len(&self) -> usize {
@@ -65,25 +109,33 @@ where
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
+        // auto-register the address if it is an local address
+        if !self.index().is_remote() {
+            ctx.ok_or(EncodeError::MissingEncodeContext)?
+                .registry
+                .insert(self.clone());
+        }
         prost::Message::encode(&self.index(), buf).map_err(Into::into)
     }
 }
 
 impl Decode for RemoteAddress {
     #[inline]
-    fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let actor_id = <u64 as prost::Message>::decode(buf)?;
         if actor_id.is_remote() {
             return Err(DecodeError::DecodeRemoteAddress);
         }
-        let session = context.ok_or::<DecodeError>("missing decode context".into())?;
+        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
 
-        Ok(RemoteAddress::new(actor_id, session.clone()))
+        Ok(RemoteAddress::new(
+            actor_id,
+            ctx.session.clone(),
+            ctx.registry.clone(),
+        ))
     }
 }
-
-// Decode is not implemented for Address<A>
 
 #[cfg(test)]
 mod test {
@@ -94,7 +146,7 @@ mod test {
             #[test]
             fn $name() {
                 let value = $value;
-                let buf = Encode::encode_to_bytes(&value).unwrap();
+                let buf = Encode::encode_to_bytes(&value, None).unwrap();
                 let decoded = <$type as Decode>::decode(buf, None).unwrap();
                 assert_eq!(value, decoded);
             }

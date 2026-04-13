@@ -6,7 +6,7 @@ use bytes::{Bytes, BytesMut};
 use acktor_ipc_proto::utils::{OptionMessage, ResultMessage, ResultType};
 
 use super::errors::{DecodeError, EncodeError};
-use super::{Decode, DecodeContext, Encode};
+use super::{Decode, DecodeContext, Encode, EncodeContext};
 
 impl<T> Encode for Box<T>
 where
@@ -18,8 +18,8 @@ where
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
-        self.as_ref().encode(buf)
+    fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
+        self.as_ref().encode(buf, ctx)
     }
 }
 
@@ -27,8 +27,8 @@ impl<T> Decode for Box<T>
 where
     T: Decode,
 {
-    fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-        T::decode(buf, context).map(Box::new)
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+        T::decode(buf, ctx).map(Box::new)
     }
 }
 
@@ -42,8 +42,8 @@ where
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
-        self.as_ref().encode(buf)
+    fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
+        self.as_ref().encode(buf, ctx)
     }
 }
 
@@ -51,8 +51,8 @@ impl<T> Decode for Arc<T>
 where
     T: Decode,
 {
-    fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-        T::decode(buf, context).map(Arc::new)
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+        T::decode(buf, ctx).map(Arc::new)
     }
 }
 
@@ -72,13 +72,13 @@ where
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         match self {
             Ok(ok) => {
                 // field 1, wire type LengthDelimited (bytes)
                 buf.extend_from_slice(&[0x0A]);
                 prost::encoding::encode_varint(ok.encoded_len() as u64, buf);
-                ok.encode(buf)?;
+                ok.encode(buf, ctx)?;
             }
             Err(err) => {
                 // field 2, wire type LengthDelimited (string)
@@ -92,7 +92,7 @@ where
         Ok(())
     }
 
-    fn encode_to_bytes(&self) -> Result<Bytes, EncodeError> {
+    fn encode_to_bytes(&self, ctx: Option<&EncodeContext>) -> Result<Bytes, EncodeError> {
         match self {
             Ok(ok) => {
                 let inner_len = ok.encoded_len();
@@ -100,7 +100,7 @@ where
                 let mut buf = BytesMut::with_capacity(total);
                 buf.extend_from_slice(&[0x0A]);
                 prost::encoding::encode_varint(inner_len as u64, &mut buf);
-                ok.encode(&mut buf)?;
+                ok.encode(&mut buf, ctx)?;
 
                 Ok(buf.freeze())
             }
@@ -124,10 +124,10 @@ where
     E: From<String>,
 {
     #[inline]
-    fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let result = <ResultMessage as prost::Message>::decode(buf)?;
         match result.result {
-            Some(ResultType::Ok(ok)) => Ok(Ok(T::decode(ok, context)?)),
+            Some(ResultType::Ok(ok)) => Ok(Ok(T::decode(ok, ctx)?)),
             Some(ResultType::Err(err)) => Ok(Err(E::from(err))),
             _ => Err("missing field `result` in the `Result` message".into()),
         }
@@ -152,18 +152,18 @@ where
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         if let Some(some) = self {
             // field 1, wire type LengthDelimited (bytes)
             buf.extend_from_slice(&[0x0A]);
             prost::encoding::encode_varint(some.encoded_len() as u64, buf);
-            some.encode(buf)?;
+            some.encode(buf, ctx)?;
         }
 
         Ok(())
     }
 
-    fn encode_to_bytes(&self) -> Result<Bytes, EncodeError> {
+    fn encode_to_bytes(&self, ctx: Option<&EncodeContext>) -> Result<Bytes, EncodeError> {
         match self {
             Some(some) => {
                 let inner_len = some.encoded_len();
@@ -171,7 +171,7 @@ where
                 let mut buf = BytesMut::with_capacity(total);
                 buf.extend_from_slice(&[0x0A]);
                 prost::encoding::encode_varint(inner_len as u64, &mut buf);
-                some.encode(&mut buf)?;
+                some.encode(&mut buf, ctx)?;
 
                 Ok(buf.freeze())
             }
@@ -185,10 +185,10 @@ where
     T: Decode,
 {
     #[inline]
-    fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let option = <OptionMessage as prost::Message>::decode(buf)?;
         match option.option {
-            Some(bytes) => Ok(Some(T::decode(bytes, context)?)),
+            Some(bytes) => Ok(Some(T::decode(bytes, ctx)?)),
             None => Ok(None),
         }
     }

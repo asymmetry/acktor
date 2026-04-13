@@ -11,8 +11,8 @@ use tracing::{debug, warn};
 
 use acktor_macros::debug_trace;
 
-use crate::actor::{Actor, ActorContext, ActorState, Stopping};
-use crate::address::{Address, Mailbox, Recipient, SenderIndex};
+use crate::actor::{Actor, ActorContext, ActorId, ActorState, Stopping};
+use crate::address::{Address, Mailbox, Recipient, SenderId};
 use crate::context::DEFAULT_MAILBOX_CAPACITY;
 use crate::envelope::{Envelope, EnvelopeProxy};
 use crate::message::{Handler, Message};
@@ -235,7 +235,7 @@ where
         Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
     }
 
-    fn index(&self) -> u64 {
+    fn index(&self) -> ActorId {
         self.doorplate.index()
     }
 

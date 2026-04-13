@@ -11,6 +11,9 @@ use acktor_macros::report;
 use crate::address::{Address, Mailbox, Recipient, Sender};
 use crate::supervisor::SupervisionEvent;
 
+/// Actor index type.
+pub type ActorId = u64;
+
 /// State of an actor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -153,7 +156,7 @@ where
     fn new(label: String) -> Self;
 
     /// Returns the index of the actor.
-    fn index(&self) -> u64;
+    fn index(&self) -> ActorId;
 
     /// Returns the label of the actor.
     fn label(&self) -> &str;

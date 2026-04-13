@@ -25,14 +25,30 @@ pub struct DoSend {
     pub message: ::prost::bytes::Bytes,
 }
 /// A message which is used to reply to a message sent by `Send` command.
+///
+/// `result` carries either the successfully-encoded `M::Result` bytes, or a
+/// handler-side error reason (e.g. the target actor could not be found).
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Reply {
     /// The tag of the message to be replied.
     #[prost(uint64, tag = "1")]
     pub tag: u64,
-    /// The message to be sent in the reply.
-    #[prost(bytes = "bytes", tag = "2")]
-    pub message: ::prost::bytes::Bytes,
+    /// The result of the command.
+    #[prost(oneof = "reply::Result", tags = "2, 3")]
+    pub result: ::core::option::Option<reply::Result>,
+}
+/// Nested message and enum types in `Reply`.
+pub mod reply {
+    /// The result of the command.
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Result {
+        /// The encoded response payload.
+        #[prost(bytes, tag = "2")]
+        Ok(::prost::bytes::Bytes),
+        /// The error reason.
+        #[prost(string, tag = "3")]
+        Err(::prost::alloc::string::String),
+    }
 }
 /// A message which is used to communicate with remote actors.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

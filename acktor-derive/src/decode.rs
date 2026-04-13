@@ -59,7 +59,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
             #[inline]
             fn decode(
                 buf: ::acktor_ipc::bytes::Bytes,
-                _context: ::core::option::Option<&::acktor_ipc::DecodeContext>,
+                _ctx: ::core::option::Option<&::acktor_ipc::DecodeContext>,
             ) -> ::core::result::Result<Self, ::acktor_ipc::errors::DecodeError> {
                 #body
             }

@@ -12,7 +12,7 @@ mod address_impl;
 pub use address_impl::{Address, ReservedSendPermit};
 
 mod sender;
-pub use sender::{Sender, SenderIndex};
+pub use sender::{Sender, SenderId};
 
 mod recipient;
 pub use recipient::Recipient;

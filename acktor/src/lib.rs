@@ -75,13 +75,13 @@ pub mod errors {
 pub mod utils;
 
 mod actor;
-pub use actor::{Actor, ActorContext, ActorState, Stopping};
+pub use actor::{Actor, ActorContext, ActorId, ActorState, Stopping};
 
 mod context;
 pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
 
 pub mod address;
-pub use address::{Address, Recipient, Sender, SenderIndex};
+pub use address::{Address, Recipient, Sender, SenderId};
 
 pub mod message;
 pub use message::{Handler, Message, MessageResponse};

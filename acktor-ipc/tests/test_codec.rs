@@ -124,8 +124,8 @@ fn test_codec_prost() {
 
     let bridge_value = ProstBridge::from(&value);
 
-    let value_bytes = Encode::encode_to_bytes(&value).unwrap();
-    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value).unwrap();
+    let value_bytes = Encode::encode_to_bytes(&value, None).unwrap();
+    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None).unwrap();
 
     assert_eq!(value_bytes, bridge_value_bytes);
 
@@ -145,8 +145,8 @@ fn test_codec_zerocopy() {
 
     let bridge_value = ZerocopyBridge::from(&value);
 
-    let value_bytes = Encode::encode_to_bytes(&value).unwrap();
-    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value).unwrap();
+    let value_bytes = Encode::encode_to_bytes(&value, None).unwrap();
+    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None).unwrap();
 
     assert_eq!(value_bytes, bridge_value_bytes);
 
@@ -168,8 +168,8 @@ fn test_codec_rkyv() {
 
     let bridge_value = RkyvBridge::from(&value);
 
-    let value_bytes = Encode::encode_to_bytes(&value).unwrap();
-    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value).unwrap();
+    let value_bytes = Encode::encode_to_bytes(&value, None).unwrap();
+    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None).unwrap();
 
     assert_eq!(value_bytes, bridge_value_bytes);
 

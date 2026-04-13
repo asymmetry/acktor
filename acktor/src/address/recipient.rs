@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::pin::Pin;
@@ -13,8 +14,8 @@ use tokio::sync::{
 };
 
 use super::address_impl::Address;
-use super::sender::{SendResult, Sender, SenderIndex, TrySendResult};
-use crate::actor::Actor;
+use super::sender::{SendResult, Sender, SenderId, TrySendResult};
+use crate::actor::{Actor, ActorId};
 use crate::envelope::{DefaultEnvelopeProxy, FromEnvelope, ToEnvelope};
 use crate::message::Message;
 use crate::utils::create_actor_id;
@@ -122,11 +123,11 @@ where
     }
 }
 
-impl<M, EP> SenderIndex for Recipient<M, EP>
+impl<M, EP> SenderId for Recipient<M, EP>
 where
     M: Message<EP>,
 {
-    fn index(&self) -> u64 {
+    fn index(&self) -> ActorId {
         self.0.index()
     }
 }
@@ -170,6 +171,10 @@ where
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {
         self.0.blocking_do_send(msg)
     }
+
+    fn as_any(&self) -> Option<&(dyn Any + 'static)> {
+        self.0.as_any()
+    }
 }
 
 #[derive(Debug)]
@@ -177,7 +182,7 @@ struct RecipientProxy<M>
 where
     M: Message<Result = ()>,
 {
-    index: u64,
+    index: ActorId,
     tx: mpsc::Sender<M>,
 }
 
@@ -216,11 +221,11 @@ where
     }
 }
 
-impl<M> SenderIndex for RecipientProxy<M>
+impl<M> SenderId for RecipientProxy<M>
 where
     M: Message<Result = ()>,
 {
-    fn index(&self) -> u64 {
+    fn index(&self) -> ActorId {
         self.index
     }
 }

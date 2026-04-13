@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, Recipient, SenderIndex,
+    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, Recipient, SenderId,
     address::Mailbox,
     envelope::{Envelope, EnvelopeProxy},
     macros::report,
@@ -12,8 +10,6 @@ use acktor::{
 };
 
 use super::Session;
-use crate::codec::DecodeContext;
-use crate::remote_address::RemoteSender;
 
 pub struct SessionContext {
     label: String,
@@ -21,7 +17,6 @@ pub struct SessionContext {
     doorplate: Address<Session>,
     mailbox: Option<Mailbox<Session>>,
     supervisor: Option<Recipient<SupervisionEvent<Session>>>,
-    remote_sender: Arc<dyn RemoteSender + Send + Sync>,
 }
 
 impl SessionContext {
@@ -44,16 +39,7 @@ impl SessionContext {
             doorplate: address.clone(),
             mailbox: Some(Mailbox::new(rx)),
             supervisor: None,
-            remote_sender: Arc::new(address),
         }
-    }
-
-    pub fn decode_context(&self) -> DecodeContext {
-        self.remote_sender.clone()
-    }
-
-    pub fn remote_sender(&self) -> Arc<dyn RemoteSender + Send + Sync> {
-        self.remote_sender.clone()
     }
 
     async fn processing_loop(

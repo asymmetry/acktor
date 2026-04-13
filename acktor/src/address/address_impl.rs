@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::pin::Pin;
@@ -12,8 +13,8 @@ use tokio::sync::{
 };
 
 use super::recipient::Recipient;
-use super::sender::{SendResult, Sender, SenderIndex, TrySendResult};
-use crate::actor::Actor;
+use super::sender::{SendResult, Sender, SenderId, TrySendResult};
+use crate::actor::{Actor, ActorId};
 use crate::envelope::{Envelope, FromEnvelope, ToEnvelope};
 use crate::message::Message;
 use crate::utils::create_actor_id;
@@ -23,7 +24,7 @@ pub struct Address<A>
 where
     A: Actor,
 {
-    index: u64,
+    index: ActorId,
     tx: mpsc::Sender<Envelope<A>>,
 }
 
@@ -86,7 +87,7 @@ where
     }
 
     /// Returns the index of the address.
-    pub fn index(&self) -> u64 {
+    pub fn index(&self) -> ActorId {
         self.index
     }
 
@@ -217,11 +218,11 @@ where
     }
 }
 
-impl<A> SenderIndex for Address<A>
+impl<A> SenderId for Address<A>
 where
     A: Actor,
 {
-    fn index(&self) -> u64 {
+    fn index(&self) -> ActorId {
         self.index
     }
 }
@@ -266,6 +267,10 @@ where
 
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {
         self.blocking_do_send(msg)
+    }
+
+    fn as_any(&self) -> Option<&(dyn Any + 'static)> {
+        Some(self)
     }
 }
 

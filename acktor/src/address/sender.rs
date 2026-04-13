@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::pin::Pin;
 
 use tokio::sync::{
@@ -5,6 +6,7 @@ use tokio::sync::{
     oneshot,
 };
 
+use crate::actor::ActorId;
 use crate::envelope::DefaultEnvelopeProxy;
 use crate::message::Message;
 
@@ -15,13 +17,13 @@ pub(crate) type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<
 ///
 /// Separate from the [`Sender`] trait so we do not need to use fully qualified syntax to use
 /// this trait when multiple [`Sender`] traits are in scope.
-pub trait SenderIndex {
+pub trait SenderId {
     /// Returns the index of the sender.
-    fn index(&self) -> u64;
+    fn index(&self) -> ActorId;
 
     /// Returns `true` if this sender refers to an actor in another process.
     ///
-    /// The MSB of the u64 actor id is reserved by [`acktor-ipc`] crate to tag remote
+    /// The MSB of the ActorId is reserved by [`acktor-ipc`] crate to tag remote
     /// addresses.
     ///
     /// [`acktor-ipc`]: https://docs.rs/acktor-ipc/latest/acktor_ipc
@@ -31,15 +33,15 @@ pub trait SenderIndex {
     }
 }
 
-impl SenderIndex for u64 {
+impl SenderId for ActorId {
     #[inline]
-    fn index(&self) -> u64 {
+    fn index(&self) -> ActorId {
         *self
     }
 }
 
 /// Describes how to send a message.
-pub trait Sender<M, EP = DefaultEnvelopeProxy<M>>: SenderIndex
+pub trait Sender<M, EP = DefaultEnvelopeProxy<M>>: SenderId
 where
     M: Message<EP>,
     EP: 'static,
@@ -77,4 +79,9 @@ where
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>>;
+
+    /// Returns a reference to the concrete sender behind this trait object so that it can be downcast to the concrete type.
+    fn as_any(&self) -> Option<&(dyn Any + 'static)> {
+        None
+    }
 }

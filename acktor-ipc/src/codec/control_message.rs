@@ -3,7 +3,7 @@ use std::fmt::Display;
 use bytes::{Bytes, BytesMut};
 
 use acktor::{
-    Actor, ActorState, Message, SenderIndex, Signal,
+    Actor, ActorId, ActorState, Message, SenderId, Signal,
     cron::CronSignal,
     observer::Observer,
     supervisor::{SupervisionEvent, Supervisor},
@@ -11,12 +11,14 @@ use acktor::{
 use acktor_ipc_proto::control_message::{self as proto, ControlMessage};
 
 use super::errors::{DecodeError, EncodeError};
-use super::{Decode, DecodeContext, Encode};
+use super::{Decode, DecodeContext, Encode, EncodeContext};
 use crate::remote_address::RemoteAddress;
 use crate::remote_message::{RemoteObserver, RemoteSupervisionEvent, RemoteSupervisor};
 
+// TODO: this file should also use EncodeContext to register local addresses
+
 #[inline]
-fn check_actor_id(actor_id: u64) -> Result<u64, DecodeError> {
+fn check_actor_id(actor_id: u64) -> Result<ActorId, DecodeError> {
     if actor_id.is_remote() {
         Err(DecodeError::DecodeRemoteAddress)
     } else {
@@ -33,7 +35,7 @@ impl Encode for Signal {
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let signal = proto::Signal::new(*self as i32);
         let message = ControlMessage::signal(signal);
         prost::Message::encode(&message, buf).map_err(Into::into)
@@ -42,7 +44,7 @@ impl Encode for Signal {
 
 impl Decode for Signal {
     #[inline]
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let message: ControlMessage = prost::Message::decode(buf)?;
         match message.message {
             Some(proto::ControlMessageType::Signal(signal)) => {
@@ -69,7 +71,7 @@ where
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let supervisor = match self {
             Supervisor::Set(recipient) => {
                 if recipient.is_remote() {
@@ -86,15 +88,19 @@ where
 
 impl Decode for RemoteSupervisor {
     #[inline]
-    fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-        let session = context.ok_or::<DecodeError>("missing decode context".into())?;
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
         let message: ControlMessage = prost::Message::decode(buf)?;
         match message.message {
             Some(proto::ControlMessageType::Supervisor(supervisor)) => {
                 match supervisor.supervisor {
-                    Some(proto::SupervisorType::Set(actor_id)) => Ok(RemoteSupervisor::Set(
-                        RemoteAddress::new(check_actor_id(actor_id)?, session.clone()),
-                    )),
+                    Some(proto::SupervisorType::Set(actor_id)) => {
+                        Ok(RemoteSupervisor::Set(RemoteAddress::new(
+                            check_actor_id(actor_id)?,
+                            ctx.session.clone(),
+                            ctx.registry.clone(),
+                        )))
+                    }
                     Some(proto::SupervisorType::Unset(())) => Ok(RemoteSupervisor::Unset),
                     None => Err("missing field `supervisor` in the `Supervisor` message".into()),
                 }
@@ -119,7 +125,7 @@ where
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let observer = match self {
             Observer::Register(recipient) => {
                 if recipient.is_remote() {
@@ -141,17 +147,25 @@ where
 
 impl Decode for RemoteObserver {
     #[inline]
-    fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-        let session = context.ok_or::<DecodeError>("missing decode context".into())?;
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
         let message: ControlMessage = prost::Message::decode(buf)?;
         match message.message {
             Some(proto::ControlMessageType::Observer(observer)) => match observer.observer {
-                Some(proto::ObserverType::Register(actor_id)) => Ok(RemoteObserver::Register(
-                    RemoteAddress::new(check_actor_id(actor_id)?, session.clone()),
-                )),
-                Some(proto::ObserverType::Unregister(actor_id)) => Ok(RemoteObserver::Unregister(
-                    RemoteAddress::new(check_actor_id(actor_id)?, session.clone()),
-                )),
+                Some(proto::ObserverType::Register(actor_id)) => {
+                    Ok(RemoteObserver::Register(RemoteAddress::new(
+                        check_actor_id(actor_id)?,
+                        ctx.session.clone(),
+                        ctx.registry.clone(),
+                    )))
+                }
+                Some(proto::ObserverType::Unregister(actor_id)) => {
+                    Ok(RemoteObserver::Unregister(RemoteAddress::new(
+                        check_actor_id(actor_id)?,
+                        ctx.session.clone(),
+                        ctx.registry.clone(),
+                    )))
+                }
                 None => Err("missing field `observer` in the `Observer` message".into()),
             },
             _ => Err("message is not an `Observer` message".into()),
@@ -168,7 +182,7 @@ impl Encode for CronSignal {
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let cron_signal = proto::CronSignal::new(*self as i32);
         let message = ControlMessage::cron_signal(cron_signal);
         prost::Message::encode(&message, buf).map_err(Into::into)
@@ -177,7 +191,7 @@ impl Encode for CronSignal {
 
 impl Decode for CronSignal {
     #[inline]
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let message: ControlMessage = prost::Message::decode(buf)?;
         match message.message {
             Some(proto::ControlMessageType::CronSignal(cron_signal)) => {
@@ -213,7 +227,7 @@ where
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let event = match self {
             SupervisionEvent::Warn(address, error) => {
                 proto::SupervisionEvent::warn(address.index(), error.to_string())
@@ -231,7 +245,7 @@ where
     }
 
     #[inline]
-    fn encode_to_bytes(&self) -> Result<Bytes, EncodeError> {
+    fn encode_to_bytes(&self, _ctx: Option<&EncodeContext>) -> Result<Bytes, EncodeError> {
         let event = match self {
             SupervisionEvent::Warn(address, error) => {
                 proto::SupervisionEvent::warn(address.index(), error.to_string())
@@ -254,26 +268,39 @@ where
 
 impl Decode for RemoteSupervisionEvent {
     #[inline]
-    fn decode(buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-        let session = context.ok_or::<DecodeError>("missing decode context".into())?;
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
         let message: ControlMessage = prost::Message::decode(buf)?;
+
         match message.message {
             Some(proto::ControlMessageType::SupervisionEvent(event)) => match event.event {
                 Some(proto::SupervisionEventType::Warn(warn)) => Ok(RemoteSupervisionEvent::Warn(
-                    RemoteAddress::new(check_actor_id(warn.actor_id)?, session.clone()),
+                    RemoteAddress::new(
+                        check_actor_id(warn.actor_id)?,
+                        ctx.session.clone(),
+                        ctx.registry.clone(),
+                    ),
                     warn.err,
                 )),
 
                 Some(proto::SupervisionEventType::Terminated(terminated)) => {
                     Ok(RemoteSupervisionEvent::Terminated(
-                        RemoteAddress::new(check_actor_id(terminated.actor_id)?, session.clone()),
+                        RemoteAddress::new(
+                            check_actor_id(terminated.actor_id)?,
+                            ctx.session.clone(),
+                            ctx.registry.clone(),
+                        ),
                         terminated.err,
                     ))
                 }
 
                 Some(proto::SupervisionEventType::State(state)) => {
                     Ok(RemoteSupervisionEvent::State(
-                        RemoteAddress::new(check_actor_id(state.actor_id)?, session.clone()),
+                        RemoteAddress::new(
+                            check_actor_id(state.actor_id)?,
+                            ctx.session.clone(),
+                            ctx.registry.clone(),
+                        ),
                         ActorState::try_from(state.state as u8).map_err(|_| {
                             DecodeError::from(
                                 "invalid actor state value in the `SupervisionEvent` message",

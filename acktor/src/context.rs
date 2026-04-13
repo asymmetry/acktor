@@ -1,8 +1,8 @@
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
-use crate::actor::{Actor, ActorContext, ActorState, Stopping};
-use crate::address::{Address, Mailbox, Recipient, SenderIndex};
+use crate::actor::{Actor, ActorContext, ActorId, ActorState, Stopping};
+use crate::address::{Address, Mailbox, Recipient, SenderId};
 use crate::envelope::{Envelope, EnvelopeProxy};
 use crate::supervisor::SupervisionEvent;
 
@@ -125,7 +125,7 @@ where
         Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
     }
 
-    fn index(&self) -> u64 {
+    fn index(&self) -> ActorId {
         self.doorplate.index()
     }
 

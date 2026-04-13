@@ -9,12 +9,14 @@
 //! `_by_key2` variants.
 
 use std::borrow::Borrow;
-use std::collections::{TryReserveError, hash_map};
+use std::collections::hash_map;
 use std::fmt::{self, Debug, Formatter};
 use std::hash::Hash;
 use std::ops::Index;
 
 use ahash::{HashMap, HashMapExt};
+
+pub use std::collections::TryReserveError;
 
 mod errors;
 pub use errors::KeyConflictError;

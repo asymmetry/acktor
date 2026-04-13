@@ -6,6 +6,7 @@ use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
 pub use crate::codec::errors::{DecodeError, EncodeError};
+pub use crate::double_map::{KeyConflictError, TryReserveError};
 
 /// Error type used by [`Node`][crate::node::Node].
 #[derive(Debug, Error)]
@@ -14,7 +15,7 @@ pub enum NodeError {
     ConnectFailed(#[from] io::Error),
 
     #[error("could not create a new session")]
-    CreateSessionFailed(#[source] SessionError),
+    CreateSessionFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     #[error("could not find the session {0}")]
     SessionNotFound(String),
@@ -71,7 +72,7 @@ pub enum SessionError {
     #[error("could not decode the remote message")]
     DecodeError(#[from] DecodeError),
 
-    #[error("could not forward the inbound remote message to any local actor")]
+    #[error("could not forward the inbound remote message to any actor in the current process")]
     ForwardInboundMessageFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     #[error("could not send the outbound remote message to the remote node")]
@@ -83,8 +84,14 @@ pub enum SessionError {
     #[error("invalid actor message reply tag: {0}")]
     InvalidActorMessageReplyTag(u64),
 
+    #[error("could not create the actor in the current process")]
+    CreateActorFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
+
+    #[error("could not find the actor {0} in the current process")]
+    ActorNotFound(String),
+
     #[error("{0}")]
-    RemoteNodeError(String),
+    RemoteActorError(String),
 
     #[error("could not send local message")]
     SendMessageError(#[source] Box<dyn std::error::Error + Send + Sync>),

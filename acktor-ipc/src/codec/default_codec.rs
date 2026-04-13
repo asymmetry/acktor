@@ -4,7 +4,7 @@ use bytes::{Bytes, BytesMut};
 use zerocopy::{FromBytes, IntoBytes, Ref};
 
 use super::errors::{DecodeError, EncodeError};
-use super::{Decode, DecodeContext, Encode};
+use super::{Decode, DecodeContext, Encode, EncodeContext};
 
 #[cfg(target_endian = "big")]
 compile_error!("default-codec does not support big-endian targets, use prost-codec instead");
@@ -18,7 +18,11 @@ macro_rules! impl_encode_decode_for {
             }
 
             #[inline]
-            fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+            fn encode(
+                &self,
+                buf: &mut BytesMut,
+                _ctx: Option<&EncodeContext>,
+            ) -> Result<(), EncodeError> {
                 buf.extend_from_slice(self.as_bytes());
 
                 Ok(())
@@ -27,7 +31,7 @@ macro_rules! impl_encode_decode_for {
 
         impl Decode for $type {
             #[inline]
-            fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+            fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 Self::read_from_bytes(&buf).map_err(Into::into)
             }
         }
@@ -41,7 +45,7 @@ impl Encode for () {
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         buf.extend_from_slice(&[0]);
 
         Ok(())
@@ -50,7 +54,7 @@ impl Encode for () {
 
 impl Decode for () {
     #[inline]
-    fn decode(_buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(_buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         Ok(())
     }
 }
@@ -62,7 +66,7 @@ impl Encode for bool {
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         buf.extend_from_slice(self.as_bytes());
 
         Ok(())
@@ -71,7 +75,7 @@ impl Encode for bool {
 
 impl Decode for bool {
     #[inline]
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         Ok(u8::read_from_bytes(&buf)? != 0)
     }
 }
@@ -97,14 +101,14 @@ impl Encode for isize {
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
-        (*self as i64).encode(buf)
+    fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
+        (*self as i64).encode(buf, ctx)
     }
 }
 
 impl Decode for isize {
     #[inline]
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let value = i64::decode(buf, None)?;
         isize::try_from(value).map_err(|e| e.to_string().into())
     }
@@ -117,14 +121,14 @@ impl Encode for usize {
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
-        (*self as u64).encode(buf)
+    fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
+        (*self as u64).encode(buf, ctx)
     }
 }
 
 impl Decode for usize {
     #[inline]
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let value = u64::decode(buf, None)?;
         usize::try_from(value).map_err(|e| e.to_string().into())
     }
@@ -137,7 +141,7 @@ impl Encode for String {
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         buf.extend_from_slice(self.as_bytes());
 
         Ok(())
@@ -146,7 +150,7 @@ impl Encode for String {
 
 impl Decode for String {
     #[inline]
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         String::from_utf8(buf.to_vec()).map_err(|e| e.to_string().into())
     }
 }
@@ -160,7 +164,11 @@ macro_rules! impl_encode_decode_for_vec {
             }
 
             #[inline]
-            fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+            fn encode(
+                &self,
+                buf: &mut BytesMut,
+                _ctx: Option<&EncodeContext>,
+            ) -> Result<(), EncodeError> {
                 buf.extend_from_slice(self.as_slice().as_bytes());
 
                 Ok(())
@@ -169,7 +177,7 @@ macro_rules! impl_encode_decode_for_vec {
 
         impl Decode for Vec<$type> {
             #[inline]
-            fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+            fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 Ok(Ref::<_, [$type]>::from_bytes(buf.as_ref())?.to_vec())
             }
         }
@@ -183,7 +191,7 @@ impl Encode for Vec<bool> {
     }
 
     #[inline]
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         buf.extend_from_slice(self.as_slice().as_bytes());
 
         Ok(())
@@ -191,7 +199,7 @@ impl Encode for Vec<bool> {
 }
 
 impl Decode for Vec<bool> {
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         Ok(buf.iter().map(|&b| b != 0).collect())
     }
 }
@@ -213,7 +221,7 @@ impl Encode for Vec<isize> {
         self.len() * mem::size_of::<i64>()
     }
 
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let vec: Vec<i64> = self.iter().map(|&v| v as i64).collect();
         buf.extend_from_slice(vec.as_slice().as_bytes());
 
@@ -222,7 +230,7 @@ impl Encode for Vec<isize> {
 }
 
 impl Decode for Vec<isize> {
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let vec: Vec<i64> = Ref::<_, [i64]>::from_bytes(buf.as_ref())?.to_vec();
         vec.into_iter()
             .map(|v| isize::try_from(v).map_err(|e| e.to_string().into()))
@@ -236,7 +244,7 @@ impl Encode for Vec<usize> {
         self.len() * mem::size_of::<u64>()
     }
 
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let vec: Vec<u64> = self.iter().map(|&v| v as u64).collect();
         buf.extend_from_slice(vec.as_slice().as_bytes());
 
@@ -245,7 +253,7 @@ impl Encode for Vec<usize> {
 }
 
 impl Decode for Vec<usize> {
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let vec: Vec<u64> = Ref::<_, [u64]>::from_bytes(buf.as_ref())?.to_vec();
         vec.into_iter()
             .map(|v| usize::try_from(v).map_err(|e| e.to_string().into()))
@@ -253,13 +261,17 @@ impl Decode for Vec<usize> {
     }
 }
 
-fn encode_element<T>(value: &T, buf: &mut BytesMut) -> Result<(), EncodeError>
+fn encode_element<T>(
+    value: &T,
+    buf: &mut BytesMut,
+    ctx: Option<&EncodeContext>,
+) -> Result<(), EncodeError>
 where
     T: Encode,
 {
     let len = value.encoded_len() as u32;
     buf.extend_from_slice(len.as_bytes());
-    value.encode(buf)?;
+    value.encode(buf, ctx)?;
 
     Ok(())
 }
@@ -289,9 +301,13 @@ macro_rules! impl_encode_decode_for_tuple {
             }
 
             #[inline]
-            fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+            fn encode(
+                &self,
+                buf: &mut BytesMut,
+                ctx: Option<&EncodeContext>,
+            ) -> Result<(), EncodeError> {
                 $(
-                    encode_element(&self.$index, buf)?;
+                    encode_element(&self.$index, buf, ctx)?;
                 )+
 
                 Ok(())
@@ -303,10 +319,10 @@ macro_rules! impl_encode_decode_for_tuple {
             $($type: Decode,)+
         {
             #[inline]
-            fn decode(mut buf: Bytes, context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+            fn decode(mut buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 Ok((
                     $(
-                        <$type as Decode>::decode(decode_element(&mut buf)?, context)?,
+                        <$type as Decode>::decode(decode_element(&mut buf)?, ctx)?,
                     )+
                 ))
             }

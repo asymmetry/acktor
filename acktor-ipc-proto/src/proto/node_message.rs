@@ -18,12 +18,21 @@ pub struct CreateActor {
 /// A message which is used to get the index of a remote actor by its label.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetActor {
-    /// The label of the actor.
-    #[prost(string, tag = "1")]
-    pub label: ::prost::alloc::string::String,
     /// The tag to be used in the reply.
-    #[prost(uint64, tag = "2")]
+    #[prost(uint64, tag = "3")]
     pub tag: u64,
+    #[prost(oneof = "get_actor::ActorHandle", tags = "1, 2")]
+    pub actor_handle: ::core::option::Option<get_actor::ActorHandle>,
+}
+/// Nested message and enum types in `GetActor`.
+pub mod get_actor {
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum ActorHandle {
+        #[prost(uint64, tag = "1")]
+        ActorId(u64),
+        #[prost(string, tag = "2")]
+        Label(::prost::alloc::string::String),
+    }
 }
 /// A message which is used to control the remote nodes.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

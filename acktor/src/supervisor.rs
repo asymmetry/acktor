@@ -9,7 +9,7 @@ use std::future::{self, Future};
 use acktor_macros::debug_trace;
 
 use crate::actor::{Actor, ActorContext, ActorState};
-use crate::address::{Address, Recipient, SenderIndex};
+use crate::address::{Address, Recipient, SenderId};
 use crate::message::{Handler, Message};
 
 /// A message which is used to report actor status to a supervisor.

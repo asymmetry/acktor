@@ -94,6 +94,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
             fn encode(
                 &self,
                 buf: &mut ::acktor_ipc::bytes::BytesMut,
+                _ctx: ::core::option::Option<&::acktor_ipc::EncodeContext>,
             ) -> ::core::result::Result<(), ::acktor_ipc::errors::EncodeError> {
                 #encode_body
             }

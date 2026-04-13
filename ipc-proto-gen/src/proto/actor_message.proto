@@ -23,11 +23,19 @@ message DoSend {
 }
 
 // A message which is used to reply to a message sent by `Send` command.
+//
+// `result` carries either the successfully-encoded `M::Result` bytes, or a
+// handler-side error reason (e.g. the target actor could not be found).
 message Reply {
   // The tag of the message to be replied.
   uint64 tag = 1;
-  // The message to be sent in the reply.
-  bytes message = 2;
+  // The result of the command.
+  oneof result {
+    // The encoded response payload.
+    bytes ok = 2;
+    // The error reason.
+    string err = 3;
+  }
 }
 
 // A message which is used to communicate with remote actors.

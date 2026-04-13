@@ -16,10 +16,12 @@ message CreateActor {
 
 // A message which is used to get the index of a remote actor by its label.
 message GetActor {
-  // The label of the actor.
-  string label = 1;
+  oneof actor_handle {
+    uint64 actor_id = 1;
+    string label    = 2;
+  }
   // The tag to be used in the reply.
-  uint64 tag = 2;
+  uint64 tag = 3;
 }
 
 // A message which is used to control the remote nodes.

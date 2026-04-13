@@ -30,7 +30,7 @@ impl Encode for Ping {
 }
 
 impl Decode for Ping {
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         if buf.is_empty() {
             return Err("buffer too small".into());
         }
@@ -62,7 +62,7 @@ impl Encode for Pong {
 }
 
 impl Decode for Pong {
-    fn decode(buf: Bytes, _context: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+    fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         if buf.is_empty() {
             return Err("buffer too small".into());
         }

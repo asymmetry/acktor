@@ -14,7 +14,7 @@ use acktor_macros::debug_trace;
 pub use acktor_macros::{notify_observers, try_notify_observers};
 
 use crate::actor::{Actor, ActorContext};
-use crate::address::{Recipient, Sender, SenderIndex};
+use crate::address::{Recipient, Sender, SenderId};
 use crate::message::{Handler, Message};
 
 /// Container for observers.
