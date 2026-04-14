@@ -1,3 +1,4 @@
+#[cfg(feature = "erased-recipient")]
 use std::any::Any;
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
@@ -172,8 +173,9 @@ where
         self.0.blocking_do_send(msg)
     }
 
-    fn as_any(&self) -> Option<&(dyn Any + 'static)> {
-        self.0.as_any()
+    #[cfg(feature = "erased-recipient")]
+    fn erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.0.erased_recipient()
     }
 }
 

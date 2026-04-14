@@ -5,11 +5,13 @@ mod detect_backend;
 mod encode;
 mod message;
 mod message_response;
+mod remote;
+mod remote_actor;
 
 /// Derive the [`Message`] trait for a struct or enum.
 ///
-/// The `result_type` attribute is required and specifies the type returned
-/// when the message is handled by an actor.
+/// The `result_type` attribute is required and specifies the type returned when the message
+/// is handled by an actor.
 ///
 /// # Examples
 ///
@@ -34,8 +36,8 @@ pub fn message_derive(input: TokenStream) -> TokenStream {
 
 /// Derive the [`MessageResponse`] trait for a struct or enum.
 ///
-/// This implements the default response handling, which sends the value
-/// back through the oneshot channel to the caller.
+/// This implements the default response handling, which sends the value back through the oneshot
+/// channel to the caller.
 ///
 /// # Examples
 ///
@@ -62,9 +64,9 @@ pub fn message_response_derive(input: TokenStream) -> TokenStream {
 
 /// Derive the [`Encode`] trait for a message.
 ///
-/// A `#[codec(..)]` attribute must be present to select the serialization backend.
-/// The same attribute is shared with [`Decode`] — encoding and decoding of the same type
-/// must use the same backend, so there is no need to distinguish them:
+/// A `#[codec(..)]` attribute must be present to select the serialization backend. The same
+/// attribute is shared with [`Decode`] — encoding and decoding of the same type must use the
+/// same backend, so there is no need to distinguish them:
 ///
 /// - `#[codec(prost)]` — delegates to [`prost::Message::encode_to_vec`]. The target
 ///   type must also implement [`prost::Message`].
@@ -100,9 +102,9 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 
 /// Derive the [`Decode`] trait for a message.
 ///
-/// A `#[codec(..)]` attribute must be present to select the deserialization backend.
-/// The same attribute is shared with [`Encode`] — encoding and decoding of the same type
-/// must use the same backend, so there is no need to distinguish them:
+/// A `#[codec(..)]` attribute must be present to select the deserialization backend. The same
+/// attribute is shared with [`Encode`] — encoding and decoding of the same type must use the
+/// same backend, so there is no need to distinguish them:
 ///
 /// - `#[codec(prost)]` — delegates to [`prost::Message::decode`]. The target type
 ///   must also implement [`prost::Message`].
@@ -135,4 +137,36 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
 
     decode::expand(&ast).into()
+}
+
+/// Derive the [`RemoteActor`] trait for an actor.
+///
+/// [`RemoteActor`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/trait.RemoteActor.html
+#[proc_macro_derive(RemoteActor)]
+pub fn remote_actor_derive(input: TokenStream) -> TokenStream {
+    let ast = syn::parse(input).unwrap();
+
+    remote_actor::expand(&ast).into()
+}
+
+/// Attribute macro applied to `impl Actor for MyActor { ... }` to install the `Address<Self>`
+/// to `Recipient<RemoteMessage>` conversion function used by `acktor-ipc`.
+///
+/// Injects an override of [`Actor::erased_recipient_fn`] so every `Address<Self>` carries an
+/// inline conversion to `Recipient<RemoteMessage>`.
+///
+/// # Example
+///
+/// ```ignore
+/// #[acktor_ipc::remote]
+/// impl Actor for MyActor {
+///     type Error = anyhow::Error;
+///     type Context = Context<Self>;
+/// }
+/// ```
+///
+/// [`Actor::erased_recipient_fn`]: https://docs.rs/acktor/latest/acktor/trait.Actor.html#method.erased_recipient_fn
+#[proc_macro_attribute]
+pub fn remote(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    remote::expand(item.into()).into()
 }

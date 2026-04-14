@@ -1,3 +1,4 @@
+#[cfg(feature = "erased-recipient")]
 use std::any::Any;
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
@@ -14,6 +15,8 @@ use tokio::sync::{
 
 use super::recipient::Recipient;
 use super::sender::{SendResult, Sender, SenderId, TrySendResult};
+#[cfg(feature = "erased-recipient")]
+use crate::actor::ErasedRecipientFn;
 use crate::actor::{Actor, ActorId};
 use crate::envelope::{Envelope, FromEnvelope, ToEnvelope};
 use crate::message::Message;
@@ -26,6 +29,10 @@ where
 {
     index: ActorId,
     tx: mpsc::Sender<Envelope<A>>,
+    /// Optional conversion function pointer baked in at construction (see
+    /// [`Actor::erased_recipient_fn`]).
+    #[cfg(feature = "erased-recipient")]
+    erased_recipient_fn: Option<ErasedRecipientFn<A>>,
 }
 
 impl<A> Debug for Address<A>
@@ -47,6 +54,8 @@ where
         Self {
             index: self.index,
             tx: self.tx.clone(),
+            #[cfg(feature = "erased-recipient")]
+            erased_recipient_fn: self.erased_recipient_fn,
         }
     }
 }
@@ -79,10 +88,15 @@ where
     A: Actor,
 {
     /// Wraps a message sender to form an address.
+    ///
+    /// Triggers [`Actor::erased_recipient_fn`] once (if the feature `erased-recipient` is
+    /// enabled) and stores the result.
     pub fn new(tx: mpsc::Sender<Envelope<A>>) -> Self {
         Self {
             index: create_actor_id(),
             tx,
+            #[cfg(feature = "erased-recipient")]
+            erased_recipient_fn: A::erased_recipient_fn(),
         }
     }
 
@@ -216,6 +230,17 @@ where
 
         Ok(())
     }
+
+    /// If the actor backing this sender opted into the conversion via
+    /// [`Actor::erased_recipient_fn`][crate::actor::Actor::erased_recipient_fn], returns the
+    /// resulting type-erased trait object. Downstream crates can then downcast this into the
+    /// concrete type they used to override the
+    /// [`Actor::erased_recipient_fn`][crate::actor::Actor::erased_recipient_fn] method.
+    #[cfg(feature = "erased-recipient")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "erased-recipient")))]
+    pub fn erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.erased_recipient_fn.map(|f| f(self))
+    }
 }
 
 impl<A> SenderId for Address<A>
@@ -269,8 +294,9 @@ where
         self.blocking_do_send(msg)
     }
 
-    fn as_any(&self) -> Option<&(dyn Any + 'static)> {
-        Some(self)
+    #[cfg(feature = "erased-recipient")]
+    fn erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.erased_recipient()
     }
 }
 

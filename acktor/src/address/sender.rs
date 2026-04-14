@@ -1,3 +1,4 @@
+#[cfg(feature = "erased-recipient")]
 use std::any::Any;
 use std::pin::Pin;
 
@@ -80,8 +81,14 @@ where
     /// This method is intended for use cases where you are sending from synchronous code.
     fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>>;
 
-    /// Returns a reference to the concrete sender behind this trait object so that it can be downcast to the concrete type.
-    fn as_any(&self) -> Option<&(dyn Any + 'static)> {
+    /// If the actor backing this sender opted into the conversion via
+    /// [`Actor::erased_recipient_fn`][crate::actor::Actor::erased_recipient_fn], returns the
+    /// resulting type-erased trait object. Downstream crates can then downcast this into the
+    /// concrete type they used to override the
+    /// [`Actor::erased_recipient_fn`][crate::actor::Actor::erased_recipient_fn] method.
+    #[cfg(feature = "erased-recipient")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "erased-recipient")))]
+    fn erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
         None
     }
 }

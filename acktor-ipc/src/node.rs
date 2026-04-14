@@ -42,6 +42,7 @@ use factory::Factory;
 type Result<T> = std::result::Result<T, NodeError>;
 
 pub(crate) type FactoryRegistry = HashMap<String, Box<dyn DynRemoteActorFactory>>;
+
 pub(crate) type LabelMap = Arc<DashMap<String, ActorId, ahash::RandomState>>;
 
 /// An actor which helps to manage the IPC connections.
@@ -52,12 +53,12 @@ pub(crate) type LabelMap = Arc<DashMap<String, ActorId, ahash::RandomState>>;
 #[derive(Default)]
 pub struct Node {
     listeners: Vec<Box<dyn IpcListener>>,
-    /// Registered factories for peer-initiated actor creation, keyed by the
-    /// [`TYPE_NAME`][RemoteActorFactory::TYPE_NAME].
+    // registered factories for peer-initiated actor creation, keyed by the type name.
     factory_registry: FactoryRegistry,
     factory: Option<Address<Factory>>,
+    // `registry` and `label_map`  are cloned into the factory and every session, so all holders
+    // observe the same contents. They are wrapped in `Arc` so clone is cheap.
     registry: RemoteActorRegistry,
-    /// A map for looking up actor id by their labels. Only available for peer-created actors.
     label_map: LabelMap,
     sessions: DoubleMap<ActorId, String, Address<Session>>,
     children: HashMap<Recipient<Signal>, JoinHandle<()>>,
@@ -145,6 +146,8 @@ impl Node {
         let (address, join_handle) = Session::create(endpoint.clone(), |child_ctx| {
             child_ctx.set_supervisor(Some(ctx.address().into()));
 
+            // SAFETY: `self.factory` is `Some` from `post_start` until `post_stop`; no new
+            // session can be created outside that window, so the unwrap is infallible.
             Ok(Session::new(
                 connection,
                 self.factory.clone().unwrap(),
@@ -156,7 +159,7 @@ impl Node {
 
         let session_id = address.index();
 
-        // this will never fail since we have verified the senssion label is unique
+        // this will never fail since we have verified the session label is unique
         let _ = self
             .sessions
             .insert(session_id, session_label.clone(), address.clone());
@@ -194,18 +197,13 @@ impl Actor for Node {
     type Context = NodeContext;
     type Error = NodeError;
 
-    async fn post_start(&mut self, ctx: &mut Self::Context) -> Result<()> {
+    async fn post_start(&mut self, _ctx: &mut Self::Context) -> Result<()> {
         let factories = mem::take(&mut self.factory_registry);
 
-        let (address, join_handle) = Factory::create("factory", |child_ctx| {
-            child_ctx.set_supervisor(Some(ctx.address().into()));
-
-            Ok(Factory::new(
-                factories,
-                self.registry.clone(),
-                self.label_map.clone(),
-            ))
-        })?;
+        // the factory actor never fail, so it is not supervised
+        let (address, join_handle) =
+            Factory::new(factories, self.registry.clone(), self.label_map.clone())
+                .run("factory")?;
 
         self.children.insert(address.clone().into(), join_handle);
         self.factory = Some(address);
@@ -424,33 +422,6 @@ impl Handler<SupervisionEvent<Session>> for Node {
 
                 self.notify_observers(NodeEvent::SessionDeleted(session))
                     .await;
-            }
-            _ => {}
-        }
-    }
-}
-
-impl Handler<SupervisionEvent<Factory>> for Node {
-    type Result = ();
-
-    async fn handle(
-        &mut self,
-        msg: SupervisionEvent<Factory>,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
-        debug_trace!("Handle supervision event {:?}", msg);
-
-        match msg {
-            SupervisionEvent::Warn(_, e) => {
-                warn!("Actor factory error: {}", report!(e));
-            }
-            SupervisionEvent::Terminated(address, e) => {
-                if let Some(e) = e {
-                    error!("Actor factory is stopped with error: {}", report!(e));
-                }
-
-                self.factory = None;
-                self.children.remove(&address.into());
             }
             _ => {}
         }

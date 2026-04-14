@@ -1,3 +1,5 @@
+#[cfg(feature = "erased-recipient")]
+use std::any::Any;
 use std::error::Error;
 use std::fmt::Display;
 use std::panic::AssertUnwindSafe;
@@ -13,6 +15,13 @@ use crate::supervisor::SupervisionEvent;
 
 /// Actor index type.
 pub type ActorId = u64;
+
+/// Function-pointer type returned by [`Actor::erased_recipient_fn`], which converts an
+/// [`Address<A>`] into a type-erased trait object which can be downcast into a concrete
+/// [`Recipient<M>`].
+#[cfg(feature = "erased-recipient")]
+#[cfg_attr(docsrs, doc(cfg(feature = "erased-recipient")))]
+pub type ErasedRecipientFn<A> = fn(&Address<A>) -> Box<dyn Any + Send + Sync>;
 
 /// State of an actor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +151,28 @@ pub trait Actor: Sized + Send + 'static {
             f(&mut ctx)?
         };
         ctx.run(actor, span)
+    }
+
+    /// Optional conversion hook that turns an [`Address<A>`] into a type-erased trait object
+    /// which can be downcast into a concrete [`Recipient<M>`].
+    ///
+    /// It is intended for use cases where you want to convert from any [`Recipient<N>`] into
+    /// a [`Recipient<M>`] without knowing the concrete actor type `A`. Here `N` can be any
+    /// message type which the actor has implemented [`Handler<N>`][crate::message::Handler<N>]
+    /// for, and `M` is the type chosen by the implementor when they override this method. The
+    /// [`ErasedRecipientFn`] will convert an [`Address<A>`] into [`Recipient<M>`] first, and then
+    /// type-erase it into a `Box<dyn Any + Send + Sync>`.
+    ///
+    /// Returning `Some(f)` causes [`Address::new`] to bake `f` into every address for this
+    /// actor; Returning `None` (the default) means this actor type does not opt into any
+    /// such conversion.
+    ///
+    /// Crates that extend actors with extra capabilities based on this feature should ship
+    /// an attribute macro that generates the overridden method.
+    #[cfg(feature = "erased-recipient")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "erased-recipient")))]
+    fn erased_recipient_fn() -> Option<ErasedRecipientFn<Self>> {
+        None
     }
 }
 

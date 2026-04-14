@@ -5,7 +5,7 @@ use std::fmt::{self, Debug};
 use bytes::Bytes;
 use tokio::sync::oneshot;
 
-use acktor::{ActorState, Message};
+use acktor::{Actor, ActorState, Address, Message, Recipient, Sender};
 
 use crate::codec::DecodeContext;
 use crate::remote_address::RemoteAddress;
@@ -89,6 +89,36 @@ impl RemoteMessage {
     pub fn with_context(mut self, context: DecodeContext) -> Self {
         self.decode_context = Some(context);
         self
+    }
+}
+
+pub trait RecipientExt {
+    fn to_recipient_remote_message(&self) -> Result<Recipient<RemoteMessage>, String>;
+}
+
+impl<A> RecipientExt for Address<A>
+where
+    A: Actor,
+{
+    fn to_recipient_remote_message(&self) -> Result<Recipient<RemoteMessage>, String> {
+        Ok(*self
+            .erased_recipient()
+            .ok_or_else(|| "actor does not opt in the erased_recipient hook".to_string())?
+            .downcast::<Recipient<RemoteMessage>>()
+            .map_err(|_| "could not downcast to Recipient<RemoteMessage>".to_string())?)
+    }
+}
+
+impl<M> RecipientExt for Recipient<M>
+where
+    M: Message,
+{
+    fn to_recipient_remote_message(&self) -> Result<Recipient<RemoteMessage>, String> {
+        Ok(*self
+            .erased_recipient()
+            .ok_or_else(|| "actor does not opt in the erased_recipient hook".to_string())?
+            .downcast::<Recipient<RemoteMessage>>()
+            .map_err(|_| "could not downcast to Recipient<RemoteMessage>".to_string())?)
     }
 }
 

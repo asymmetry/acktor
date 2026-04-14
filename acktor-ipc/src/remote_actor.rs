@@ -15,15 +15,10 @@ pub use registry::RemoteActorRegistry;
 /// A marker trait for actors which can be reached over IPC.
 ///
 /// Users should implement the [`Handler<RemoteMessage>`] trait for a remote actor to define
-/// how it processes incoming remote messages and derive this trait to mark it can be reached
-/// remotely.
-///
-/// Implementing [`RemoteActor`] is the **one and only** change a user must make to an existing
-/// actor to make it reachable over IPC.
-///
-/// # Implementation
-///
-/// **Do not implement this trait yourself!** Instead, use [`#[derive(RemoteActor)]`][acktor_derive::RemoteActor]. // TODO: finish the doc
+/// how it processes incoming remote messages, then apply the
+/// [`#[acktor_ipc::remote]`][crate::remote] attribute to the `impl Actor for MyActor { ... }`
+/// block so the actor's address will be automatically registered in the [`Node`][crate::Node]'s
+/// [`RemoteActorRegistry`].
 pub trait RemoteActor: Actor + Handler<RemoteMessage> {}
 
 /// Extends [`RemoteActor`] with the ability to be spawned on demand by peers.

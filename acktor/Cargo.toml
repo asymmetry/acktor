@@ -18,11 +18,17 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["derive"]
+
 derive = ["dep:acktor-derive"]
+# opt-in hook to bridge an `Address<A>` into a type-erased trait object which can be downcast
+# into a concrete `Recipient<M>`
+erased-recipient = []
 # this feature requires `tokio_unstable` flag
 tokio-tracing = ["tokio/tracing"]
 # emits debug-level tracing logs when an observer's mailbox is full during notification
 bottleneck-warning = []
+# marker feature enabled by `acktor-ipc`
+ipc-support = ["erased-recipient"]
 
 [dependencies]
 ahash = "0.8"

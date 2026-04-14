@@ -7,10 +7,11 @@ use std::fmt::{self, Debug};
 
 use bytes::{Bytes, BytesMut};
 
-use acktor::{Address, SenderId};
+use acktor::{Actor, Address, Message, Recipient, SenderId};
 
-use crate::remote_actor::{RemoteActor, RemoteActorRegistry};
+use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_address::RemoteAddress;
+use crate::remote_message::RecipientExt;
 use crate::session::Session;
 
 pub mod errors;
@@ -101,7 +102,7 @@ pub trait Decode {
 
 impl<A> Encode for Address<A>
 where
-    A: RemoteActor,
+    A: Actor,
 {
     #[inline]
     fn encoded_len(&self) -> usize {
@@ -112,9 +113,32 @@ where
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         // auto-register the address if it is an local address
         if !self.index().is_remote() {
-            ctx.ok_or(EncodeError::MissingEncodeContext)?
-                .registry
-                .insert(self.clone());
+            let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
+            if let Ok(recipient) = self.to_recipient_remote_message() {
+                ctx.registry.insert(recipient);
+            }
+        }
+        prost::Message::encode(&self.index(), buf).map_err(Into::into)
+    }
+}
+
+impl<M> Encode for Recipient<M>
+where
+    M: Message,
+{
+    #[inline]
+    fn encoded_len(&self) -> usize {
+        prost::Message::encoded_len(&self.index())
+    }
+
+    #[inline]
+    fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
+        // auto-register the address if it is an local address
+        if !self.index().is_remote() {
+            let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
+            if let Ok(recipient) = self.to_recipient_remote_message() {
+                ctx.registry.insert(recipient);
+            }
         }
         prost::Message::encode(&self.index(), buf).map_err(Into::into)
     }

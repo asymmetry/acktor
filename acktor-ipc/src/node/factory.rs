@@ -66,14 +66,8 @@ impl CronActor for Factory {
         _ctx: &mut Self::Context,
     ) -> std::result::Result<Duration, Self::Error> {
         self.registry.retain(|_, recipient| !recipient.is_closed());
-
-        for entry in self.label_map.iter() {
-            let label = entry.key();
-            let actor_id = entry.value();
-            if !self.registry.contains(*actor_id) {
-                self.label_map.remove(label);
-            }
-        }
+        self.label_map
+            .retain(|_, actor_id| self.registry.contains(*actor_id));
 
         Ok(Duration::from_secs(1))
     }
