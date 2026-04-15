@@ -2,26 +2,32 @@ use std::io::{self, IsTerminal};
 use std::process;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use clap::{Parser, ValueEnum};
-use tokio::{signal, sync::oneshot, time};
+use tokio::{signal, time};
 use tracing_subscriber::EnvFilter;
 
-use acktor::{Actor, ActorContext, Signal};
-use acktor_ipc::{Node, node};
+use acktor::{Actor, ActorContext, Recipient, supervisor::SupervisionEvent};
+use acktor_ipc::{Node, node::command};
 
-#[cfg(not(any(feature = "websocket")))]
-use acktor_ipc::ipc_method::pipe::PipeListener as Listener;
-#[cfg(feature = "websocket")]
-use acktor_ipc::ipc_method::websocket::WebSocketListener as Listener;
+#[cfg(feature = "pipe")]
+use acktor_ipc::ipc_method::pipe::{PipeConnection as Connection, PipeListener as Listener};
+#[cfg(not(feature = "pipe"))]
+use acktor_ipc::ipc_method::websocket::{
+    WebSocketConnection as Connection, WebSocketListener as Listener,
+};
+
+mod message;
 
 mod client;
-mod message;
-mod server;
+use client::Client;
 
-#[cfg(not(any(feature = "websocket")))]
+mod server;
+use server::Server;
+
+#[cfg(feature = "pipe")]
 const ENDPOINT: &str = "pingpong";
-#[cfg(feature = "websocket")]
+#[cfg(not(feature = "pipe"))]
 const ENDPOINT: &str = "ws://localhost:12345/";
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -38,80 +44,72 @@ pub struct Args {
 }
 
 async fn server() -> Result<()> {
-    #[cfg(not(any(feature = "websocket")))]
-    let listener = Listener::new("pingpong").context("could not create pipe listener")?;
-    #[cfg(feature = "websocket")]
-    let listener = Listener::new("localhost:12345")
+    #[cfg(feature = "pipe")]
+    let listener = Listener::new(ENDPOINT).context("could not create pipe listener")?;
+    #[cfg(not(feature = "pipe"))]
+    let listener = Listener::bind("localhost:12345")
         .await
         .context("could not create WebSocket listener")?;
 
-    let (address, join_handle) = Node::create(format!("node-{}", process::id()), |ctx| {
-        let router = server::ServerRouter::new(ctx.address());
-        let node = Node::new(Some(listener)).with_router(router);
-        Ok(node)
-    })?;
+    let (address, join_handle) = Node::new()
+        .with_listener(listener)
+        .with_actor_factory::<Server>()
+        .run(format!("node-{}", process::id()))?;
 
-    let (tx, rx) = oneshot::channel();
+    signal::ctrl_c().await?;
 
-    tokio::spawn(async move {
-        let _ = signal::ctrl_c().await;
-        let _ = tx.send(());
-    });
-
-    let _ = rx.await;
-
-    address.do_send(Signal::Terminate).await?;
-    join_handle.await?;
+    acktor::utils::terminate_actor(address, join_handle).await;
 
     Ok(())
 }
 
 async fn client() -> Result<()> {
-    let (address, join_handle) =
-        Node::<Listener>::default().run(format!("node-{}", process::id()))?;
+    let (node_address, node_join_handle) = Node::new().run(format!("node-{}", process::id()))?;
 
-    let (client_address, client_join_handle) =
-        client::Client::new(address.clone()).run("client")?;
-
-    address
-        .send(node::command::SetRouter(client::ClientRouter::new(
-            client_address.clone(),
-        )))
-        .await?
-        .await?;
-
-    let (tx, mut rx) = oneshot::channel();
-
-    tokio::spawn(async move {
-        let _ = signal::ctrl_c().await;
-        let _ = tx.send(());
-    });
-
-    while address
-        .send(node::command::Connect {
-            endpoint: ENDPOINT.to_string(),
-            session_label: "server-session".to_string(),
-        })
-        .await?
-        .await?
-        .is_err()
-    {
+    let session_address = loop {
+        if let Ok(session_address) = node_address
+            .send(command::Connect::<Connection>::new(
+                ENDPOINT.to_string(),
+                Some("server-session".to_string()),
+            ))
+            .await?
+            .await?
+        {
+            break session_address;
+        }
         tokio::select! {
-            _ = &mut rx => break,
+            _ = signal::ctrl_c() => {
+                acktor::utils::terminate_actor(node_address, node_join_handle).await;
+                return Ok(());
+            }
             _ = time::sleep(Duration::from_secs(1)) => {}
         }
+    };
+
+    let (recipient, mut rx) = Recipient::<SupervisionEvent<Client>>::create(4);
+
+    let (client_address, client_join_handle) = Client::create("ping", |ctx| {
+        ctx.set_supervisor(Some(recipient));
+        Ok(Client::new(session_address))
+    })?;
+
+    loop {
+        tokio::select! {
+            _ = signal::ctrl_c() => {
+                acktor::utils::terminate_actor(client_address, client_join_handle).await;
+                acktor::utils::terminate_actor(node_address, node_join_handle).await;
+
+                break;
+            }
+            Some(event) = rx.recv() => {
+                if let SupervisionEvent::Terminated(_, _) = event {
+                    acktor::utils::terminate_actor(node_address, node_join_handle).await;
+
+                    break;
+                }
+            }
+        }
     }
-
-    tokio::select! {
-        _ = &mut rx => {}
-        _ = time::sleep(Duration::from_secs(30)) => {}
-    }
-
-    address.do_send(Signal::Terminate).await?;
-    join_handle.await?;
-
-    client_address.do_send(Signal::Terminate).await?;
-    client_join_handle.await?;
 
     Ok(())
 }

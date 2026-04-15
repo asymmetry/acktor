@@ -1,11 +1,11 @@
-use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, Recipient, SenderId,
+    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, Recipient,
+    SenderId,
     address::Mailbox,
+    channel::mpsc,
     envelope::{Envelope, EnvelopeProxy},
-    macros::report,
     supervisor::SupervisionEvent,
 };
 
@@ -64,7 +64,7 @@ impl SessionContext {
                     match received {
                         Ok(msg) => {
                             if let Err(e) = actor.handle_ipc_message(msg, self).await {
-                                warn!("Could not handle IPC message: {}", report!(e));
+                                warn!("Could not handle IPC message: {}", e.report());
                             }
                         }
                         Err(e) => {

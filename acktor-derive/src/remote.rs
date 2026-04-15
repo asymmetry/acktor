@@ -10,7 +10,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
 
     let shim_method: syn::ImplItem = syn::parse_quote! {
         fn erased_recipient_fn() -> ::core::option::Option<
-            ::acktor::ErasedRecipientFn<Self>,
+            ::acktor::actor::ErasedRecipientFn<Self>,
         > {
             ::core::option::Option::Some(|addr: &::acktor::Address<Self>| {
                 let recipient: ::acktor::Recipient<::acktor_ipc::RemoteMessage> =

@@ -12,12 +12,11 @@ use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorId, Address, Handler, Recipient, Signal,
-    macros::{debug_trace, report},
+    Actor, ActorContext, ActorId, Address, ErrorReport, Handler, Recipient, Signal,
     message::FutureMessageResult,
     observer::{ObserverSet, SubjectActor},
     supervisor::SupervisionEvent,
-    utils,
+    utils::{debug_trace, terminate_actor},
 };
 
 use crate::double_map::DoubleMap;
@@ -41,7 +40,7 @@ use factory::Factory;
 
 type Result<T> = std::result::Result<T, NodeError>;
 
-pub(crate) type FactoryRegistry = HashMap<String, Box<dyn DynRemoteActorFactory>>;
+pub(crate) type FactoryRegistry = HashMap<String, Arc<dyn DynRemoteActorFactory>>;
 
 pub(crate) type LabelMap = Arc<DashMap<String, ActorId, ahash::RandomState>>;
 
@@ -118,7 +117,7 @@ impl Node {
     {
         self.factory_registry.insert(
             A::TYPE_NAME.to_string(),
-            Box::new(RemoteActorShim::<A>(PhantomData)),
+            Arc::new(RemoteActorShim::<A>(PhantomData)),
         );
         self
     }
@@ -217,7 +216,7 @@ impl Actor for Node {
         join_all(
             self.children
                 .drain()
-                .map(|(address, join_handle)| utils::terminate_actor(address, join_handle)),
+                .map(|(address, join_handle)| terminate_actor(address, join_handle)),
         )
         .await;
 
@@ -406,14 +405,14 @@ impl Handler<SupervisionEvent<Session>> for Node {
 
         match msg {
             SupervisionEvent::Warn(actor, e) => {
-                warn!("Session {} error: {}", actor.index(), report!(e));
+                warn!("Session {} error: {}", actor.index(), e.report());
             }
             SupervisionEvent::Terminated(session, e) => {
                 if let Some(e) = e {
                     error!(
                         "Session {} is stopped with error: {}",
                         session.index(),
-                        report!(e)
+                        e.report()
                     );
                 }
 

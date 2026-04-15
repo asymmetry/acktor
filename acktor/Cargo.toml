@@ -13,12 +13,11 @@ keywords.workspace = true
 exclude = ["examples/*", "tests/*"]
 
 [package.metadata.docs.rs]
-features = ["derive", "bottleneck-warning"]
+features = ["derive", "erased-recipient", "bottleneck-warning"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["derive"]
-
 derive = ["dep:acktor-derive"]
 # opt-in hook to bridge an `Address<A>` into a type-erased trait object which can be downcast
 # into a concrete `Recipient<M>`
@@ -34,11 +33,11 @@ ipc-support = ["erased-recipient"]
 ahash = "0.8"
 anyhow = "1.0"
 futures-util = "0.3"
+thiserror = "2.0"
 tokio = { version = "1.37", features = ["macros", "rt", "sync", "time"] }
 tracing = "0.1"
 
 acktor-derive = { workspace = true, optional = true }
-acktor-macros = { workspace = true }
 
 [dev-dependencies]
 anyhow = "1.0"

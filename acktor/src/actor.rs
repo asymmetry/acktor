@@ -1,20 +1,21 @@
-#[cfg(feature = "erased-recipient")]
-use std::any::Any;
 use std::error::Error;
 use std::fmt::Display;
 use std::panic::AssertUnwindSafe;
 
+#[cfg(feature = "erased-recipient")]
+use std::any::Any;
+
 use futures_util::future::{FutureExt, TryFutureExt};
-use tokio::task::JoinHandle;
 use tracing::{Instrument, Span, debug, error, error_span, warn};
 
-use acktor_macros::report;
-
 use crate::address::{Address, Mailbox, Recipient, Sender};
+use crate::errors::ErrorReport;
 use crate::supervisor::SupervisionEvent;
 
 /// Actor index type.
 pub type ActorId = u64;
+
+pub use tokio::task::JoinHandle;
 
 /// Function-pointer type returned by [`Actor::erased_recipient_fn`], which converts an
 /// [`Address<A>`] into a type-erased trait object which can be downcast into a concrete
@@ -68,14 +69,14 @@ pub trait Actor: Sized + Send + 'static {
     /// The error type returned by lifecycle hooks and message handlers.
     type Error: Into<Box<dyn Error + Send + Sync>> + Display + Send + 'static;
 
-    /// Invoked before an actor is spawned into the tokio runtime.
-    /// The actor should be in [`Unstarted`][ActorState::Unstarted] state.
+    /// Invoked before an actor is spawned into the tokio runtime. The actor should be in
+    /// [`Unstarted`][ActorState::Unstarted] state.
     ///
-    /// This method is used to perform initialization tasks or spawn child actors.
-    /// In the default [`Context`][crate::context::Context] implementation, it is not spawned
-    /// into the tokio runtime and it is outside of the processing loop. Thus it will be invoked
-    /// only once synchronously. The actor will enter the [`Starting`][ActorState::Starting] state
-    /// after this method returns.
+    /// This method is used to perform initialization tasks or spawn child actors. In the default
+    /// [`Context`][crate::context::Context] implementation, it is not spawned into the tokio
+    /// runtime and it is outside of the processing loop. Thus it will be invoked only once
+    /// synchronously. The actor will enter the [`Starting`][ActorState::Starting] state after
+    /// this method returns.
     ///
     /// Panics in this method will prevent the actor being spawned into the runtime.
     /// [`run`][Actor::run] will return an error to the caller in this case.
@@ -84,13 +85,13 @@ pub trait Actor: Sized + Send + 'static {
         Ok(())
     }
 
-    /// Invoked after an actor is spawned into the tokio runtime.
-    /// The actor should be in [`Starting`][ActorState::Starting] state.
+    /// Invoked after an actor is spawned into the tokio runtime. The actor should be in
+    /// [`Starting`][ActorState::Starting] state.
     ///
-    /// This method is used to perform additional initialization.
-    /// In the default [`Context`][crate::context::Context] implementation, it is spawned into
-    /// the tokio runtime and it is outside of the processing loop. Thus it will be invoked only
-    /// once asynchronously. The actor will enter the [`Running`][ActorState::Running] state
+    /// This method is used to perform additional initialization. In the default
+    /// [`Context`][crate::context::Context] implementation, it is spawned into the tokio runtime
+    /// and it is outside of the processing loop, which means it will be invoked once and only
+    /// once, asynchronously. The actor will enter the [`Running`][ActorState::Running] state
     /// after this method returns.
     ///
     /// Panics in this method will be notified to the supervisor if there is one.
@@ -102,8 +103,8 @@ pub trait Actor: Sized + Send + 'static {
         std::future::ready(Ok(()))
     }
 
-    /// Invoked when an actor is being stopped.
-    /// The actor should be in [`Stopping`][ActorState::Stopping] state.
+    /// Invoked when an actor is being stopped. The actor should be in
+    /// [`Stopping`][ActorState::Stopping] state.
     ///
     /// This method is used to make decisions about whether to stop or to restart the actor.
     #[allow(unused_variables)]
@@ -114,8 +115,8 @@ pub trait Actor: Sized + Send + 'static {
         std::future::ready(Ok(Stopping::Stop))
     }
 
-    /// Invoked after an actor is stopped.
-    /// The actor should be in [`Stopped`][ActorState::Stopped] state.
+    /// Invoked after an actor is stopped. The actor should be in [`Stopped`][ActorState::Stopped]
+    /// state.
     ///
     /// This method is used to perform cleanup tasks or spawn new actors.
     #[allow(unused_variables)]
@@ -126,8 +127,8 @@ pub trait Actor: Sized + Send + 'static {
         std::future::ready(Ok(()))
     }
 
-    /// Starts an actor and spawns it to the tokio runtime,
-    /// returns its actor address and the join handle.
+    /// Starts an actor and spawns it to the tokio runtime, returns its actor address and the
+    /// join handle.
     fn run<S>(self, label: S) -> Result<(Address<Self>, JoinHandle<()>), Self::Error>
     where
         S: AsRef<str>,
@@ -137,8 +138,8 @@ pub trait Actor: Sized + Send + 'static {
         ctx.run(self, span)
     }
 
-    /// Constructs a new actor, starts it and spawns it to the tokio runtime,
-    /// returns its actor address and the join handle.
+    /// Constructs a new actor, starts it and spawns it to the tokio runtime, returns its actor
+    /// address and the join handle.
     fn create<S, F>(label: S, f: F) -> Result<(Address<Self>, JoinHandle<()>), Self::Error>
     where
         S: AsRef<str>,
@@ -146,6 +147,37 @@ pub trait Actor: Sized + Send + 'static {
     {
         let mut ctx = Self::Context::new(label.as_ref().to_string());
         let span = error_span!("Actor", id = ctx.address().index(), label = ctx.label());
+        let actor = {
+            let _enter = span.enter();
+            f(&mut ctx)?
+        };
+        ctx.run(actor, span)
+    }
+
+    /// Like [`create`][Self::create] but allows the caller to specify the parent tracing span.
+    ///
+    /// - `Some(&span)` — use `span` as the parent.
+    /// - `None` — create the span as a new root (no parent).
+    ///
+    /// Use this when you want to control an actor's span hierarchy independently of whatever
+    /// span happens to be entered at the call site.
+    fn create_in_span<S, F>(
+        label: S,
+        parent_span: Option<&Span>,
+        f: F,
+    ) -> Result<(Address<Self>, JoinHandle<()>), Self::Error>
+    where
+        S: AsRef<str>,
+        F: FnOnce(&mut Self::Context) -> Result<Self, Self::Error>,
+    {
+        let mut ctx = Self::Context::new(label.as_ref().to_string());
+        let parent_span = parent_span.and_then(|s| s.id());
+        let span = error_span!(
+            parent: parent_span,
+            "Actor",
+            id = ctx.address().index(),
+            label = ctx.label(),
+        );
         let actor = {
             let _enter = span.enter();
             f(&mut ctx)?
@@ -276,10 +308,10 @@ where
             } else {
                 match event {
                     SupervisionEvent::Warn(actor, e) => {
-                        warn!("Actor {} error: {}", actor.index(), report!(e.into()));
+                        warn!("Actor {} error: {}", actor.index(), e.into().report());
                     }
                     SupervisionEvent::Terminated(actor, Some(e)) => {
-                        error!("Actor {} error: {}", actor.index(), report!(e.into()));
+                        error!("Actor {} error: {}", actor.index(), e.into().report());
                     }
                     _ => {}
                 }
@@ -289,18 +321,18 @@ where
 
     /// Notifies the supervisor for an event.
     ///
-    /// This method will return immediately if there is no capacity in the mailbox of
-    /// the supervisor.
+    /// This method will return immediately if there is no capacity in the mailbox of the
+    /// supervisor.
     fn try_notify_supervisor(&mut self, event: SupervisionEvent<A>) {
         if let Some(supervisor) = self.supervisor() {
             let _ = supervisor.try_do_send(event);
         } else {
             match event {
                 SupervisionEvent::Warn(actor, e) => {
-                    warn!("Actor {} error: {}", actor.index(), report!(e.into()));
+                    warn!("Actor {} error: {}", actor.index(), e.into().report());
                 }
                 SupervisionEvent::Terminated(actor, Some(e)) => {
-                    error!("Actor {} error: {}", actor.index(), report!(e.into()));
+                    error!("Actor {} error: {}", actor.index(), e.into().report());
                 }
                 _ => {}
             }
@@ -314,8 +346,8 @@ where
         let address = self.address();
 
         // unwrap() is safe
-        // Context is always created with a mailbox, so when run() is called, mailbox is always Some
-        // run() consumes the mailbox, so it will not be able to be used again
+        // Context is always created with a mailbox, so when run() is called, mailbox is always
+        // Some(..); run() consumes the mailbox, so it will not be able to be used again
         let mailbox = self.take_mailbox().unwrap();
 
         {

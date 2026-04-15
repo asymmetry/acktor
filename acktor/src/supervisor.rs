@@ -6,11 +6,10 @@
 use std::fmt;
 use std::future::{self, Future};
 
-use acktor_macros::debug_trace;
-
 use crate::actor::{Actor, ActorContext, ActorState};
 use crate::address::{Address, Recipient, SenderId};
 use crate::message::{Handler, Message};
+use crate::utils::debug_trace;
 
 /// A message which is used to report actor status to a supervisor.
 #[derive(Debug)]

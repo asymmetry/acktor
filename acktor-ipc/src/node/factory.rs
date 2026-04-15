@@ -5,7 +5,7 @@ use std::time::Duration;
 use acktor::{
     Actor, ActorId, Handler, Message, Sender, SenderId,
     cron::{CronActor, CronContext},
-    macros::debug_trace,
+    utils::debug_trace,
 };
 
 use super::{FactoryRegistry, LabelMap};
@@ -101,8 +101,12 @@ impl Handler<CreateActor> for Factory {
             ));
         };
 
-        let (address, _) = factory
-            .create_remote(label.clone(), config)
+        let factory = factory.clone();
+        let label_cloned = label.clone();
+
+        let (address, _) = tokio::spawn(async move { factory.create_remote(label_cloned, config) })
+            .await
+            .map_err(|e| SessionError::CreateActorFailed(e.into()))?
             .map_err(SessionError::CreateActorFailed)?;
 
         let actor_id = address.index();

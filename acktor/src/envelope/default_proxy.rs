@@ -3,10 +3,10 @@ use std::fmt::{self, Debug};
 use std::pin::Pin;
 
 use futures_util::future::FutureExt;
-use tokio::sync::oneshot;
 
 use super::{Envelope, EnvelopeProxy, FromEnvelope, ToEnvelope};
 use crate::actor::{Actor, ActorContext};
+use crate::channel::oneshot;
 use crate::message::{Handler, Message, MessageResponse};
 
 /// The default envelope proxy for [`Message`].

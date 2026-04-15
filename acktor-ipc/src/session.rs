@@ -3,14 +3,12 @@ use std::fmt::{self, Debug};
 use ahash::HashMap;
 use bytes::Bytes;
 use futures_util::TryFutureExt;
-use tokio::sync::oneshot;
 use tracing::{Instrument, info, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorId, Address, Handler, Message, Sender, SenderId,
-    macros::{debug_trace, report},
-    message::FutureMessageResult,
-    supervisor::SupervisionEvent,
+    Actor, ActorContext, ActorId, Address, ErrorReport, Handler, Message, Sender, SenderId,
+    channel::oneshot, message::FutureMessageResult, supervisor::SupervisionEvent,
+    utils::debug_trace,
 };
 use acktor_ipc_proto::{actor_message, ipc_message, node_message};
 
@@ -112,7 +110,10 @@ impl Session {
 
     async fn send_ipc_message(&mut self, ipc_msg: ipc_message::IpcMessage) -> Result<()> {
         let encoded_ipc_msg = ipc_msg.encode_to_bytes(None)?;
-        self.connection.send(encoded_ipc_msg).await?;
+        self.connection
+            .send(encoded_ipc_msg)
+            .await
+            .map_err(SessionError::SendOutboundMessageFailed)?;
 
         Ok(())
     }
@@ -161,7 +162,7 @@ impl Session {
                             .inspect_err(|e| {
                                 warn!(
                                     "Could not send CreateActor result to sender: {}",
-                                    report!(e)
+                                    e.report()
                                 );
                             })
                             .in_current_span(),
@@ -179,15 +180,15 @@ impl Session {
                                 .registry
                                 .get(*actor_id)
                                 .ok_or_else(|| SessionError::ActorNotFound(actor_id.to_string())),
-                            node_message::ActorHandle::Label(label) => {
-                                let actor_id = self
-                                    .label_map
-                                    .get(label)
-                                    .ok_or_else(|| SessionError::ActorNotFound(label.clone()))?;
-                                self.registry.get(*actor_id).ok_or_else(|| {
-                                    SessionError::ActorNotFound(actor_id.to_string())
-                                })
-                            }
+                            node_message::ActorHandle::Label(label) => self
+                                .label_map
+                                .get(label)
+                                .ok_or_else(|| SessionError::ActorNotFound(label.clone()))
+                                .and_then(|actor_id| {
+                                    self.registry.get(*actor_id).ok_or_else(|| {
+                                        SessionError::ActorNotFound(actor_id.to_string())
+                                    })
+                                }),
                         }
                         .map(|recipient| recipient.index());
 
@@ -241,7 +242,7 @@ impl Session {
 
                     sender
                         .send(result)
-                        .map_err(|_| SessionError::SendMessageError("channel closed".into()))
+                        .map_err(|_| SessionError::SendError("channel closed".into()))
                 }
 
                 Some(node_message::NodeReplyType::GetActor(node_message::GetActorResult {
@@ -275,7 +276,7 @@ impl Session {
 
                     sender
                         .send(result)
-                        .map_err(|_| SessionError::SendMessageError("channel closed".into()))
+                        .map_err(|_| SessionError::SendError("channel closed".into()))
                 }
 
                 _ => Err(DecodeError::from("missing field `reply` in `NodeReply` message").into()),
@@ -329,7 +330,7 @@ impl Session {
                     Ok(rx) => rx,
                     Err(e) => {
                         let ipc_msg = ipc_message::IpcMessage::actor_message(
-                            actor_message::ActorMessage::reply::<String>(tag, Err(report!(e))),
+                            actor_message::ActorMessage::reply::<String>(tag, Err(e.report())),
                         );
                         self.send_ipc_message(ipc_msg).await?;
 
@@ -349,7 +350,7 @@ impl Session {
                     .inspect_err(|e| {
                         warn!(
                             "Could not send ActorMessage result to sender: {}",
-                            report!(e)
+                            e.report()
                         );
                     })
                     .in_current_span(),
@@ -390,7 +391,7 @@ impl Session {
                 match result {
                     Some(actor_message::ReplyResultType::Ok(message)) => sender
                         .send(message)
-                        .map_err(|_| SessionError::SendMessageError("channel closed".into())),
+                        .map_err(|_| SessionError::SendError("channel closed".into())),
 
                     Some(actor_message::ReplyResultType::Err(err)) => {
                         // drop(sender); // sender will be dropped when this function returns
@@ -440,7 +441,10 @@ impl Actor for Session {
     }
 
     async fn post_stop(&mut self, _ctx: &mut Self::Context) -> Result<()> {
-        self.connection.close().await?;
+        self.connection
+            .close()
+            .await
+            .map_err(SessionError::IoError)?;
 
         info!("Session {} is stopped", self.connection.peer_endpoint());
 
@@ -477,10 +481,7 @@ impl Handler<command::CreateRemoteActor> for Session {
             self.node_msg_reply_map.insert(tag, tx);
         }
 
-        FutureMessageResult::new(async move {
-            rx.await
-                .map_err(|e| SessionError::SendMessageError(e.into()))?
-        })
+        FutureMessageResult::new(async move { rx.await? })
     }
 }
 
@@ -514,10 +515,7 @@ impl Handler<command::GetRemoteActor> for Session {
             self.node_msg_reply_map.insert(tag, tx);
         }
 
-        FutureMessageResult::new(async move {
-            rx.await
-                .map_err(|e| SessionError::SendMessageError(e.into()))?
-        })
+        FutureMessageResult::new(async move { rx.await? })
     }
 }
 

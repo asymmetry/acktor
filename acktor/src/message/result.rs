@@ -1,10 +1,9 @@
 use std::fmt::{self, Debug};
 use std::future;
 
-use tokio::sync::oneshot;
-
 use super::{Message, MessageResponse};
 use crate::actor::Actor;
+use crate::channel::oneshot;
 use crate::envelope::DefaultEnvelopeProxy;
 
 /// A helper type which wraps the result of a message handler as a message response.

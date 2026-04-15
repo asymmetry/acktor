@@ -6,21 +6,18 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use futures_util::FutureExt;
-use tokio::sync::{
-    mpsc::error::{SendError, TrySendError},
-    oneshot,
-};
 use tracing::{Instrument, warn};
 
-use acktor::{Address, Message, Recipient, Sender, SenderId};
+use acktor::{
+    Address, Message, Recipient, SendError, Sender, SenderId,
+    channel::oneshot,
+    errors::{DoSendResult, SendResult},
+};
 
 use crate::codec::{Decode, Encode, EncodeContext};
 use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_message::RemoteMessage;
 use crate::session::Session;
-
-type SendResult<M, R> = Result<oneshot::Receiver<R>, SendError<M>>;
-type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<M>>;
 
 /// A type which is used to send messages to a remote actor.
 ///
@@ -141,10 +138,15 @@ where
         self.session.capacity()
     }
 
-    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M, M::Result>> + Send + '_>> {
+    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M>> + Send + '_>> {
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(_) => return Box::pin(future::ready(Err(SendError(msg)))),
+            Err(e) => {
+                return Box::pin(future::ready(Err(SendError::Other {
+                    message: Some(msg),
+                    source: e.into(),
+                })));
+            }
         };
 
         let (result_tx, result_rx) = oneshot::channel::<M::Result>();
@@ -167,30 +169,37 @@ where
             ))
             .map(|result| match result {
                 Ok(_) => Ok(result_rx),
-                Err(_) => Err(SendError(msg)),
+                Err(_) => Err(SendError::Closed(msg)),
             })
             .boxed()
     }
 
-    fn do_send(
-        &self,
-        msg: M,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SendError<M>>> + Send + '_>> {
+    fn do_send(&self, msg: M) -> Pin<Box<dyn Future<Output = DoSendResult<M>> + Send + '_>> {
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(_) => return Box::pin(future::ready(Err(SendError(msg)))),
+            Err(e) => {
+                return Box::pin(future::ready(Err(SendError::Other {
+                    message: Some(msg),
+                    source: e.into(),
+                })));
+            }
         };
 
         self.session
             .do_send(RemoteMessage::do_send(self.remote_actor_id, msg_bytes))
-            .map(|result| result.map_err(|_| SendError(msg)))
+            .map(|result| result.map_err(|_| SendError::Closed(msg)))
             .boxed()
     }
 
-    fn try_send(&self, msg: M) -> TrySendResult<M, M::Result> {
+    fn try_send(&self, msg: M) -> SendResult<M> {
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(_) => return Err(TrySendError::Closed(msg)),
+            Err(e) => {
+                return Err(SendError::Other {
+                    message: Some(msg),
+                    source: e.into(),
+                });
+            }
         };
 
         let (result_tx, result_rx) = oneshot::channel::<M::Result>();
@@ -212,30 +221,48 @@ where
         )) {
             Ok(_) => Ok(result_rx),
             Err(e) => match e {
-                TrySendError::Closed(_) => Err(TrySendError::Closed(msg)),
-                TrySendError::Full(_) => Err(TrySendError::Full(msg)),
+                SendError::Closed(_) => Err(SendError::Closed(msg)),
+                SendError::Full(_) => Err(SendError::Full(msg)),
+                SendError::Other { source, .. } => Err(SendError::Other {
+                    message: Some(msg),
+                    source,
+                }),
             },
         }
     }
 
-    fn try_do_send(&self, msg: M) -> Result<(), TrySendError<M>> {
+    fn try_do_send(&self, msg: M) -> DoSendResult<M> {
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(_) => return Err(TrySendError::Closed(msg)),
+            Err(e) => {
+                return Err(SendError::Other {
+                    message: Some(msg),
+                    source: e.into(),
+                });
+            }
         };
 
         self.session
             .try_do_send(RemoteMessage::do_send(self.remote_actor_id, msg_bytes))
             .map_err(|e| match e {
-                TrySendError::Closed(_) => TrySendError::Closed(msg),
-                TrySendError::Full(_) => TrySendError::Full(msg),
+                SendError::Closed(_) => SendError::Closed(msg),
+                SendError::Full(_) => SendError::Full(msg),
+                SendError::Other { source, .. } => SendError::Other {
+                    message: Some(msg),
+                    source,
+                },
             })
     }
 
-    fn blocking_send(&self, msg: M) -> SendResult<M, M::Result> {
+    fn blocking_send(&self, msg: M) -> SendResult<M> {
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(_) => return Err(SendError(msg)),
+            Err(e) => {
+                return Err(SendError::Other {
+                    message: Some(msg),
+                    source: e.into(),
+                });
+            }
         };
 
         let (result_tx, result_rx) = oneshot::channel::<M::Result>();
@@ -256,19 +283,24 @@ where
             result_bytes_tx,
         )) {
             Ok(_) => Ok(result_rx),
-            Err(_) => Err(SendError(msg)),
+            Err(_) => Err(SendError::Closed(msg)),
         }
     }
 
-    fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {
+    fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(_) => return Err(SendError(msg)),
+            Err(e) => {
+                return Err(SendError::Other {
+                    message: Some(msg),
+                    source: e.into(),
+                });
+            }
         };
 
         self.session
             .blocking_do_send(RemoteMessage::do_send(self.remote_actor_id, msg_bytes))
-            .map_err(|_| SendError(msg))
+            .map_err(|_| SendError::Closed(msg))
     }
 }
 

@@ -66,16 +66,15 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub mod errors {
-    //! Re-exports some error types from tokio.
+pub mod errors;
+pub use errors::{ErrorReport, RecvError, SendError};
 
-    pub use tokio::sync::mpsc::error::{SendError, TryRecvError, TrySendError};
-}
+pub mod channel;
 
 pub mod utils;
 
-mod actor;
-pub use actor::{Actor, ActorContext, ActorId, ActorState, Stopping};
+pub mod actor;
+pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
 
 mod context;
 pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
@@ -99,9 +98,3 @@ pub mod cron;
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use acktor_derive::{Message, MessageResponse};
-
-pub mod macros {
-    //! Utility macros for error reporting and debug tracing.
-
-    pub use acktor_macros::{debug_trace, report};
-}

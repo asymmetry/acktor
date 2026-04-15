@@ -9,10 +9,10 @@
 use std::future::{self, Future};
 use std::sync::Arc;
 
-use tokio::sync::oneshot;
 use tracing::debug;
 
 use crate::actor::{Actor, ActorContext};
+use crate::channel::oneshot;
 use crate::envelope::DefaultEnvelopeProxy;
 
 mod result;

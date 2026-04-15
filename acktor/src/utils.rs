@@ -1,9 +1,33 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
-use crate::actor::ActorId;
+/// Logs at info level only in debug mode.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __debug_info {
+    ($($arg:tt)+) => {
+        #[cfg(debug_assertions)]
+        tracing::info!($($arg)+);
+    };
+}
+
+/// Logs at trace level only in debug mode.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __debug_trace {
+    ($($arg:tt)+) => {
+        #[cfg(debug_assertions)]
+        tracing::trace!($($arg)+);
+    };
+}
+
+#[doc(inline)]
+pub use crate::__debug_info as debug_info;
+#[doc(inline)]
+pub use crate::__debug_trace as debug_trace;
+
+use crate::actor::{ActorId, JoinHandle};
 use crate::address::{Recipient, Sender, SenderId};
 use crate::signal::Signal;
 
@@ -31,8 +55,13 @@ pub fn type_name<T>() -> &'static str {
     type_name.rsplit("::").next().unwrap()
 }
 
-/// Terminates an actor by sending it a [`Signal::Terminate`] message and awaiting its [`JoinHandle`].
-pub async fn terminate_actor(address: Recipient<Signal>, join_handle: JoinHandle<()>) {
+/// Terminates an actor by sending it a [`Signal::Terminate`] message and awaiting its
+/// [`JoinHandle`].
+pub async fn terminate_actor<A>(address: A, join_handle: JoinHandle<()>)
+where
+    A: Into<Recipient<Signal>>,
+{
+    let address = address.into();
     if let Err(e) = address.do_send(Signal::Terminate).await {
         warn!("Could not stop actor {}: {}", address.index(), e);
         join_handle.abort();

@@ -3,9 +3,8 @@
 use std::fmt::{self, Debug};
 
 use bytes::Bytes;
-use tokio::sync::oneshot;
 
-use acktor::{Actor, ActorState, Address, Message, Recipient, Sender};
+use acktor::{Actor, ActorState, Address, Message, Recipient, Sender, channel::oneshot};
 
 use crate::codec::DecodeContext;
 use crate::remote_address::RemoteAddress;

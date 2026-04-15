@@ -6,17 +6,17 @@
 
 use std::time::Duration;
 
-use tokio::{sync::mpsc, task::JoinHandle, time};
+use tokio::time;
 use tracing::{debug, warn};
 
-use acktor_macros::debug_trace;
-
-use crate::actor::{Actor, ActorContext, ActorId, ActorState, Stopping};
+use crate::actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
 use crate::address::{Address, Mailbox, Recipient, SenderId};
+use crate::channel::mpsc;
 use crate::context::DEFAULT_MAILBOX_CAPACITY;
 use crate::envelope::{Envelope, EnvelopeProxy};
 use crate::message::{Handler, Message};
 use crate::supervisor::SupervisionEvent;
+use crate::utils::debug_trace;
 
 /// State of the repetitive task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,6 +119,10 @@ where
 
             let result = self.processing_one(actor, mailbox).await;
 
+            if result.is_err() && self.state() == ActorState::Running {
+                self.set_state(ActorState::Stopping);
+            }
+
             match self.state() {
                 ActorState::Stopping => {
                     match actor.stopping(self).await? {
@@ -183,17 +187,7 @@ where
 
         if async_wait {
             match mailbox.recv().await {
-                Some(mut envelope) => {
-                    envelope.handle(actor, self).await;
-                    if let Some(e) = self.error.take() {
-                        if self.state() == ActorState::Running {
-                            self.set_state(ActorState::Stopping);
-                        }
-
-                        return Err(e);
-                    }
-                }
-
+                Some(mut envelope) => envelope.handle(actor, self).await,
                 None => {
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
@@ -201,29 +195,20 @@ where
             };
         } else {
             match mailbox.try_recv() {
-                Ok(mut envelope) => {
-                    envelope.handle(actor, self).await;
-                    if let Some(e) = self.error.take() {
-                        if self.state() == ActorState::Running {
-                            self.set_state(ActorState::Stopping);
-                        }
-
-                        return Err(e);
-                    }
-                }
-
+                Ok(mut envelope) => envelope.handle(actor, self).await,
                 Err(mpsc::error::TryRecvError::Disconnected) => {
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
                 }
-
-                _ => {
-                    tokio::task::yield_now().await;
-                }
+                _ => tokio::task::yield_now().await,
             };
         }
 
-        Ok(())
+        if let Some(e) = self.error.take() {
+            Err(e)
+        } else {
+            Ok(())
+        }
     }
 }
 

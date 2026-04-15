@@ -11,9 +11,8 @@ use std::any::Any;
 use std::fmt;
 use std::pin::Pin;
 
-use tokio::sync::oneshot;
-
 use crate::actor::Actor;
+use crate::channel::oneshot;
 use crate::message::{Handler, Message};
 
 mod default_proxy;

@@ -3,7 +3,8 @@
 use std::io;
 
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+
+use acktor::{RecvError, SendError};
 
 pub use crate::codec::errors::{DecodeError, EncodeError};
 pub use crate::double_map::{KeyConflictError, TryReserveError};
@@ -26,40 +27,19 @@ pub enum NodeError {
     #[error("could not find the actor in the remote process")]
     RemoteActorNotFound(#[source] SessionError),
 
-    #[error("could not send local message")]
-    SendMessageError(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("could not send message")]
+    SendError(#[source] Box<dyn std::error::Error + Send + Sync>),
 
-    #[error("could not receive local message")]
-    ReceiveMessageError(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("could not receive message")]
+    RecvError(#[from] RecvError),
 }
 
-impl<T> From<mpsc::error::SendError<T>> for NodeError
+impl<T> From<SendError<T>> for NodeError
 where
     T: Send + Sync + 'static,
 {
-    fn from(source: mpsc::error::SendError<T>) -> Self {
-        Self::SendMessageError(Box::new(source))
-    }
-}
-
-impl<T> From<mpsc::error::TrySendError<T>> for NodeError
-where
-    T: Send + Sync + 'static,
-{
-    fn from(source: mpsc::error::TrySendError<T>) -> Self {
-        Self::SendMessageError(Box::new(source))
-    }
-}
-
-impl From<oneshot::error::RecvError> for NodeError {
-    fn from(source: oneshot::error::RecvError) -> Self {
-        Self::ReceiveMessageError(Box::new(source))
-    }
-}
-
-impl From<oneshot::error::TryRecvError> for NodeError {
-    fn from(source: oneshot::error::TryRecvError) -> Self {
-        Self::ReceiveMessageError(Box::new(source))
+    fn from(source: SendError<T>) -> Self {
+        Self::SendError(Box::new(source))
     }
 }
 
@@ -72,11 +52,11 @@ pub enum SessionError {
     #[error("could not decode the remote message")]
     DecodeError(#[from] DecodeError),
 
-    #[error("could not forward the inbound remote message to any actor in the current process")]
+    #[error("could not forward the inbound remote message to any actor")]
     ForwardInboundMessageFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     #[error("could not send the outbound remote message to the remote node")]
-    SendOutboundMessageFailed(#[from] io::Error),
+    SendOutboundMessageFailed(#[source] io::Error),
 
     #[error("invalid node message reply tag: {0}")]
     InvalidNodeMessageReplyTag(u64),
@@ -84,48 +64,30 @@ pub enum SessionError {
     #[error("invalid actor message reply tag: {0}")]
     InvalidActorMessageReplyTag(u64),
 
-    #[error("could not create the actor in the current process")]
+    #[error("could not create the actor")]
     CreateActorFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
 
-    #[error("could not find the actor {0} in the current process")]
+    #[error("could not find the actor {0}")]
     ActorNotFound(String),
 
     #[error("{0}")]
     RemoteActorError(String),
 
-    #[error("could not send local message")]
-    SendMessageError(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error(transparent)]
+    IoError(io::Error),
 
-    #[error("could not receive local message")]
-    ReceiveMessageError(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("could not send message")]
+    SendError(#[source] Box<dyn std::error::Error + Send + Sync>),
+
+    #[error("could not receive message")]
+    RecvError(#[from] RecvError),
 }
 
-impl<T> From<mpsc::error::SendError<T>> for SessionError
+impl<T> From<SendError<T>> for SessionError
 where
     T: Send + Sync + 'static,
 {
-    fn from(source: mpsc::error::SendError<T>) -> Self {
-        Self::SendMessageError(Box::new(source))
-    }
-}
-
-impl<T> From<mpsc::error::TrySendError<T>> for SessionError
-where
-    T: Send + Sync + 'static,
-{
-    fn from(source: mpsc::error::TrySendError<T>) -> Self {
-        Self::SendMessageError(Box::new(source))
-    }
-}
-
-impl From<oneshot::error::RecvError> for SessionError {
-    fn from(source: oneshot::error::RecvError) -> Self {
-        Self::ReceiveMessageError(Box::new(source))
-    }
-}
-
-impl From<oneshot::error::TryRecvError> for SessionError {
-    fn from(source: oneshot::error::TryRecvError) -> Self {
-        Self::ReceiveMessageError(Box::new(source))
+    fn from(source: SendError<T>) -> Self {
+        Self::SendError(Box::new(source))
     }
 }

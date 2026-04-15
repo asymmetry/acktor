@@ -1,8 +1,8 @@
-use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
 use crate::actor::{Actor, ActorContext, ActorId, ActorState, Stopping};
 use crate::address::{Address, Mailbox, Recipient, SenderId};
+use crate::channel::mpsc;
 use crate::envelope::{Envelope, EnvelopeProxy};
 use crate::supervisor::SupervisionEvent;
 

@@ -1,18 +1,12 @@
-#[cfg(feature = "erased-recipient")]
-use std::any::Any;
 use std::pin::Pin;
 
-use tokio::sync::{
-    mpsc::error::{SendError, TrySendError},
-    oneshot,
-};
+#[cfg(feature = "erased-recipient")]
+use std::any::Any;
 
 use crate::actor::ActorId;
 use crate::envelope::DefaultEnvelopeProxy;
+use crate::errors::{DoSendResult, SendResult};
 use crate::message::Message;
-
-pub(crate) type SendResult<M, R> = Result<oneshot::Receiver<R>, SendError<M>>;
-pub(crate) type TrySendResult<M, R> = Result<oneshot::Receiver<R>, TrySendError<M>>;
 
 /// Describes how to retrieve the index of a sender.
 ///
@@ -55,31 +49,28 @@ where
 
     /// Sends a message and returns a [`oneshot::Receiver`] which could be used to receive
     /// the response.
-    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M, M::Result>> + Send + '_>>;
+    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M, EP>> + Send + '_>>;
 
     /// Sends a message without expecting a response.
-    fn do_send(
-        &self,
-        msg: M,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SendError<M>>> + Send + '_>>;
+    fn do_send(&self, msg: M) -> Pin<Box<dyn Future<Output = DoSendResult<M>> + Send + '_>>;
 
     /// Attempts to send a message and returns a [`oneshot::Receiver`] which could be used to
     /// receive the response.
-    fn try_send(&self, msg: M) -> TrySendResult<M, M::Result>;
+    fn try_send(&self, msg: M) -> SendResult<M, EP>;
 
     /// Attempts to send a message without expecting a response.
-    fn try_do_send(&self, msg: M) -> Result<(), TrySendError<M>>;
+    fn try_do_send(&self, msg: M) -> DoSendResult<M>;
 
     /// Sends a message and returns a [`oneshot::Receiver`] which could be used to receive
     /// the response.
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
-    fn blocking_send(&self, msg: M) -> SendResult<M, M::Result>;
+    fn blocking_send(&self, msg: M) -> SendResult<M, EP>;
 
     /// Sends a message to an actor without expecting a response.
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
-    fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>>;
+    fn blocking_do_send(&self, msg: M) -> DoSendResult<M>;
 
     /// If the actor backing this sender opted into the conversion via
     /// [`Actor::erased_recipient_fn`][crate::actor::Actor::erased_recipient_fn], returns the

@@ -2,10 +2,9 @@ use std::fmt::{self, Debug};
 use std::future;
 use std::pin::Pin;
 
-use tokio::sync::oneshot;
-
 use super::{Message, MessageResponse};
 use crate::actor::Actor;
+use crate::channel::oneshot;
 use crate::envelope::DefaultEnvelopeProxy;
 
 /// A helper type which wraps the result of a message handler as a future which runs off the

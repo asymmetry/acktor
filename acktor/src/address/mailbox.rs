@@ -1,8 +1,7 @@
 use std::fmt::{self, Debug};
 
-use tokio::sync::mpsc::{self, error::TryRecvError};
-
 use crate::actor::Actor;
+use crate::channel::mpsc::{self, error::TryRecvError};
 use crate::envelope::Envelope;
 
 /// A type which holds a queue of messages to be processed by an actor.

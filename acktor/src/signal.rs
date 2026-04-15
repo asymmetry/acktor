@@ -1,9 +1,8 @@
 use std::future::{self, Future};
 
-use acktor_macros::debug_trace;
-
 use crate::actor::{Actor, ActorContext};
 use crate::message::{Handler, Message};
+use crate::utils::debug_trace;
 
 /// A message which is used to stop/terminate an actor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

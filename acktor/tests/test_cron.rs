@@ -1,13 +1,11 @@
 use std::time::Duration;
 
 use pretty_assertions::{assert_eq, assert_ne};
-use tokio::{
-    sync::mpsc,
-    time::{self, Instant},
-};
+use tokio::time::{self, Instant};
 
 use acktor::{
     Actor, Handler, Message, Recipient,
+    channel::mpsc,
     cron::{CronActor, CronActorContext, CronContext, CronSignal},
     observer::{ObserverSet, SubjectActor},
 };

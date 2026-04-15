@@ -1,23 +1,19 @@
-#[cfg(feature = "erased-recipient")]
-use std::any::Any;
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::pin::Pin;
 use std::sync::Arc;
 
+#[cfg(feature = "erased-recipient")]
+use std::any::Any;
+
 use futures_util::future::FutureExt;
-use tokio::sync::{
-    mpsc::{
-        self,
-        error::{SendError, TrySendError},
-    },
-    oneshot,
-};
 
 use super::address_impl::Address;
-use super::sender::{SendResult, Sender, SenderId, TrySendResult};
+use super::sender::{Sender, SenderId};
 use crate::actor::{Actor, ActorId};
+use crate::channel::{mpsc, oneshot};
 use crate::envelope::{DefaultEnvelopeProxy, FromEnvelope, ToEnvelope};
+use crate::errors::{DoSendResult, SendError, SendResult};
 use crate::message::Message;
 use crate::utils::create_actor_id;
 
@@ -146,30 +142,27 @@ where
         self.0.capacity()
     }
 
-    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M, M::Result>> + Send + '_>> {
+    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M, EP>> + Send + '_>> {
         self.0.send(msg)
     }
 
-    fn do_send(
-        &self,
-        msg: M,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SendError<M>>> + Send + '_>> {
+    fn do_send(&self, msg: M) -> Pin<Box<dyn Future<Output = DoSendResult<M>> + Send + '_>> {
         self.0.do_send(msg)
     }
 
-    fn try_send(&self, msg: M) -> TrySendResult<M, M::Result> {
+    fn try_send(&self, msg: M) -> SendResult<M, EP> {
         self.0.try_send(msg)
     }
 
-    fn try_do_send(&self, msg: M) -> Result<(), TrySendError<M>> {
+    fn try_do_send(&self, msg: M) -> DoSendResult<M> {
         self.0.try_do_send(msg)
     }
 
-    fn blocking_send(&self, msg: M) -> SendResult<M, M::Result> {
+    fn blocking_send(&self, msg: M) -> SendResult<M, EP> {
         self.0.blocking_send(msg)
     }
 
-    fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {
+    fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
         self.0.blocking_do_send(msg)
     }
 
@@ -244,10 +237,10 @@ where
         self.tx.capacity()
     }
 
-    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M, M::Result>> + Send>> {
+    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M>> + Send>> {
         let tx = self.tx.clone();
         async move {
-            tx.send(msg).await?;
+            tx.send(msg).await.map_err(SendError::from)?;
             // return a pre-resolved receiver to satisfy the SendResult return type.
             // since M::Result is (), the response is immediately available.
             let (tx, rx) = oneshot::channel();
@@ -258,29 +251,12 @@ where
         .boxed()
     }
 
-    fn do_send(
-        &self,
-        msg: M,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SendError<M>>> + Send + '_>> {
-        self.tx.send(msg).boxed()
+    fn do_send(&self, msg: M) -> Pin<Box<dyn Future<Output = DoSendResult<M>> + Send + '_>> {
+        async move { self.tx.send(msg).await.map_err(SendError::from) }.boxed()
     }
 
-    fn try_send(&self, msg: M) -> TrySendResult<M, M::Result> {
-        self.tx.try_send(msg)?;
-        // return a pre-resolved receiver to satisfy the TrySendResult return type.
-        // since M::Result is (), the response is immediately available.
-        let (tx, rx) = oneshot::channel();
-        let _ = tx.send(());
-
-        Ok(rx)
-    }
-
-    fn try_do_send(&self, msg: M) -> Result<(), TrySendError<M>> {
-        self.tx.try_send(msg)
-    }
-
-    fn blocking_send(&self, msg: M) -> SendResult<M, M::Result> {
-        self.tx.blocking_send(msg)?;
+    fn try_send(&self, msg: M) -> SendResult<M> {
+        self.tx.try_send(msg).map_err(SendError::from)?;
         // return a pre-resolved receiver to satisfy the SendResult return type.
         // since M::Result is (), the response is immediately available.
         let (tx, rx) = oneshot::channel();
@@ -289,7 +265,21 @@ where
         Ok(rx)
     }
 
-    fn blocking_do_send(&self, msg: M) -> Result<(), SendError<M>> {
-        self.tx.blocking_send(msg)
+    fn try_do_send(&self, msg: M) -> DoSendResult<M> {
+        self.tx.try_send(msg).map_err(SendError::from)
+    }
+
+    fn blocking_send(&self, msg: M) -> SendResult<M> {
+        self.tx.blocking_send(msg).map_err(SendError::from)?;
+        // return a pre-resolved receiver to satisfy the SendResult return type.
+        // since M::Result is (), the response is immediately available.
+        let (tx, rx) = oneshot::channel();
+        let _ = tx.send(());
+
+        Ok(rx)
+    }
+
+    fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
+        self.tx.blocking_send(msg).map_err(SendError::from)
     }
 }

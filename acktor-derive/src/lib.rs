@@ -158,7 +158,9 @@ pub fn remote_actor_derive(input: TokenStream) -> TokenStream {
 /// # Example
 ///
 /// ```ignore
-/// #[acktor_ipc::remote]
+/// use acktor_derive::remote;
+///
+/// #[remote]
 /// impl Actor for MyActor {
 ///     type Error = anyhow::Error;
 ///     type Context = Context<Self>;

@@ -1,14 +1,13 @@
 use std::io::Error as IoError;
 
 use futures_util::future::select_all;
-use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY,
+    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport,
     address::Mailbox,
+    channel::mpsc,
     envelope::{Envelope, EnvelopeProxy},
-    macros::report,
 };
 
 use super::Node;
@@ -91,14 +90,14 @@ impl NodeContext {
                 }
                 LoopEvent::Accept(Ok(connection), _) => {
                     if let Err(e) = actor.create_session(connection, None, self).await {
-                        warn!("Could not create new session: {}", report!(e));
+                        warn!("Could not create new session: {}", e.report());
                     }
                 }
                 LoopEvent::Accept(Err(e), endpoint) => {
                     warn!(
                         "Could not accept connection on {}: {}",
                         endpoint,
-                        report!(e),
+                        e.report(),
                     );
                 }
             }

@@ -15,10 +15,8 @@ features = ["derive", "pipe", "websocket", "default-codec"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["derive", "pipe", "websocket", "default-codec"]
-
+default = ["derive", "websocket", "default-codec"]
 derive = ["dep:acktor-derive"]
-
 # pre-implemented IPC methods
 # enable one of these features to select the IPC method to use or disable them all to
 # implement the IPC method manually
@@ -29,7 +27,6 @@ pipe = [
     "tokio/io-util",
 ]
 websocket = ["dep:tokio-tungstenite", "tokio/net"]
-
 # codec for primitive types
 # the default codec use zerocopy for some primitive types for efficiency, assuming a Rust-to-Rust
 # communication scenario
