@@ -5,7 +5,6 @@ use tokio::time::{self, Instant};
 
 use acktor::{
     Actor, Handler, Message, Recipient,
-    channel::mpsc,
     cron::{CronActor, CronActorContext, CronContext, CronSignal},
     observer::{ObserverSet, SubjectActor},
 };
@@ -103,7 +102,7 @@ async fn test_task() {
         .unwrap();
 
     loop {
-        if let Err(mpsc::error::TryRecvError::Empty) = rx.try_recv() {
+        if let Err(acktor::RecvError::Empty) = rx.try_recv() {
             break;
         }
     }

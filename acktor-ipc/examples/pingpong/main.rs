@@ -101,7 +101,7 @@ async fn client() -> Result<()> {
 
                 break;
             }
-            Some(event) = rx.recv() => {
+            Ok(event) = rx.recv() => {
                 if let SupervisionEvent::Terminated(_, _) = event {
                     acktor::utils::terminate_actor(node_address, node_join_handle).await;
 

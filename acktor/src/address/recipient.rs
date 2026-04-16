@@ -1,30 +1,30 @@
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
-use std::pin::Pin;
 use std::sync::Arc;
 
 #[cfg(feature = "erased-recipient")]
 use std::any::Any;
 
-use futures_util::future::FutureExt;
+use futures_util::future::{FutureExt, TryFutureExt};
 
 use super::address_impl::Address;
 use super::sender::{Sender, SenderId};
 use crate::actor::{Actor, ActorId};
 use crate::channel::{mpsc, oneshot};
 use crate::envelope::{DefaultEnvelopeProxy, FromEnvelope, ToEnvelope};
-use crate::errors::{DoSendResult, SendError, SendResult};
+use crate::errors::{DoSendResult, DoSendResultFuture, SendResult, SendResultFuture};
 use crate::message::Message;
 use crate::utils::create_actor_id;
 
-/// A type which is used to send a specific message to an actor.
+/// A type which is used to send a specific message type to an actor.
 ///
-/// This type allows you to save the sender without knowing the actor type.
+/// It is typed by the message type it can send, and is not tied to any specific actor type.
+/// [`Recipient`]s backed by different actor types can be put in the same collection as long as
+/// they can be used to send the same message type.
 ///
-/// A `Recipient` can be created from an [`Address`] for any message type, or from a raw
-/// [`mpsc::Sender`][tokio::sync::mpsc::Sender] via [`from_sender`][Recipient::from_sender]
-/// and [`create`][Recipient::create]. Note that the `from_sender` and `create` methods are
-/// only available for messages where `Result = ()`.
+/// A `Recipient` can be converted from an [`Address`] or created with the
+/// [`create`][Recipient::create] method. Note that the [`create`][Recipient::create] method is
+/// only available for messages with empty [`Message::Result`].
 pub struct Recipient<M, EP = DefaultEnvelopeProxy<M>>(pub Arc<dyn Sender<M, EP> + Send + Sync>)
 where
     M: Message<EP>;
@@ -87,15 +87,10 @@ impl<M> Recipient<M>
 where
     M: Message<Result = ()>,
 {
-    /// Constructs a recipient from a [`mpsc::Sender`].
-    pub fn from_sender(tx: mpsc::Sender<M>) -> Self {
-        Self(Arc::new(RecipientProxy {
-            index: create_actor_id(),
-            tx,
-        }))
-    }
-
     /// Creates a [`mpsc::channel`], use the sender to constructs a recipient.
+    ///
+    /// This recipient is not backed by any actor, so it can only be used to send messages with
+    /// empty [`Message::Result`].
     pub fn create(capacity: usize) -> (Self, mpsc::Receiver<M>) {
         let (tx, rx) = mpsc::channel(capacity);
         (
@@ -142,11 +137,11 @@ where
         self.0.capacity()
     }
 
-    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M, EP>> + Send + '_>> {
+    fn send(&self, msg: M) -> SendResultFuture<'_, M, EP> {
         self.0.send(msg)
     }
 
-    fn do_send(&self, msg: M) -> Pin<Box<dyn Future<Output = DoSendResult<M>> + Send + '_>> {
+    fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M> {
         self.0.do_send(msg)
     }
 
@@ -237,49 +232,55 @@ where
         self.tx.capacity()
     }
 
-    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M>> + Send>> {
-        let tx = self.tx.clone();
-        async move {
-            tx.send(msg).await.map_err(SendError::from)?;
-            // return a pre-resolved receiver to satisfy the SendResult return type.
-            // since M::Result is (), the response is immediately available.
-            let (tx, rx) = oneshot::channel();
-            let _ = tx.send(());
-
-            Ok(rx)
-        }
-        .boxed()
+    fn send(&self, msg: M) -> SendResultFuture<'_, M> {
+        self.tx
+            .send(msg)
+            .map_ok(|_| {
+                // return a pre-resolved receiver to satisfy the FutureSendResult return type
+                // since M::Result is (), the response is immediately available
+                let (tx, rx) = oneshot::channel();
+                let _ = tx.send(());
+                rx
+            })
+            .map_err(Into::into)
+            .boxed()
     }
 
-    fn do_send(&self, msg: M) -> Pin<Box<dyn Future<Output = DoSendResult<M>> + Send + '_>> {
-        async move { self.tx.send(msg).await.map_err(SendError::from) }.boxed()
+    fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M> {
+        self.tx.send(msg).map_err(Into::into).boxed()
     }
 
     fn try_send(&self, msg: M) -> SendResult<M> {
-        self.tx.try_send(msg).map_err(SendError::from)?;
-        // return a pre-resolved receiver to satisfy the SendResult return type.
-        // since M::Result is (), the response is immediately available.
-        let (tx, rx) = oneshot::channel();
-        let _ = tx.send(());
-
-        Ok(rx)
+        self.tx
+            .try_send(msg)
+            .map(|_| {
+                // return a pre-resolved receiver to satisfy the SendResult return type
+                // since M::Result is (), the response is immediately available
+                let (tx, rx) = oneshot::channel();
+                let _ = tx.send(());
+                rx
+            })
+            .map_err(Into::into)
     }
 
     fn try_do_send(&self, msg: M) -> DoSendResult<M> {
-        self.tx.try_send(msg).map_err(SendError::from)
+        self.tx.try_send(msg).map_err(Into::into)
     }
 
     fn blocking_send(&self, msg: M) -> SendResult<M> {
-        self.tx.blocking_send(msg).map_err(SendError::from)?;
-        // return a pre-resolved receiver to satisfy the SendResult return type.
-        // since M::Result is (), the response is immediately available.
-        let (tx, rx) = oneshot::channel();
-        let _ = tx.send(());
-
-        Ok(rx)
+        self.tx
+            .blocking_send(msg)
+            .map(|_| {
+                // return a pre-resolved receiver to satisfy the SendResult return type
+                // since M::Result is (), the response is immediately available
+                let (tx, rx) = oneshot::channel();
+                let _ = tx.send(());
+                rx
+            })
+            .map_err(Into::into)
     }
 
     fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
-        self.tx.blocking_send(msg).map_err(SendError::from)
+        self.tx.blocking_send(msg).map_err(Into::into)
     }
 }

@@ -135,7 +135,7 @@ async fn test_observer() {
     assert_eq!(received, true);
 
     let received = rx.recv().await;
-    assert_eq!(received.is_some(), true);
+    assert_eq!(received.is_ok(), true);
 
     a_address.send(TryPingA).await.unwrap().await.unwrap();
 

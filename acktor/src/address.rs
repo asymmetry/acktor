@@ -9,7 +9,10 @@
 //!
 
 mod address_impl;
-pub use address_impl::{Address, ReservedSendPermit};
+pub use address_impl::Address;
+
+mod permit;
+pub use permit::{OwnedSendPermit, SendPermit};
 
 mod sender;
 pub use sender::{Sender, SenderId};

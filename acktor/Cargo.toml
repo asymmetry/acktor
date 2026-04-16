@@ -31,7 +31,6 @@ ipc-support = ["erased-recipient"]
 
 [dependencies]
 ahash = "0.8"
-anyhow = "1.0"
 futures-util = "0.3"
 thiserror = "2.0"
 tokio = { version = "1.37", features = ["macros", "rt", "sync", "time"] }

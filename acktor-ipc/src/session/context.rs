@@ -1,15 +1,13 @@
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use acktor::{
     Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, Recipient,
-    SenderId,
-    address::Mailbox,
-    channel::mpsc,
-    envelope::{Envelope, EnvelopeProxy},
+    SenderId, address::Mailbox, channel::mpsc, envelope::EnvelopeProxy,
     supervisor::SupervisionEvent,
 };
 
 use super::Session;
+use crate::errors::SessionError;
 
 pub struct SessionContext {
     label: String,
@@ -23,20 +21,10 @@ impl SessionContext {
     /// Constructs a new [`SessionContext`] with a specific capacity.
     pub fn with_capacity(label: String, capacity: usize) -> Self {
         let (tx, rx) = mpsc::channel(capacity);
-        Self::with_channel(label, tx, rx)
-    }
-
-    /// Constructs a new [`SessionContext`] with a specific [`channel`][mpsc::channel].
-    pub fn with_channel(
-        label: String,
-        tx: mpsc::Sender<Envelope<Session>>,
-        rx: mpsc::Receiver<Envelope<Session>>,
-    ) -> Self {
-        let address = Address::new(tx);
         Self {
             label,
             state: ActorState::Unstarted,
-            doorplate: address.clone(),
+            doorplate: Address::new(tx),
             mailbox: Some(Mailbox::new(rx)),
             supervisor: None,
         }
@@ -46,7 +34,7 @@ impl SessionContext {
         &mut self,
         actor: &mut Session,
         mailbox: &mut Mailbox<Session>,
-    ) -> Result<(), <Session as Actor>::Error> {
+    ) -> Result<(), SessionError> {
         while self.state() == ActorState::Running {
             tokio::select! {
                 envelope = mailbox.recv() => {
@@ -68,21 +56,10 @@ impl SessionContext {
                             }
                         }
                         Err(e) => {
-                            if matches!(
-                                e.kind(),
-                                std::io::ErrorKind::PermissionDenied
-                                    | std::io::ErrorKind::ConnectionRefused
-                                    | std::io::ErrorKind::ConnectionReset
-                                    | std::io::ErrorKind::ConnectionAborted
-                                    | std::io::ErrorKind::NotConnected
-                                    | std::io::ErrorKind::BrokenPipe
-                            ) {
-                                info!("Connection is closed, stop the session");
-                                self.set_state(ActorState::Stopped);
-                            }
-                            else {
-                                warn!("Could not receive IPC message: {}", e);
-                            }
+                            warn!("Could not receive IPC message, terminate the actor: {}", e.report());
+                            self.set_state(ActorState::Stopped);
+
+                            return Err(SessionError::IoError(e));
                         }
                     }
                 }
@@ -126,7 +103,7 @@ impl ActorContext<Session> for SessionContext {
         &mut self,
         actor: &mut Session,
         mut mailbox: Mailbox<Session>,
-    ) -> Result<(), <Session as Actor>::Error> {
+    ) -> Result<(), SessionError> {
         actor.post_start(self).await?;
 
         debug!("Actor {} is started", self.index());
@@ -157,12 +134,11 @@ impl ActorContext<Session> for SessionContext {
     fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<Session>>>) {
         match supervisor {
             Some(supervisor) => {
-                debug!("Set Actor {} as supervisor", supervisor.index());
-
                 if supervisor.index() == self.index() {
                     warn!("Could not set the actor itself as its supervisor");
                     return;
                 }
+                debug!("Set Actor {} as supervisor", supervisor.index());
                 self.supervisor = Some(supervisor);
             }
             None => {

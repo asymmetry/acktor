@@ -1,7 +1,6 @@
 use std::fmt::{self, Debug};
 use std::future;
 use std::hash::Hash;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -11,7 +10,7 @@ use tracing::{Instrument, warn};
 use acktor::{
     Address, Message, Recipient, SendError, Sender, SenderId,
     channel::oneshot,
-    errors::{DoSendResult, SendResult},
+    errors::{DoSendResult, DoSendResultFuture, SendResult, SendResultFuture},
 };
 
 use crate::codec::{Decode, Encode, EncodeContext};
@@ -138,14 +137,11 @@ where
         self.session.capacity()
     }
 
-    fn send(&self, msg: M) -> Pin<Box<dyn Future<Output = SendResult<M>> + Send + '_>> {
+    fn send(&self, msg: M) -> SendResultFuture<'_, M> {
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
-                return Box::pin(future::ready(Err(SendError::Other {
-                    message: Some(msg),
-                    source: e.into(),
-                })));
+                return Box::pin(future::ready(Err(SendError::Other(e.into(), msg))));
             }
         };
 
@@ -174,14 +170,11 @@ where
             .boxed()
     }
 
-    fn do_send(&self, msg: M) -> Pin<Box<dyn Future<Output = DoSendResult<M>> + Send + '_>> {
+    fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M> {
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
-                return Box::pin(future::ready(Err(SendError::Other {
-                    message: Some(msg),
-                    source: e.into(),
-                })));
+                return Box::pin(future::ready(Err(SendError::Other(e.into(), msg))));
             }
         };
 
@@ -195,10 +188,7 @@ where
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
-                return Err(SendError::Other {
-                    message: Some(msg),
-                    source: e.into(),
-                });
+                return Err(SendError::Other(e.into(), msg));
             }
         };
 
@@ -223,10 +213,8 @@ where
             Err(e) => match e {
                 SendError::Closed(_) => Err(SendError::Closed(msg)),
                 SendError::Full(_) => Err(SendError::Full(msg)),
-                SendError::Other { source, .. } => Err(SendError::Other {
-                    message: Some(msg),
-                    source,
-                }),
+                SendError::Timeout(_) => Err(SendError::Timeout(msg)),
+                SendError::Other(source, _) => Err(SendError::Other(source, msg)),
             },
         }
     }
@@ -235,10 +223,7 @@ where
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
-                return Err(SendError::Other {
-                    message: Some(msg),
-                    source: e.into(),
-                });
+                return Err(SendError::Other(e.into(), msg));
             }
         };
 
@@ -247,10 +232,8 @@ where
             .map_err(|e| match e {
                 SendError::Closed(_) => SendError::Closed(msg),
                 SendError::Full(_) => SendError::Full(msg),
-                SendError::Other { source, .. } => SendError::Other {
-                    message: Some(msg),
-                    source,
-                },
+                SendError::Timeout(_) => SendError::Timeout(msg),
+                SendError::Other(source, _) => SendError::Other(source, msg),
             })
     }
 
@@ -258,10 +241,7 @@ where
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
-                return Err(SendError::Other {
-                    message: Some(msg),
-                    source: e.into(),
-                });
+                return Err(SendError::Other(e.into(), msg));
             }
         };
 
@@ -291,10 +271,7 @@ where
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
-                return Err(SendError::Other {
-                    message: Some(msg),
-                    source: e.into(),
-                });
+                return Err(SendError::Other(e.into(), msg));
             }
         };
 

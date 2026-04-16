@@ -3,9 +3,7 @@
 use std::error::Error;
 use std::marker::PhantomData;
 
-use tokio::task::JoinHandle;
-
-use acktor::{Actor, Address, Handler, Recipient};
+use acktor::{Actor, Address, Handler, JoinHandle, Recipient};
 
 use crate::remote_message::RemoteMessage;
 

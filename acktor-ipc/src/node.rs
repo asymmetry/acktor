@@ -8,11 +8,10 @@ use std::sync::Arc;
 use ahash::HashMap;
 use dashmap::DashMap;
 use futures_util::future::join_all;
-use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorId, Address, ErrorReport, Handler, Recipient, Signal,
+    Actor, ActorContext, ActorId, Address, ErrorReport, Handler, JoinHandle, Recipient, Signal,
     message::FutureMessageResult,
     observer::{ObserverSet, SubjectActor},
     supervisor::SupervisionEvent,

@@ -39,7 +39,7 @@ where
     T: Send + Sync + 'static,
 {
     fn from(source: SendError<T>) -> Self {
-        Self::SendError(Box::new(source))
+        Self::SendError(source.into())
     }
 }
 
@@ -88,6 +88,6 @@ where
     T: Send + Sync + 'static,
 {
     fn from(source: SendError<T>) -> Self {
-        Self::SendError(Box::new(source))
+        Self::SendError(source.into())
     }
 }

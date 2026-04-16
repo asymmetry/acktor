@@ -3,7 +3,7 @@ use tracing::{debug, warn};
 use crate::actor::{Actor, ActorContext, ActorId, ActorState, Stopping};
 use crate::address::{Address, Mailbox, Recipient, SenderId};
 use crate::channel::mpsc;
-use crate::envelope::{Envelope, EnvelopeProxy};
+use crate::envelope::EnvelopeProxy;
 use crate::supervisor::SupervisionEvent;
 
 /// The default mailbox capacity for actors.
@@ -20,8 +20,8 @@ where
     doorplate: Address<A>,
     mailbox: Option<Mailbox<A>>,
     drain_mailbox: bool,
+    error: Option<A::Error>, // error happened in message handlers
     supervisor: Option<Recipient<SupervisionEvent<A>>>,
-    error: Option<A::Error>, // if an error happened during message handling
 }
 
 impl<A> Context<A>
@@ -31,15 +31,6 @@ where
     /// Constructs a new [`Context`] with a specific capacity.
     pub fn with_capacity(label: String, capacity: usize) -> Self {
         let (tx, rx) = mpsc::channel(capacity);
-        Self::with_channel(label, tx, rx)
-    }
-
-    /// Constructs a new [`Context`] with a specific [`channel`][mpsc::channel].
-    pub fn with_channel(
-        label: String,
-        tx: mpsc::Sender<Envelope<A>>,
-        rx: mpsc::Receiver<Envelope<A>>,
-    ) -> Self {
         Self {
             label,
             state: ActorState::Unstarted,
@@ -49,6 +40,28 @@ where
             supervisor: None,
             error: None,
         }
+    }
+
+    /// Saves an error in message handlers. The actor will enter the
+    /// [`Stopping`][ActorState::Stopping] state after processing the current message.
+    pub fn save_error(&mut self, error: A::Error) {
+        self.error = Some(error);
+    }
+
+    /// Terminates the actor and saves the error.
+    ///
+    /// This method will switch the actor to the [`Stopped`][ActorState::Stopped] state.
+    pub fn terminate_with_error(&mut self, error: A::Error) {
+        self.save_error(error);
+        self.terminate();
+    }
+
+    /// Drains the mailbox of the actor.
+    ///
+    /// The mailbox is not reachable after the actor starts. This method only sets a flag, the
+    /// processing loop will drain the mailbox based on this flag.
+    pub fn drain_mailbox(&mut self) {
+        self.drain_mailbox = true;
     }
 
     async fn processing_loop(
@@ -61,11 +74,14 @@ where
                 let count = mailbox.len();
                 for _ in 0..count {
                     if mailbox.try_recv().is_err() {
+                        // the mailbox contains `count` messages, so try_recv should never fail
+                        warn!("Unexpected error when draining the mailbox, terminate the actor");
+                        self.set_state(ActorState::Stopped);
+
                         break;
                     }
                 }
                 self.drain_mailbox = false;
-                continue;
             }
 
             match mailbox.recv().await {
@@ -194,13 +210,5 @@ where
                 }
             }
         }
-    }
-
-    fn set_error(&mut self, error: A::Error) {
-        self.error = Some(error);
-    }
-
-    fn drain_mailbox(&mut self) {
-        self.drain_mailbox = true;
     }
 }

@@ -13,7 +13,8 @@ use crate::actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stoppin
 use crate::address::{Address, Mailbox, Recipient, SenderId};
 use crate::channel::mpsc;
 use crate::context::DEFAULT_MAILBOX_CAPACITY;
-use crate::envelope::{Envelope, EnvelopeProxy};
+use crate::envelope::EnvelopeProxy;
+use crate::errors::RecvError;
 use crate::message::{Handler, Message};
 use crate::supervisor::SupervisionEvent;
 use crate::utils::debug_trace;
@@ -78,15 +79,6 @@ where
     /// Constructs a new [`CronContext`] with a specific capacity.
     pub fn with_capacity(label: String, capacity: usize) -> Self {
         let (tx, rx) = mpsc::channel(capacity);
-        Self::with_channel(label, tx, rx)
-    }
-
-    /// Constructs a new [`CronContext`] with a specific [`channel`][mpsc::channel].
-    pub fn with_channel(
-        label: String,
-        tx: mpsc::Sender<Envelope<A>>,
-        rx: mpsc::Receiver<Envelope<A>>,
-    ) -> Self {
         Self {
             label,
             state: ActorState::Unstarted,
@@ -100,6 +92,28 @@ where
         }
     }
 
+    /// Saves an error in message handlers. The actor will enter the
+    /// [`Stopping`][ActorState::Stopping] state after processing the current message.
+    pub fn save_error(&mut self, error: A::Error) {
+        self.error = Some(error);
+    }
+
+    /// Terminates the actor and saves the error.
+    ///
+    /// This method will switch the actor to the [`Stopped`][ActorState::Stopped] state.
+    pub fn terminate_with_error(&mut self, error: A::Error) {
+        self.save_error(error);
+        self.terminate();
+    }
+
+    /// Drains the mailbox of the actor.
+    ///
+    /// The mailbox is not reachable after the actor starts. This method only sets a flag, the
+    /// processing loop will drain the mailbox based on this flag.
+    pub fn drain_mailbox(&mut self) {
+        self.drain_mailbox = true;
+    }
+
     async fn processing_loop(
         &mut self,
         actor: &mut A,
@@ -110,11 +124,14 @@ where
                 let count = mailbox.len();
                 for _ in 0..count {
                     if mailbox.try_recv().is_err() {
+                        // the mailbox contains `count` messages, so try_recv should never fail
+                        warn!("Unexpected error when draining the mailbox, terminate the actor");
+                        self.set_state(ActorState::Stopped);
+
                         break;
                     }
                 }
                 self.drain_mailbox = false;
-                continue;
             }
 
             let result = self.processing_one(actor, mailbox).await;
@@ -196,7 +213,7 @@ where
         } else {
             match mailbox.try_recv() {
                 Ok(mut envelope) => envelope.handle(actor, self).await,
-                Err(mpsc::error::TryRecvError::Disconnected) => {
+                Err(RecvError::Closed) => {
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
                 }
@@ -289,14 +306,6 @@ where
                 }
             }
         }
-    }
-
-    fn set_error(&mut self, error: A::Error) {
-        self.error = Some(error);
-    }
-
-    fn drain_mailbox(&mut self) {
-        self.drain_mailbox = true;
     }
 }
 

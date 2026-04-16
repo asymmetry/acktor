@@ -11,6 +11,7 @@ use acktor::{
 };
 
 use super::Node;
+use crate::errors::NodeError;
 use crate::ipc_method::IpcConnection;
 
 enum LoopEvent {
@@ -29,15 +30,6 @@ impl NodeContext {
     /// Constructs a new [`NodeContext`] with a specific capacity.
     pub fn with_capacity(label: String, capacity: usize) -> Self {
         let (tx, rx) = mpsc::channel(capacity);
-        Self::with_channel(label, tx, rx)
-    }
-
-    /// Constructs a new [`NodeContext`] with a specific [`channel`][mpsc::channel].
-    pub fn with_channel(
-        label: String,
-        tx: mpsc::Sender<Envelope<Node>>,
-        rx: mpsc::Receiver<Envelope<Node>>,
-    ) -> Self {
         Self {
             label,
             state: ActorState::Unstarted,
@@ -46,26 +38,14 @@ impl NodeContext {
         }
     }
 
-    async fn handle_envelope(&mut self, actor: &mut Node, envelope: Option<Envelope<Node>>) {
-        match envelope {
-            Some(mut envelope) => {
-                envelope.handle(actor, self).await;
-            }
-            None => {
-                warn!("Mailbox is dropped, terminate the actor");
-                self.set_state(ActorState::Stopped);
-            }
-        }
-    }
-
     async fn processing_loop(
         &mut self,
         actor: &mut Node,
         mailbox: &mut Mailbox<Node>,
-    ) -> Result<(), <Node as Actor>::Error> {
+    ) -> Result<(), NodeError> {
         while self.state() == ActorState::Running {
-            // Compute the next event in a scoped block so the `select_all` future (which
-            // borrows `actor.listeners()`) is dropped before we reborrow `actor` mutably.
+            // compute the next event in a scoped block so the `select_all` future (which borrows
+            // `actor.listeners()`) is dropped before we reborrow `actor` mutably
             let event = {
                 let listeners = actor.listeners();
 
@@ -85,9 +65,15 @@ impl NodeContext {
             };
 
             match event {
-                LoopEvent::Envelope(envelope) => {
-                    self.handle_envelope(actor, envelope).await;
-                }
+                LoopEvent::Envelope(envelope) => match envelope {
+                    Some(mut envelope) => {
+                        envelope.handle(actor, self).await;
+                    }
+                    None => {
+                        warn!("Mailbox is dropped, terminate the actor");
+                        self.set_state(ActorState::Stopped);
+                    }
+                },
                 LoopEvent::Accept(Ok(connection), _) => {
                     if let Err(e) = actor.create_session(connection, None, self).await {
                         warn!("Could not create new session: {}", e.report());
@@ -95,7 +81,7 @@ impl NodeContext {
                 }
                 LoopEvent::Accept(Err(e), endpoint) => {
                     warn!(
-                        "Could not accept connection on {}: {}",
+                        "Could not accept connection from {}: {}",
                         endpoint,
                         e.report(),
                     );
@@ -140,7 +126,7 @@ impl ActorContext<Node> for NodeContext {
         &mut self,
         actor: &mut Node,
         mut mailbox: Mailbox<Node>,
-    ) -> Result<(), <Node as Actor>::Error> {
+    ) -> Result<(), NodeError> {
         actor.post_start(self).await?;
 
         debug!("Actor {} is started", self.index());

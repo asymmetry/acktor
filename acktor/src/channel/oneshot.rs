@@ -5,7 +5,10 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-pub use tokio::sync::oneshot::Sender;
+pub use tokio::{
+    sync::oneshot::Sender,
+    time::{self, Duration},
+};
 
 use crate::errors::RecvError;
 
@@ -14,7 +17,7 @@ pub mod error {
     pub use crate::errors::RecvError;
 }
 
-/// A wrapper around [`tokio::sync::oneshot::Receiver`] that yields this crate's
+/// A wrapper around [`tokio::sync::oneshot::Receiver`] whose receive methods yields this crate's
 /// [`RecvError`][crate::errors::RecvError] on failure.
 #[derive(Debug)]
 #[repr(transparent)]
@@ -47,6 +50,16 @@ impl<T> Receiver<T> {
     /// Blocking receive to call outside of asynchronous contexts.
     pub fn blocking_recv(self) -> Result<T, RecvError> {
         self.0.blocking_recv().map_err(Into::into)
+    }
+
+    /// Awaits a value with a timeout, returning [`RecvError::Timeout`] if `timeout` elapses
+    /// before the sender produces a value. The receiver is left intact on timeout so the
+    /// caller can await it again.
+    pub async fn recv_timeout(&mut self, timeout: Duration) -> Result<T, RecvError> {
+        match time::timeout(timeout, self).await {
+            Ok(res) => res,
+            Err(_) => Err(RecvError::Timeout),
+        }
     }
 }
 

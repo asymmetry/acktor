@@ -78,13 +78,12 @@ impl RemoteActorRegistry {
     /// If the stored actor's mailbox is closed, this method removes
     /// the stale entry and returns `None`.
     pub fn get(&self, index: u64) -> Option<Recipient<RemoteMessage>> {
-        {
-            let recipient = self.inner.get(&index)?;
-            if !recipient.is_closed() {
-                return Some(recipient.clone());
-            }
+        let recipient = self.inner.get(&index)?;
+        if !recipient.is_closed() {
+            return Some(recipient.clone());
         }
-        self.inner.remove(&index);
+        drop(recipient);
+        self.inner.remove_if(&index, |_, r| r.is_closed());
         None
     }
 

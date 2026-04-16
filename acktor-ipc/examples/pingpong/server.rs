@@ -1,10 +1,9 @@
 use std::process;
 
-use tokio::task::JoinHandle;
 use tracing::info;
 
 use acktor::{
-    Actor, Address, Context, Handler,
+    Actor, Address, Context, Handler, JoinHandle,
     observer::{Observer, ObserverSet, SubjectActor},
 };
 use acktor_ipc::{

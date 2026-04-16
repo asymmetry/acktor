@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fmt::Display;
-use std::panic::AssertUnwindSafe;
+use std::panic::{self, AssertUnwindSafe};
 
 #[cfg(feature = "erased-recipient")]
 use std::any::Any;
@@ -60,7 +60,7 @@ pub enum Stopping {
     Continue,
 }
 
-/// Describes an actor.
+/// An actor.
 pub trait Actor: Sized + Send + 'static {
     /// The execution context type for this actor.
     type Context: ActorContext<Self>;
@@ -78,8 +78,7 @@ pub trait Actor: Sized + Send + 'static {
     /// synchronously. The actor will enter the [`Starting`][ActorState::Starting] state after
     /// this method returns.
     ///
-    /// Panics in this method will prevent the actor being spawned into the runtime.
-    /// [`run`][Actor::run] will return an error to the caller in this case.
+    /// Panics in this method propagate to the caller of [`run`][Actor::run].
     #[allow(unused_variables)]
     fn pre_start(&mut self, ctx: &mut Self::Context) -> Result<(), Self::Error> {
         Ok(())
@@ -208,7 +207,11 @@ pub trait Actor: Sized + Send + 'static {
     }
 }
 
-/// Describes the execution context of an actor.
+/// The execution context of an actor.
+///
+/// Each actor is associated with a context which manages its lifecycle and communication
+/// channels. The actor's associated type [`Context`][Actor::Context] defines the specific context
+/// type to use. A context type must implement this trait.
 pub trait ActorContext<A>: Sized + Send + 'static
 where
     A: Actor<Context = Self>,
@@ -227,7 +230,34 @@ where
     /// Returns the address of the actor.
     fn address(&self) -> Address<A>;
 
-    /// Returns the mailbox of the actor.
+    /// Moves the mailbox of the actor out of the context, leaving `None` in its place.
+    ///
+    /// Typically the address and the mailbox are created together in the constructor of the
+    /// context. However, since the [`processing`][Self::processing] method consumes the mailbox,
+    /// the context needs to provide a way to move the mailbox out of itself so that it
+    /// can be passed into the [`processing`][Self::processing] method.
+    ///
+    /// # Example
+    ///
+    /// A typical implementation stores the mailbox as an `Option<Mailbox<A>>` field and
+    /// delegates to [`Option::take`]:
+    ///
+    /// ```ignore
+    /// struct MyContext<A: Actor<Context = Self>> {
+    ///     mailbox: Option<Mailbox<A>>,
+    ///     // ... other fields (address, state, etc.)
+    /// }
+    ///
+    /// impl<A: Actor<Context = Self>> ActorContext<A> for MyContext<A> {
+    ///     fn take_mailbox(&mut self) -> Option<Mailbox<A>> {
+    ///         self.mailbox.take()
+    ///     }
+    ///
+    ///     // ... other trait methods
+    /// }
+    /// ```
+    ///
+    /// The first call returns `Some(mailbox)`; subsequent calls return `None`.
     fn take_mailbox(&mut self) -> Option<Mailbox<A>>;
 
     /// Returns the state of the actor.
@@ -236,7 +266,7 @@ where
     /// Sets the state of the actor.
     fn set_state(&mut self, state: ActorState);
 
-    /// Runs the main processing loop of the actor.
+    /// The main processing loop of the actor.
     ///
     /// This method is called after [`post_start`][Actor::post_start] and drives the actor until
     /// it stops. It is responsible for receiving messages from the mailbox and dispatching them
@@ -249,38 +279,11 @@ where
 
     // provided methods
 
-    /// Returns the address of the supervisor.
-    fn supervisor(&self) -> Option<&Recipient<SupervisionEvent<A>>> {
-        None
-    }
-
-    /// Sets a supervisor.
-    #[allow(unused_variables)]
-    fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<A>>>) {}
-
-    /// Sets an error during message processing.
-    #[allow(unused_variables)]
-    fn set_error(&mut self, error: A::Error) {}
-
-    /// Drains the mailbox of the actor.
-    ///
-    /// The default implementation does nothing. Users who need this functionality should
-    /// implement it in their own context.
-    fn drain_mailbox(&mut self) {}
-
     /// Stops the actor.
     ///
     /// This method will switch the actor to the [`Stopping`][ActorState::Stopping] state.
     fn stop(&mut self) {
         self.set_state(ActorState::Stopping);
-    }
-
-    /// Stops the actor and saves the error for reporting.
-    ///
-    /// This method will switch the actor to the [`Stopping`][ActorState::Stopping] state.
-    fn stop_with_error(&mut self, error: A::Error) {
-        self.set_error(error);
-        self.stop();
     }
 
     /// Terminates the actor.
@@ -290,13 +293,20 @@ where
         self.set_state(ActorState::Stopped);
     }
 
-    /// Terminates the actor and saves the error for reporting.
+    /// Returns a reference tothe supervisor of the actor, if any.
     ///
-    /// This method will switch the actor to the [`Stopped`][ActorState::Stopped] state.
-    fn terminate_with_error(&mut self, error: A::Error) {
-        self.set_error(error);
-        self.terminate();
+    /// Override the [`supervisor`][ActorContext::supervisor] method and the
+    /// [`set_supervisor`][ActorContext::set_supervisor] method to opt-in the supervisor feature.
+    fn supervisor(&self) -> Option<&Recipient<SupervisionEvent<A>>> {
+        None
     }
+
+    /// Sets a supervisor.
+    ///
+    /// Override the [`supervisor`][ActorContext::supervisor] method and the
+    /// [`set_supervisor`][ActorContext::set_supervisor] method to opt-in the supervisor feature.
+    #[allow(unused_variables)]
+    fn set_supervisor(&mut self, supervisor: Option<Recipient<SupervisionEvent<A>>>) {}
 
     /// Notifies the supervisor for an event.
     ///
@@ -352,7 +362,22 @@ where
 
         {
             let _enter = span.enter();
-            actor.pre_start(&mut self)?;
+            let result = panic::catch_unwind(AssertUnwindSafe(|| actor.pre_start(&mut self)));
+            match result {
+                Ok(r) => r?,
+                Err(e) => {
+                    let index = self.index();
+                    let msg: String = match e.downcast_ref::<String>() {
+                        Some(s) => s.clone(),
+                        None => match e.downcast_ref::<&str>() {
+                            Some(s) => s.to_string(),
+                            None => "could not capture the panic message".to_string(),
+                        },
+                    };
+                    error!("Actor {} is panicked: {}", index, msg);
+                    panic::resume_unwind(e);
+                }
+            }
             self.set_state(ActorState::Starting);
         }
 
@@ -378,17 +403,15 @@ where
 
         let future = AssertUnwindSafe(future)
             .catch_unwind()
-            .unwrap_or_else(move |e| match e.downcast::<String>() {
-                Ok(panic_msg) => error!("Actor {} is panicked: {}", index, panic_msg),
-                Err(e) => match e.downcast::<&str>() {
-                    Ok(panic_msg) => error!("Actor {} is panicked: {}", index, panic_msg),
-                    Err(_) => {
-                        error!(
-                            "Actor {} is panicked: could not capture the panic message",
-                            index
-                        );
-                    }
-                },
+            .unwrap_or_else(move |e| {
+                let msg: String = match e.downcast_ref::<String>() {
+                    Some(s) => s.clone(),
+                    None => match e.downcast_ref::<&str>() {
+                        Some(s) => s.to_string(),
+                        None => "could not capture the panic message".to_string(),
+                    },
+                };
+                error!("Actor {} is panicked: {}", index, msg);
             })
             .instrument(span.or_current())
             .boxed();
