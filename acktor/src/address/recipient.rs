@@ -2,7 +2,7 @@ use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-#[cfg(feature = "erased-recipient")]
+#[cfg(feature = "type-erased-recipient-hook")]
 use std::any::Any;
 
 use futures_util::future::{FutureExt, TryFutureExt};
@@ -43,7 +43,6 @@ where
 impl<M, EP> Clone for Recipient<M, EP>
 where
     M: Message<EP>,
-    EP: 'static,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
@@ -107,7 +106,6 @@ impl<A, M, EP> From<Address<A>> for Recipient<M, EP>
 where
     A: Actor,
     M: Message<EP>,
-    EP: 'static,
     A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
 {
     fn from(addr: Address<A>) -> Self {
@@ -127,7 +125,6 @@ where
 impl<M, EP> Sender<M, EP> for Recipient<M, EP>
 where
     M: Message<EP>,
-    EP: 'static,
 {
     fn is_closed(&self) -> bool {
         self.0.is_closed()
@@ -161,9 +158,9 @@ where
         self.0.blocking_do_send(msg)
     }
 
-    #[cfg(feature = "erased-recipient")]
-    fn erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
-        self.0.erased_recipient()
+    #[cfg(feature = "type-erased-recipient-hook")]
+    fn type_erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.0.type_erased_recipient()
     }
 }
 

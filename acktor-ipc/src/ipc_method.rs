@@ -34,7 +34,7 @@ pub trait IpcListener: Send + Sync + 'static {
     /// The implementation should be cancel safe. If the method is used as the event in a
     /// [`tokio::select!`](tokio::select) statement and some other branch completes first, then
     /// it is guaranteed that no new connections were accepted by this method.
-    fn accept<'a>(&'a self) -> IoFuture<'a, Box<dyn IpcConnection>>;
+    fn accept(&self) -> IoFuture<'_, Box<dyn IpcConnection>>;
 }
 
 /// Describes the behavior of an IPC connection.
@@ -59,12 +59,12 @@ pub trait IpcConnection: Send + Sync + 'static {
     fn peer_endpoint(&self) -> &str;
 
     /// Closes the IPC connection.
-    fn close<'a>(&'a mut self) -> IoFuture<'a, ()>;
+    fn close(&mut self) -> IoFuture<'_, ()>;
 
     /// Sends a message to the other end of the connection.
     ///
     /// The entire `buf` is delivered as a single framed message.
-    fn send<'a>(&'a mut self, buf: Bytes) -> IoFuture<'a, ()>;
+    fn send(&mut self, buf: Bytes) -> IoFuture<'_, ()>;
 
     /// Receives the next message from the other end of the connection.
     ///
@@ -76,7 +76,7 @@ pub trait IpcConnection: Send + Sync + 'static {
     /// The implementation should be cancel safe. If the method is used as the event in a
     /// [`tokio::select!`](tokio::select) statement and some other branch completes first, then
     /// it is guaranteed that no data was read from the underlying connection.
-    fn recv<'a>(&'a mut self) -> IoFuture<'a, Bytes>;
+    fn recv(&mut self) -> IoFuture<'_, Bytes>;
 }
 
 impl<T> IpcListener for Box<T>
@@ -87,7 +87,7 @@ where
         (**self).local_endpoint()
     }
 
-    fn accept<'a>(&'a self) -> IoFuture<'a, Box<dyn IpcConnection>> {
+    fn accept(&self) -> IoFuture<'_, Box<dyn IpcConnection>> {
         (**self).accept()
     }
 }
@@ -100,7 +100,7 @@ where
         (**self).local_endpoint()
     }
 
-    fn accept<'a>(&'a self) -> IoFuture<'a, Box<dyn IpcConnection>> {
+    fn accept(&self) -> IoFuture<'_, Box<dyn IpcConnection>> {
         (**self).accept()
     }
 }

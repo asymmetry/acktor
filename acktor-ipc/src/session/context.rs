@@ -1,9 +1,8 @@
 use tracing::{debug, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, Recipient,
-    SenderId, address::Mailbox, channel::mpsc, envelope::EnvelopeProxy,
-    supervisor::SupervisionEvent,
+    ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, Recipient, SenderId,
+    address::Mailbox, channel::mpsc, envelope::EnvelopeProxy, supervisor::SupervisionEvent,
 };
 
 use super::Session;
@@ -28,45 +27,6 @@ impl SessionContext {
             mailbox: Some(Mailbox::new(rx)),
             supervisor: None,
         }
-    }
-
-    async fn processing_loop(
-        &mut self,
-        actor: &mut Session,
-        mailbox: &mut Mailbox<Session>,
-    ) -> Result<(), SessionError> {
-        while self.state() == ActorState::Running {
-            tokio::select! {
-                envelope = mailbox.recv() => {
-                    match envelope {
-                        Some(mut envelope) => {
-                            envelope.handle(actor, self).await;
-                        }
-                        None => {
-                            warn!("Mailbox is dropped, terminate the actor");
-                            self.set_state(ActorState::Stopped);
-                        }
-                    }
-                }
-                received = actor.connection.recv() => {
-                    match received {
-                        Ok(msg) => {
-                            if let Err(e) = actor.handle_ipc_message(msg, self).await {
-                                warn!("Could not handle IPC message: {}", e.report());
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Could not receive IPC message, terminate the actor: {}", e.report());
-                            self.set_state(ActorState::Stopped);
-
-                            return Err(SessionError::IoError(e));
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 }
 
@@ -99,30 +59,51 @@ impl ActorContext<Session> for SessionContext {
         self.state = state;
     }
 
-    async fn processing(
+    async fn process_loop(
         &mut self,
         actor: &mut Session,
-        mut mailbox: Mailbox<Session>,
+        mailbox: &mut Mailbox<Session>,
     ) -> Result<(), SessionError> {
-        actor.post_start(self).await?;
+        while self.state() == ActorState::Running {
+            tokio::select! {
+                envelope = mailbox.recv() => {
+                    match envelope {
+                        Some(mut envelope) => {
+                            envelope.handle(actor, self).await;
+                        }
+                        None => {
+                            warn!("Mailbox is dropped, terminate the actor");
+                            self.set_state(ActorState::Stopped);
+                        }
+                    }
+                }
+                received = actor.connection.recv() => {
+                    match received {
+                        Ok(msg) => {
+                            if let Err(e) = actor.handle_ipc_message(msg, self).await {
+                                warn!("Could not handle IPC message: {}", e.report());
+                            }
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Could not receive IPC message, terminate the actor: {}",
+                                e.report()
+                            );
+                            self.set_state(ActorState::Stopped);
 
-        debug!("Actor {} is started", self.index());
-        self.set_state(ActorState::Running);
-
-        let result = self.processing_loop(actor, &mut mailbox).await;
-
-        if self.state() != ActorState::Stopped {
-            self.set_state(ActorState::Stopped);
+                            if !matches!(
+                                e.kind(),
+                                std::io::ErrorKind::ConnectionReset
+                                    | std::io::ErrorKind::ConnectionAborted
+                                    | std::io::ErrorKind::BrokenPipe
+                            ) {
+                                return Err(SessionError::IoError(e));
+                            }
+                        }
+                    }
+                }
+            }
         }
-
-        // drop mailbox so any actor holds the address of this actor will not be able to send messages
-        // after it is stopped
-        drop(mailbox);
-
-        let result_post_stop = actor.post_stop(self).await;
-
-        result?;
-        result_post_stop?;
 
         Ok(())
     }

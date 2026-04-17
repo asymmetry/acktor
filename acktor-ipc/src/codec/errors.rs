@@ -2,6 +2,8 @@ use std::borrow::Cow;
 
 use thiserror::Error;
 
+use crate::remote_message::ToRemoteMessageRecipientError;
+
 /// Error type used by [`Encode`][crate::codec::Encode].
 #[derive(Debug, Error)]
 pub enum EncodeError {
@@ -10,6 +12,9 @@ pub enum EncodeError {
 
     #[error("remote address cannot be encoded in a remote message")]
     EncodeRemoteAddress,
+
+    #[error(transparent)]
+    ToRemoteMessageRecipientError(#[from] ToRemoteMessageRecipientError),
 
     #[error("missing encode context")]
     MissingEncodeContext,

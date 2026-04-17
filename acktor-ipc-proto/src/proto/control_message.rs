@@ -108,7 +108,7 @@ pub mod cron_signal {
 /// Reports the status of the current actor to a remote actor.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SupervisionEvent {
-    #[prost(oneof = "supervision_event::Event", tags = "1, 2, 3")]
+    #[prost(oneof = "supervision_event::Event", tags = "1, 2, 3, 4")]
     pub event: ::core::option::Option<supervision_event::Event>,
 }
 /// Nested message and enum types in `SupervisionEvent`.
@@ -132,6 +132,16 @@ pub mod supervision_event {
         /// The error message.
         #[prost(string, optional, tag = "2")]
         pub err: ::core::option::Option<::prost::alloc::string::String>,
+    }
+    /// Panicked message, which is used to report a panic.
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+    pub struct Panicked {
+        /// The index of the sender actor.
+        #[prost(uint64, tag = "1")]
+        pub actor_id: u64,
+        /// The panic info.
+        #[prost(string, tag = "2")]
+        pub info: ::prost::alloc::string::String,
     }
     /// State message, which is used to report the state of an actor.
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -191,8 +201,11 @@ pub mod supervision_event {
         /// Reports a terminated message.
         #[prost(message, tag = "2")]
         Terminated(Terminated),
-        /// Reports a state message.
+        /// Reports a panicked message.
         #[prost(message, tag = "3")]
+        Panicked(Panicked),
+        /// Reports a state message.
+        #[prost(message, tag = "4")]
         State(State),
     }
 }

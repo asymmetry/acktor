@@ -13,6 +13,9 @@ use crate::envelope::DefaultEnvelopeProxy;
 /// Return [`FutureMessageResult`] from a handler when the work must be awaited but should not
 /// stall the actor. The inner future resolves to `M::Result`, which is what the caller of
 /// `Address::send` ultimately receives.
+///
+/// The inner future is spawned onto the Tokio runtime and is detached from the actor's
+/// lifecycle. It continues running even after the actor is stopped or terminated.
 pub struct FutureMessageResult<M, EP = DefaultEnvelopeProxy<M>>
 where
     M: Message<EP>,
@@ -51,7 +54,6 @@ impl<A, M, EP> MessageResponse<A, M, EP> for FutureMessageResult<M, EP>
 where
     A: Actor,
     M: Message<EP>,
-    EP: 'static,
 {
     fn handle(
         self,

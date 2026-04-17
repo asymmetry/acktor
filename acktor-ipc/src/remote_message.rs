@@ -3,13 +3,12 @@
 use std::fmt::{self, Debug};
 
 use bytes::Bytes;
+use thiserror::Error;
 
 use acktor::{Actor, ActorState, Address, Message, Recipient, Sender, channel::oneshot};
 
 use crate::codec::DecodeContext;
 use crate::remote_address::RemoteAddress;
-
-pub use acktor::{Signal as RemoteSignal, cron::CronSignal as RemoteCronSignal};
 
 /// The kind of a remote message.
 pub enum RemoteMessageKind {
@@ -91,54 +90,52 @@ impl RemoteMessage {
     }
 }
 
-pub trait RecipientExt {
-    fn to_recipient_remote_message(&self) -> Result<Recipient<RemoteMessage>, String>;
+#[derive(Debug, Error)]
+pub enum ToRemoteMessageRecipientError {
+    #[error(
+        "actor does not opt-in the `type-erased-recipient-hook` feature, see the docs of \
+         `RemoteActor` for details"
+    )]
+    MissingHook,
+
+    #[error("could not downcast the type-erased recipient to Recipient<RemoteMessage>")]
+    DowncastFailed,
 }
 
-impl<A> RecipientExt for Address<A>
+pub trait ToRemoteMessageRecipient {
+    fn to_remote_message_recipient(
+        &self,
+    ) -> Result<Recipient<RemoteMessage>, ToRemoteMessageRecipientError>;
+}
+
+impl<A> ToRemoteMessageRecipient for Address<A>
 where
     A: Actor,
 {
-    fn to_recipient_remote_message(&self) -> Result<Recipient<RemoteMessage>, String> {
+    fn to_remote_message_recipient(
+        &self,
+    ) -> Result<Recipient<RemoteMessage>, ToRemoteMessageRecipientError> {
         Ok(*self
-            .erased_recipient()
-            .ok_or_else(|| "actor does not opt in the erased_recipient hook".to_string())?
+            .type_erased_recipient()
+            .ok_or(ToRemoteMessageRecipientError::MissingHook)?
             .downcast::<Recipient<RemoteMessage>>()
-            .map_err(|_| "could not downcast to Recipient<RemoteMessage>".to_string())?)
+            .map_err(|_| ToRemoteMessageRecipientError::DowncastFailed)?)
     }
 }
 
-impl<M> RecipientExt for Recipient<M>
+impl<M> ToRemoteMessageRecipient for Recipient<M>
 where
     M: Message,
 {
-    fn to_recipient_remote_message(&self) -> Result<Recipient<RemoteMessage>, String> {
+    fn to_remote_message_recipient(
+        &self,
+    ) -> Result<Recipient<RemoteMessage>, ToRemoteMessageRecipientError> {
         Ok(*self
-            .erased_recipient()
-            .ok_or_else(|| "actor does not opt in the erased_recipient hook".to_string())?
+            .type_erased_recipient()
+            .ok_or(ToRemoteMessageRecipientError::MissingHook)?
             .downcast::<Recipient<RemoteMessage>>()
-            .map_err(|_| "could not downcast to Recipient<RemoteMessage>".to_string())?)
+            .map_err(|_| ToRemoteMessageRecipientError::DowncastFailed)?)
     }
-}
-
-/// A message which is used to set/unset a supervisor from a remote node.
-#[derive(Debug, Message)]
-#[result_type(())]
-pub enum RemoteSupervisor {
-    /// Set a supervisor.
-    Set(RemoteAddress),
-    /// Unset a supervisor.
-    Unset,
-}
-
-/// A message which is used to register/unregister an observer from a remote node.
-#[derive(Debug, Message)]
-#[result_type(())]
-pub enum RemoteObserver {
-    /// Register an observer.
-    Register(RemoteAddress),
-    /// Unregister an observer.
-    Unregister(RemoteAddress),
 }
 
 /// A message which is used to report actor status to a supervisor from a remote node.
@@ -149,6 +146,8 @@ pub enum RemoteSupervisionEvent {
     Warn(RemoteAddress, String),
     /// Actor terminated with or without error.
     Terminated(RemoteAddress, Option<String>),
+    /// Actor panicked with the given panic info.
+    Panicked(RemoteAddress, String),
     /// Actor state changed.
     State(RemoteAddress, ActorState),
 }

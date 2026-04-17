@@ -1,11 +1,11 @@
 //! Error types used by this crate.
 
+use std::error::Error as StdError;
 use std::fmt::{self, Debug, Display};
 use std::future::Future;
 use std::pin::Pin;
 
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
 
 use crate::channel::oneshot::Receiver;
 use crate::envelope::DefaultEnvelopeProxy;
@@ -29,7 +29,7 @@ pub enum SendError<M> {
     Closed(M),
     Full(M),
     Timeout(M),
-    Other(Box<dyn std::error::Error + Send + Sync>, M),
+    Other(Box<dyn StdError + Send + Sync>, M),
 }
 
 impl<M> Debug for SendError<M> {
@@ -54,8 +54,8 @@ impl<M> Display for SendError<M> {
     }
 }
 
-impl<M> std::error::Error for SendError<M> {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl<M> StdError for SendError<M> {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             SendError::Closed(_) => Option::None,
             SendError::Full(_) => Option::None,
@@ -65,26 +65,26 @@ impl<M> std::error::Error for SendError<M> {
     }
 }
 
-impl<M> From<mpsc::error::SendError<M>> for SendError<M> {
-    fn from(e: mpsc::error::SendError<M>) -> Self {
+impl<M> From<tokio::sync::mpsc::error::SendError<M>> for SendError<M> {
+    fn from(e: tokio::sync::mpsc::error::SendError<M>) -> Self {
         Self::Closed(e.0)
     }
 }
 
-impl<M> From<mpsc::error::TrySendError<M>> for SendError<M> {
-    fn from(e: mpsc::error::TrySendError<M>) -> Self {
+impl<M> From<tokio::sync::mpsc::error::TrySendError<M>> for SendError<M> {
+    fn from(e: tokio::sync::mpsc::error::TrySendError<M>) -> Self {
         match e {
-            mpsc::error::TrySendError::Closed(m) => Self::Closed(m),
-            mpsc::error::TrySendError::Full(m) => Self::Full(m),
+            tokio::sync::mpsc::error::TrySendError::Closed(m) => Self::Closed(m),
+            tokio::sync::mpsc::error::TrySendError::Full(m) => Self::Full(m),
         }
     }
 }
 
-impl<M> From<mpsc::error::SendTimeoutError<M>> for SendError<M> {
-    fn from(e: mpsc::error::SendTimeoutError<M>) -> Self {
+impl<M> From<tokio::sync::mpsc::error::SendTimeoutError<M>> for SendError<M> {
+    fn from(e: tokio::sync::mpsc::error::SendTimeoutError<M>) -> Self {
         match e {
-            mpsc::error::SendTimeoutError::Closed(m) => Self::Closed(m),
-            mpsc::error::SendTimeoutError::Timeout(m) => Self::Timeout(m),
+            tokio::sync::mpsc::error::SendTimeoutError::Closed(m) => Self::Closed(m),
+            tokio::sync::mpsc::error::SendTimeoutError::Timeout(m) => Self::Timeout(m),
         }
     }
 }
@@ -102,29 +102,29 @@ pub enum RecvError {
     Timeout,
 
     #[error(transparent)]
-    Other(Box<dyn std::error::Error + Send + Sync>),
+    Other(Box<dyn StdError + Send + Sync>),
 }
 
-impl From<mpsc::error::TryRecvError> for RecvError {
-    fn from(e: mpsc::error::TryRecvError) -> Self {
+impl From<tokio::sync::mpsc::error::TryRecvError> for RecvError {
+    fn from(e: tokio::sync::mpsc::error::TryRecvError) -> Self {
         match e {
-            mpsc::error::TryRecvError::Disconnected => Self::Closed,
-            mpsc::error::TryRecvError::Empty => Self::Empty,
+            tokio::sync::mpsc::error::TryRecvError::Disconnected => Self::Closed,
+            tokio::sync::mpsc::error::TryRecvError::Empty => Self::Empty,
         }
     }
 }
 
-impl From<oneshot::error::RecvError> for RecvError {
-    fn from(_: oneshot::error::RecvError) -> Self {
+impl From<tokio::sync::oneshot::error::RecvError> for RecvError {
+    fn from(_: tokio::sync::oneshot::error::RecvError) -> Self {
         Self::Closed
     }
 }
 
-impl From<oneshot::error::TryRecvError> for RecvError {
-    fn from(e: oneshot::error::TryRecvError) -> Self {
+impl From<tokio::sync::oneshot::error::TryRecvError> for RecvError {
+    fn from(e: tokio::sync::oneshot::error::TryRecvError) -> Self {
         match e {
-            oneshot::error::TryRecvError::Closed => Self::Closed,
-            oneshot::error::TryRecvError::Empty => Self::Empty,
+            tokio::sync::oneshot::error::TryRecvError::Closed => Self::Closed,
+            tokio::sync::oneshot::error::TryRecvError::Empty => Self::Empty,
         }
     }
 }

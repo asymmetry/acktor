@@ -87,12 +87,17 @@ pub use message::{Handler, Message, MessageResponse};
 
 pub mod envelope;
 
-pub mod observer;
-pub mod supervisor;
-
 mod signal;
 pub use signal::Signal;
 
+pub mod supervisor;
+
+#[cfg(feature = "observer")]
+#[cfg_attr(docsrs, doc(cfg(feature = "observer")))]
+pub mod observer;
+
+#[cfg(feature = "cron")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cron")))]
 pub mod cron;
 
 #[cfg(feature = "derive")]

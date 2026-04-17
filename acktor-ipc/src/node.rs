@@ -2,7 +2,6 @@
 
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
-use std::mem;
 use std::sync::Arc;
 
 use ahash::HashMap;
@@ -11,7 +10,8 @@ use futures_util::future::join_all;
 use tracing::{error, info, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorId, Address, ErrorReport, Handler, JoinHandle, Recipient, Signal,
+    Actor, ActorContext, ActorId, Address, ErrorReport, Handler, JoinHandle, Recipient, SenderId,
+    Signal,
     message::FutureMessageResult,
     observer::{ObserverSet, SubjectActor},
     supervisor::SupervisionEvent,
@@ -22,7 +22,8 @@ use crate::double_map::DoubleMap;
 use crate::errors::NodeError;
 use crate::ipc_method::{IpcConnection, IpcListener};
 use crate::remote_actor::{
-    DynRemoteActorFactory, RemoteActor, RemoteActorFactory, RemoteActorRegistry, RemoteActorShim,
+    RemoteActor, RemoteActorFactory, RemoteActorFactoryRegistry, RemoteActorRegistry,
+    RemoteActorShim,
 };
 use crate::session::{self, Session, SessionHandle};
 
@@ -39,8 +40,6 @@ use factory::Factory;
 
 type Result<T> = std::result::Result<T, NodeError>;
 
-pub(crate) type FactoryRegistry = HashMap<String, Arc<dyn DynRemoteActorFactory>>;
-
 pub(crate) type LabelMap = Arc<DashMap<String, ActorId, ahash::RandomState>>;
 
 /// An actor which helps to manage the IPC connections.
@@ -52,7 +51,7 @@ pub(crate) type LabelMap = Arc<DashMap<String, ActorId, ahash::RandomState>>;
 pub struct Node {
     listeners: Vec<Box<dyn IpcListener>>,
     // registered factories for peer-initiated actor creation, keyed by the type name.
-    factory_registry: FactoryRegistry,
+    factory_registry: Option<RemoteActorFactoryRegistry>,
     factory: Option<Address<Factory>>,
     // `registry` and `label_map`  are cloned into the factory and every session, so all holders
     // observe the same contents. They are wrapped in `Arc` so clone is cheap.
@@ -65,21 +64,26 @@ pub struct Node {
 
 impl Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let endpoints: Vec<&str> = self.listeners.iter().map(|l| l.local_endpoint()).collect();
-        let factory_types: Vec<&str> = self.factory_registry.keys().map(|s| s.as_str()).collect();
+        let listeners: Vec<&str> = self.listeners.iter().map(|l| l.local_endpoint()).collect();
+        let sessions: Vec<&str> = self.sessions.iter().map(|(_, l, _)| l.as_str()).collect();
+        let observers: Vec<u64> = self
+            .observers
+            .iter()
+            .map(|recipient| recipient.index())
+            .collect();
 
         f.debug_struct("Node")
-            .field("listeners", &endpoints)
+            .field("listeners", &listeners)
+            // factory_registry is moved into the factory actor at startup
             .field("factory", &self.factory)
-            .field("factory_registry", &factory_types)
             .field("registry", &self.registry)
             .field("label_map", &self.label_map)
-            .field("sessions", &self.sessions)
-            // .field("children", &self.children)
+            .field("sessions", &sessions)
             .field(
-                "observers",
-                &format_args!("ObserverSet({})", self.observers.len()),
+                "children",
+                &format_args!("HashMap({})", self.children.len()),
             )
+            .field("observers", &observers)
             .finish()
     }
 }
@@ -114,15 +118,11 @@ impl Node {
     where
         A: RemoteActorFactory,
     {
-        self.factory_registry.insert(
+        self.factory_registry.get_or_insert_default().insert(
             A::TYPE_NAME.to_string(),
             Arc::new(RemoteActorShim::<A>(PhantomData)),
         );
         self
-    }
-
-    pub(crate) fn listeners(&self) -> &[Box<dyn IpcListener>] {
-        &self.listeners
     }
 
     async fn create_session(
@@ -157,7 +157,8 @@ impl Node {
 
         let session_id = address.index();
 
-        // this will never fail since we have verified the session label is unique
+        // this will never fail since we have verified the session label is unique and the actor id
+        // is also unique in the same process
         let _ = self
             .sessions
             .insert(session_id, session_label.clone(), address.clone());
@@ -196,12 +197,15 @@ impl Actor for Node {
     type Error = NodeError;
 
     async fn post_start(&mut self, _ctx: &mut Self::Context) -> Result<()> {
-        let factories = mem::take(&mut self.factory_registry);
+        let factory_registry = self.factory_registry.take().unwrap_or_default();
 
         // the factory actor never fail, so it is not supervised
-        let (address, join_handle) =
-            Factory::new(factories, self.registry.clone(), self.label_map.clone())
-                .run("factory")?;
+        let (address, join_handle) = Factory::new(
+            factory_registry,
+            self.registry.clone(),
+            self.label_map.clone(),
+        )
+        .run("factory")?;
 
         self.children.insert(address.clone().into(), join_handle);
         self.factory = Some(address);
@@ -242,7 +246,10 @@ where
         msg: command::AddListener<L>,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        debug_trace!("Handle command {:?}", msg);
+        debug_trace!(
+            "Handle command AddListener<{}>",
+            acktor::utils::type_name::<L>()
+        );
 
         let label = msg.0.local_endpoint().to_string();
         self.listeners.push(Box::new(msg.0));
@@ -261,8 +268,8 @@ impl Handler<command::RemoveListener> for Node {
     ) -> Self::Result {
         debug_trace!("Handle command {:?}", msg);
 
-        let endpoint = msg.0;
-        self.listeners.retain(|l| l.local_endpoint() != endpoint);
+        let label = msg.0;
+        self.listeners.retain(|l| l.local_endpoint() != label);
     }
 }
 
@@ -297,8 +304,8 @@ impl Handler<command::RemoveActor> for Node {
         debug_trace!("Handle command {:?}", msg);
 
         let actor_id = msg.0;
-        self.registry.remove(actor_id);
         self.label_map.retain(|_, id| *id != actor_id);
+        self.registry.remove(actor_id);
     }
 }
 

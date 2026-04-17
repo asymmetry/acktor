@@ -1,7 +1,7 @@
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 
-#[cfg(feature = "erased-recipient")]
+#[cfg(feature = "type-erased-recipient-hook")]
 use std::any::Any;
 
 use futures_util::{FutureExt, TryFutureExt};
@@ -16,8 +16,8 @@ use crate::errors::{DoSendResult, DoSendResultFuture, SendError, SendResult, Sen
 use crate::message::Message;
 use crate::utils::create_actor_id;
 
-#[cfg(feature = "erased-recipient")]
-use crate::actor::ErasedRecipientFn;
+#[cfg(feature = "type-erased-recipient-hook")]
+use crate::actor::TypeErasedRecipientFn;
 
 /// The address of an actor.
 ///
@@ -28,10 +28,10 @@ where
 {
     index: ActorId,
     tx: mpsc::Sender<Envelope<A>>,
-    /// Optional conversion function pointer baked in at construction (see
-    /// [`Actor::erased_recipient_fn`]).
-    #[cfg(feature = "erased-recipient")]
-    erased_recipient_fn: Option<ErasedRecipientFn<A>>,
+    /// Opt-in conversion hook baked in at construction, see [`Actor::type_erased_recipient_fn`]
+    /// for details.
+    #[cfg(feature = "type-erased-recipient-hook")]
+    type_erased_recipient_fn: Option<TypeErasedRecipientFn<A>>,
 }
 
 impl<A> Debug for Address<A>
@@ -53,8 +53,8 @@ where
         Self {
             index: self.index,
             tx: self.tx.clone(),
-            #[cfg(feature = "erased-recipient")]
-            erased_recipient_fn: self.erased_recipient_fn,
+            #[cfg(feature = "type-erased-recipient-hook")]
+            type_erased_recipient_fn: self.type_erased_recipient_fn,
         }
     }
 }
@@ -94,8 +94,8 @@ where
         Self {
             index: create_actor_id(),
             tx,
-            #[cfg(feature = "erased-recipient")]
-            erased_recipient_fn: A::erased_recipient_fn(),
+            #[cfg(feature = "type-erased-recipient-hook")]
+            type_erased_recipient_fn: A::type_erased_recipient_fn(),
         }
     }
 
@@ -118,7 +118,6 @@ where
     pub fn recipient<M, EP>(self) -> Recipient<M, EP>
     where
         M: Message<EP>,
-        EP: 'static,
         A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
     {
         self.into()
@@ -264,15 +263,16 @@ where
             })
     }
 
-    /// If the actor backing this sender opted into the conversion via
-    /// [`Actor::erased_recipient_fn`][crate::actor::Actor::erased_recipient_fn], returns the
-    /// resulting type-erased trait object. Downstream crates can then downcast this into the
-    /// concrete type they used to override the
-    /// [`Actor::erased_recipient_fn`][crate::actor::Actor::erased_recipient_fn] method.
-    #[cfg(feature = "erased-recipient")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "erased-recipient")))]
-    pub fn erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
-        self.erased_recipient_fn.map(|f| f(self))
+    /// Returns a type-erased trait object which can be downcast into a concrete
+    /// [`Recipient<M>`][super::recipient::Recipient], where `M` is a specific message type chosen
+    /// by the user who overrides the
+    /// [`Actor::type_erased_recipient_fn`][Actor::type_erased_recipient_fn] method.
+    ///
+    /// This method triggers the conversion function baked in this address at construction, and
+    /// returns the resulting type-erased trait object.
+    #[cfg(feature = "type-erased-recipient-hook")]
+    pub fn type_erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.type_erased_recipient_fn.map(|f| f(self))
     }
 }
 
@@ -289,7 +289,6 @@ impl<A, M, EP> Sender<M, EP> for Address<A>
 where
     A: Actor,
     M: Message<EP>,
-    EP: 'static,
     A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
 {
     fn is_closed(&self) -> bool {
@@ -324,8 +323,8 @@ where
         self.blocking_do_send(msg)
     }
 
-    #[cfg(feature = "erased-recipient")]
-    fn erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
-        self.erased_recipient()
+    #[cfg(feature = "type-erased-recipient-hook")]
+    fn type_erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.type_erased_recipient()
     }
 }

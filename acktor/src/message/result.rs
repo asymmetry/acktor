@@ -32,7 +32,6 @@ impl<A, M, EP> MessageResponse<A, M, EP> for MessageResult<M, EP>
 where
     A: Actor,
     M: Message<EP>,
-    EP: 'static,
 {
     fn handle(
         self,

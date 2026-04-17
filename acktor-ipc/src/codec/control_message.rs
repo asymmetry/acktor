@@ -3,7 +3,7 @@ use std::fmt::Display;
 use bytes::{Bytes, BytesMut};
 
 use acktor::{
-    Actor, ActorId, ActorState, Message, SenderId, Signal,
+    Actor, ActorState, Message, SenderId, Signal,
     cron::CronSignal,
     observer::Observer,
     supervisor::{SupervisionEvent, Supervisor},
@@ -12,19 +12,7 @@ use acktor_ipc_proto::control_message::{self as proto, ControlMessage};
 
 use super::errors::{DecodeError, EncodeError};
 use super::{Decode, DecodeContext, Encode, EncodeContext};
-use crate::remote_address::RemoteAddress;
-use crate::remote_message::{
-    RecipientExt, RemoteObserver, RemoteSupervisionEvent, RemoteSupervisor,
-};
-
-#[inline]
-fn check_actor_id(actor_id: u64) -> Result<ActorId, DecodeError> {
-    if actor_id.is_remote() {
-        Err(DecodeError::DecodeRemoteAddress)
-    } else {
-        Ok(actor_id)
-    }
-}
+use crate::remote_message::RemoteSupervisionEvent;
 
 impl Encode for Signal {
     #[inline]
@@ -74,17 +62,9 @@ where
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let supervisor = match self {
             Supervisor::Set(recipient) => {
-                if recipient.is_remote() {
-                    return Err(EncodeError::EncodeRemoteAddress);
-                }
-
-                let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-                let actor_id = recipient.index();
-                if let Ok(recipient) = recipient.to_recipient_remote_message() {
-                    ctx.registry.insert(recipient);
-                }
-
-                proto::Supervisor::set(actor_id)
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(recipient)?;
+                proto::Supervisor::set(recipient.index())
             }
 
             Supervisor::Unset => proto::Supervisor::unset(),
@@ -94,7 +74,10 @@ where
     }
 }
 
-impl Decode for RemoteSupervisor {
+impl<A> Decode for Supervisor<A>
+where
+    A: Actor,
+{
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
@@ -103,13 +86,9 @@ impl Decode for RemoteSupervisor {
             Some(proto::ControlMessageType::Supervisor(supervisor)) => {
                 match supervisor.supervisor {
                     Some(proto::SupervisorType::Set(actor_id)) => {
-                        Ok(RemoteSupervisor::Set(RemoteAddress::new(
-                            check_actor_id(actor_id)?,
-                            ctx.session.clone(),
-                            ctx.registry.clone(),
-                        )))
+                        Ok(Supervisor::Set(ctx.create_remote_address(actor_id)?.into()))
                     }
-                    Some(proto::SupervisorType::Unset(())) => Ok(RemoteSupervisor::Unset),
+                    Some(proto::SupervisorType::Unset(())) => Ok(Supervisor::Unset),
                     None => Err("missing field `supervisor` in the `Supervisor` message".into()),
                 }
             }
@@ -121,7 +100,8 @@ impl Decode for RemoteSupervisor {
 
 impl<M> Encode for Observer<M>
 where
-    M: Message,
+    M: Message + Encode,
+    M::Result: Decode,
 {
     #[inline]
     fn encoded_len(&self) -> usize {
@@ -137,31 +117,15 @@ where
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let observer = match self {
             Observer::Register(recipient) => {
-                if recipient.is_remote() {
-                    return Err(EncodeError::EncodeRemoteAddress);
-                }
-
-                let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-                let actor_id = recipient.index();
-                if let Ok(recipient) = recipient.to_recipient_remote_message() {
-                    ctx.registry.insert(recipient);
-                }
-
-                proto::Observer::register(actor_id)
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(recipient)?;
+                proto::Observer::register(recipient.index())
             }
 
             Observer::Unregister(recipient) => {
-                if recipient.is_remote() {
-                    return Err(EncodeError::EncodeRemoteAddress);
-                }
-
-                let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-                let actor_id = recipient.index();
-                if let Ok(recipient) = recipient.to_recipient_remote_message() {
-                    ctx.registry.insert(recipient);
-                }
-
-                proto::Observer::unregister(actor_id)
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(recipient)?;
+                proto::Observer::unregister(recipient.index())
             }
         };
         let message = ControlMessage::observer(observer);
@@ -169,27 +133,23 @@ where
     }
 }
 
-impl Decode for RemoteObserver {
+impl<M> Decode for Observer<M>
+where
+    M: Message + Encode,
+    M::Result: Decode,
+{
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
         let message: ControlMessage = prost::Message::decode(buf)?;
         match message.message {
             Some(proto::ControlMessageType::Observer(observer)) => match observer.observer {
-                Some(proto::ObserverType::Register(actor_id)) => {
-                    Ok(RemoteObserver::Register(RemoteAddress::new(
-                        check_actor_id(actor_id)?,
-                        ctx.session.clone(),
-                        ctx.registry.clone(),
-                    )))
-                }
-                Some(proto::ObserverType::Unregister(actor_id)) => {
-                    Ok(RemoteObserver::Unregister(RemoteAddress::new(
-                        check_actor_id(actor_id)?,
-                        ctx.session.clone(),
-                        ctx.registry.clone(),
-                    )))
-                }
+                Some(proto::ObserverType::Register(actor_id)) => Ok(Observer::Register(
+                    ctx.create_remote_address(actor_id)?.into(),
+                )),
+                Some(proto::ObserverType::Unregister(actor_id)) => Ok(Observer::Unregister(
+                    ctx.create_remote_address(actor_id)?.into(),
+                )),
                 None => Err("missing field `observer` in the `Observer` message".into()),
             },
 
@@ -239,10 +199,16 @@ where
             SupervisionEvent::Warn(address, error) => {
                 proto::SupervisionEvent::warn(address.index(), error.to_string())
             }
+
             SupervisionEvent::Terminated(address, error) => proto::SupervisionEvent::terminated(
                 address.index(),
                 error.as_ref().map(|e| e.to_string()),
             ),
+
+            SupervisionEvent::Panicked(address, info) => {
+                proto::SupervisionEvent::panicked(address.index(), info.to_string())
+            }
+
             SupervisionEvent::State(address, state) => {
                 proto::SupervisionEvent::state(address.index(), *state as i32)
             }
@@ -255,45 +221,30 @@ where
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let event = match self {
             SupervisionEvent::Warn(address, error) => {
-                if address.is_remote() {
-                    return Err(EncodeError::EncodeRemoteAddress);
-                }
-
-                let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-                let actor_id = address.index();
-                if let Ok(recipient) = address.to_recipient_remote_message() {
-                    ctx.registry.insert(recipient);
-                }
-
-                proto::SupervisionEvent::warn(actor_id, error.to_string())
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(address)?;
+                proto::SupervisionEvent::warn(address.index(), error.to_string())
             }
 
             SupervisionEvent::Terminated(address, error) => {
-                if address.is_remote() {
-                    return Err(EncodeError::EncodeRemoteAddress);
-                }
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(address)?;
+                proto::SupervisionEvent::terminated(
+                    address.index(),
+                    error.as_ref().map(|e| e.to_string()),
+                )
+            }
 
-                let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-                let actor_id = address.index();
-                if let Ok(recipient) = address.to_recipient_remote_message() {
-                    ctx.registry.insert(recipient);
-                }
-
-                proto::SupervisionEvent::terminated(actor_id, error.as_ref().map(|e| e.to_string()))
+            SupervisionEvent::Panicked(address, info) => {
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(address)?;
+                proto::SupervisionEvent::panicked(address.index(), info.to_string())
             }
 
             SupervisionEvent::State(address, state) => {
-                if address.is_remote() {
-                    return Err(EncodeError::EncodeRemoteAddress);
-                }
-
-                let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-                let actor_id = address.index();
-                if let Ok(recipient) = address.to_recipient_remote_message() {
-                    ctx.registry.insert(recipient);
-                }
-
-                proto::SupervisionEvent::state(actor_id, *state as i32)
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(address)?;
+                proto::SupervisionEvent::state(address.index(), *state as i32)
             }
         };
         let message = ControlMessage::supervision_event(event);
@@ -304,45 +255,30 @@ where
     fn encode_to_bytes(&self, ctx: Option<&EncodeContext>) -> Result<Bytes, EncodeError> {
         let event = match self {
             SupervisionEvent::Warn(address, error) => {
-                if address.is_remote() {
-                    return Err(EncodeError::EncodeRemoteAddress);
-                }
-
-                let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-                let actor_id = address.index();
-                if let Ok(recipient) = address.to_recipient_remote_message() {
-                    ctx.registry.insert(recipient);
-                }
-
-                proto::SupervisionEvent::warn(actor_id, error.to_string())
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(address)?;
+                proto::SupervisionEvent::warn(address.index(), error.to_string())
             }
 
             SupervisionEvent::Terminated(address, error) => {
-                if address.is_remote() {
-                    return Err(EncodeError::EncodeRemoteAddress);
-                }
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(address)?;
+                proto::SupervisionEvent::terminated(
+                    address.index(),
+                    error.as_ref().map(|e| e.to_string()),
+                )
+            }
 
-                let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-                let actor_id = address.index();
-                if let Ok(recipient) = address.to_recipient_remote_message() {
-                    ctx.registry.insert(recipient);
-                }
-
-                proto::SupervisionEvent::terminated(actor_id, error.as_ref().map(|e| e.to_string()))
+            SupervisionEvent::Panicked(address, info) => {
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(address)?;
+                proto::SupervisionEvent::panicked(address.index(), info.to_string())
             }
 
             SupervisionEvent::State(address, state) => {
-                if address.is_remote() {
-                    return Err(EncodeError::EncodeRemoteAddress);
-                }
-
-                let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-                let actor_id = address.index();
-                if let Ok(recipient) = address.to_recipient_remote_message() {
-                    ctx.registry.insert(recipient);
-                }
-
-                proto::SupervisionEvent::state(actor_id, *state as i32)
+                ctx.ok_or(EncodeError::MissingEncodeContext)?
+                    .register(address)?;
+                proto::SupervisionEvent::state(address.index(), *state as i32)
             }
         };
         let message = ControlMessage::supervision_event(event);
@@ -362,32 +298,27 @@ impl Decode for RemoteSupervisionEvent {
         match message.message {
             Some(proto::ControlMessageType::SupervisionEvent(event)) => match event.event {
                 Some(proto::SupervisionEventType::Warn(warn)) => Ok(RemoteSupervisionEvent::Warn(
-                    RemoteAddress::new(
-                        check_actor_id(warn.actor_id)?,
-                        ctx.session.clone(),
-                        ctx.registry.clone(),
-                    ),
+                    ctx.create_remote_address(warn.actor_id)?,
                     warn.err,
                 )),
 
                 Some(proto::SupervisionEventType::Terminated(terminated)) => {
                     Ok(RemoteSupervisionEvent::Terminated(
-                        RemoteAddress::new(
-                            check_actor_id(terminated.actor_id)?,
-                            ctx.session.clone(),
-                            ctx.registry.clone(),
-                        ),
+                        ctx.create_remote_address(terminated.actor_id)?,
                         terminated.err,
+                    ))
+                }
+
+                Some(proto::SupervisionEventType::Panicked(panicked)) => {
+                    Ok(RemoteSupervisionEvent::Panicked(
+                        ctx.create_remote_address(panicked.actor_id)?,
+                        panicked.info,
                     ))
                 }
 
                 Some(proto::SupervisionEventType::State(state)) => {
                     Ok(RemoteSupervisionEvent::State(
-                        RemoteAddress::new(
-                            check_actor_id(state.actor_id)?,
-                            ctx.session.clone(),
-                            ctx.registry.clone(),
-                        ),
+                        ctx.create_remote_address(state.actor_id)?,
                         ActorState::try_from(state.state as u8).map_err(|_| {
                             DecodeError::from(
                                 "invalid actor state value in the `SupervisionEvent` message",

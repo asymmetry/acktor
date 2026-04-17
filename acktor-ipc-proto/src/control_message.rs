@@ -148,7 +148,7 @@ mod supervision_event {
     pub use crate::proto::control_message::supervision_event::state::ActorState;
     pub use crate::proto::control_message::{
         SupervisionEvent,
-        supervision_event::{State, Terminated, Warn},
+        supervision_event::{Panicked, State, Terminated, Warn},
     };
 
     impl SupervisionEvent {
@@ -166,6 +166,15 @@ mod supervision_event {
                     actor_id,
                     err,
                 })),
+            }
+        }
+
+        #[inline]
+        pub fn panicked(actor_id: u64, info: String) -> Self {
+            Self {
+                event: Some(SupervisionEventType::Panicked(
+                    crate::proto::control_message::supervision_event::Panicked { actor_id, info },
+                )),
             }
         }
 

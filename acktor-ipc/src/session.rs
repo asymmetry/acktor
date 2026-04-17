@@ -27,8 +27,8 @@ use crate::remote_message::{RemoteMessage, RemoteMessageKind};
 
 pub mod command;
 
-mod session_ref;
-pub use session_ref::SessionHandle;
+mod session_handle;
+pub use session_handle::SessionHandle;
 
 mod context;
 use context::SessionContext;

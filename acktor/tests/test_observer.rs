@@ -40,24 +40,24 @@ impl SubjectActor<M2> for A {
 
 #[derive(Debug, Message)]
 #[result_type(())]
-pub struct PingA;
+pub struct NotifyM1;
 
-impl Handler<PingA> for A {
+impl Handler<NotifyM1> for A {
     type Result = ();
 
-    async fn handle(&mut self, _msg: PingA, _ctx: &mut Self::Context) -> Self::Result {
+    async fn handle(&mut self, _msg: NotifyM1, _ctx: &mut Self::Context) -> Self::Result {
         self.notify_observers(M1).await;
     }
 }
 
 #[derive(Debug, Message)]
 #[result_type(())]
-pub struct TryPingA;
+pub struct TryNotifyM2;
 
-impl Handler<TryPingA> for A {
+impl Handler<TryNotifyM2> for A {
     type Result = ();
 
-    async fn handle(&mut self, _msg: TryPingA, _ctx: &mut Self::Context) -> Self::Result {
+    async fn handle(&mut self, _msg: TryNotifyM2, _ctx: &mut Self::Context) -> Self::Result {
         self.try_notify_observers(M2);
     }
 }
@@ -104,10 +104,16 @@ impl Handler<CheckB> for B {
 
 #[tokio::test]
 async fn test_observer() {
+    // the subject actor
     let (a_address, _) = A::default().run("A").unwrap();
-    let (b_address, _) = B { received: false }.run("B").unwrap();
-    let (recipient, mut rx) = Recipient::<M1>::create(16);
 
+    // use actor as observer
+    let (b_address, _) = B { received: false }.run("B").unwrap();
+
+    // use none-actor backed recipientas observer
+    let (recipient, mut rx) = Recipient::<M1>::create(8);
+
+    // register B as an observer for M1
     a_address
         .send(Observer::<M1>::Register(b_address.clone().into()))
         .await
@@ -115,6 +121,7 @@ async fn test_observer() {
         .await
         .unwrap();
 
+    // register B as an observer for M2
     a_address
         .send(Observer::<M2>::Register(b_address.clone().into()))
         .await
@@ -122,6 +129,7 @@ async fn test_observer() {
         .await
         .unwrap();
 
+    // register none-actor backed recipient as an observer for M1
     a_address
         .send(Observer::Register(recipient.clone()))
         .await
@@ -129,16 +137,19 @@ async fn test_observer() {
         .await
         .unwrap();
 
-    a_address.send(PingA).await.unwrap().await.unwrap();
+    // trigger A to notify M1 observers
+    a_address.send(NotifyM1).await.unwrap().await.unwrap();
 
+    // both B and the recipient should receive M1
     let received = b_address.send(CheckB).await.unwrap().await.unwrap();
     assert_eq!(received, true);
-
     let received = rx.recv().await;
     assert_eq!(received.is_ok(), true);
 
-    a_address.send(TryPingA).await.unwrap().await.unwrap();
+    // trigger A to notify M2 observers
+    a_address.send(TryNotifyM2).await.unwrap().await.unwrap();
 
+    // B should receive M2
     let received = b_address.send(CheckB).await.unwrap().await.unwrap();
     assert_eq!(received, true);
 }

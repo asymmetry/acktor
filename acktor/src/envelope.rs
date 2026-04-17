@@ -39,7 +39,7 @@ where
 }
 
 /// Helps to save a message in an envelope as a boxed trait object.
-pub trait EnvelopeProxy<A>: Send + 'static
+pub trait EnvelopeProxy<A>: Send
 where
     A: Actor,
 {
@@ -63,7 +63,7 @@ where
 ///
 /// This type is used to store different message types in a single mailbox.
 #[repr(transparent)]
-pub struct Envelope<A>(Box<dyn EnvelopeProxy<A> + Send + 'static>)
+pub struct Envelope<A>(Box<dyn EnvelopeProxy<A> + Send>)
 where
     A: Actor;
 

@@ -21,6 +21,8 @@ where
     Warn(Address<A>, A::Error),
     /// Actor terminated with or without error.
     Terminated(Address<A>, Option<A::Error>),
+    /// Actor panicked with the given panic info.
+    Panicked(Address<A>, String),
     /// Actor state changed.
     State(Address<A>, ActorState),
 }

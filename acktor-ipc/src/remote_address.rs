@@ -113,7 +113,7 @@ where
 {
     let result_bytes = result_bytes_rx.await?;
     let result = M::Result::decode(result_bytes, None)?;
-    result_tx.send(result).map_err(|_| "channel closed")?;
+    result_tx.send(result).map_err(|_| SendError::Closed(()))?;
     Ok(())
 }
 
@@ -141,7 +141,7 @@ where
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
-                return Box::pin(future::ready(Err(SendError::Other(e.into(), msg))));
+                return future::ready(Err(SendError::Other(e.into(), msg))).boxed();
             }
         };
 
@@ -174,7 +174,7 @@ where
         let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
-                return Box::pin(future::ready(Err(SendError::Other(e.into(), msg))));
+                return future::ready(Err(SendError::Other(e.into(), msg))).boxed();
             }
         };
 

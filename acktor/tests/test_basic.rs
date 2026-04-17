@@ -59,8 +59,10 @@ impl Handler<Command> for Number {
 
 #[tokio::test]
 async fn test_basic() {
+    // test run
     let (address, join_handle) = Number(16).run("Number").unwrap();
 
+    // test send
     let result = address
         .send(Arithmetic::Add(32))
         .await
@@ -68,20 +70,20 @@ async fn test_basic() {
         .await
         .unwrap();
     assert_eq!(result.0, 48);
-    address.do_send(Arithmetic::Subtract(64)).await.unwrap();
 
+    // test do_send
+    address.do_send(Arithmetic::Subtract(64)).await.unwrap();
     let result = address.send(Command::Get).await.unwrap().await.unwrap();
     assert_eq!(result, -16);
 
+    // test stop
     address.do_send(Signal::Stop).await.unwrap();
-
     join_handle.await.unwrap();
 
-    // test create and Signal::Terminate
-
+    // test create
     let (address, join_handle) = Number::create("Number", |_| Ok(Number(16))).unwrap();
 
+    // test terminate
     address.do_send(Signal::Terminate).await.unwrap();
-
     join_handle.await.unwrap();
 }

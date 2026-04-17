@@ -63,8 +63,42 @@ where
     pub fn drain_mailbox(&mut self) {
         self.drain_mailbox = true;
     }
+}
 
-    async fn processing_loop(
+impl<A> ActorContext<A> for Context<A>
+where
+    A: Actor<Context = Self>,
+{
+    fn new(label: String) -> Self {
+        Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
+    }
+
+    fn index(&self) -> ActorId {
+        self.doorplate.index()
+    }
+
+    fn label(&self) -> &str {
+        self.label.as_str()
+    }
+
+    fn address(&self) -> Address<A> {
+        self.doorplate.clone()
+    }
+
+    fn take_mailbox(&mut self) -> Option<Mailbox<A>> {
+        self.mailbox.take()
+    }
+
+    fn state(&self) -> ActorState {
+        self.state
+    }
+
+    fn set_state(&mut self, state: ActorState) {
+        self.state = state;
+        self.try_notify_supervisor(SupervisionEvent::State(self.address(), state));
+    }
+
+    async fn process_loop(
         &mut self,
         actor: &mut A,
         mailbox: &mut Mailbox<A>,
@@ -128,64 +162,6 @@ where
                 _ => {}
             }
         }
-
-        Ok(())
-    }
-}
-
-impl<A> ActorContext<A> for Context<A>
-where
-    A: Actor<Context = Self>,
-{
-    fn new(label: String) -> Self {
-        Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
-    }
-
-    fn index(&self) -> ActorId {
-        self.doorplate.index()
-    }
-
-    fn label(&self) -> &str {
-        self.label.as_str()
-    }
-
-    fn address(&self) -> Address<A> {
-        self.doorplate.clone()
-    }
-
-    fn take_mailbox(&mut self) -> Option<Mailbox<A>> {
-        self.mailbox.take()
-    }
-
-    fn state(&self) -> ActorState {
-        self.state
-    }
-
-    fn set_state(&mut self, state: ActorState) {
-        self.state = state;
-        self.try_notify_supervisor(SupervisionEvent::State(self.address(), state));
-    }
-
-    async fn processing(&mut self, actor: &mut A, mut mailbox: Mailbox<A>) -> Result<(), A::Error> {
-        actor.post_start(self).await?;
-
-        debug!("Actor {} is started", self.index());
-        self.set_state(ActorState::Running);
-
-        let result = self.processing_loop(actor, &mut mailbox).await;
-
-        if self.state() != ActorState::Stopped {
-            self.set_state(ActorState::Stopped);
-        }
-
-        // drop mailbox so any actor holds the address of this actor will not be able to send messages
-        // after it is stopped
-        drop(mailbox);
-
-        let result_post_stop = actor.post_stop(self).await;
-
-        result?;
-        result_post_stop?;
 
         Ok(())
     }

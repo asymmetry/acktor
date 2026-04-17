@@ -3,44 +3,63 @@
 //! This module provides the [`Encode`] and [`Decode`] traits along with implementations for
 //! primitive types, standard library containers, and acktor types.
 
-use std::fmt::{self, Debug};
-
 use bytes::{Bytes, BytesMut};
 
 use acktor::{Actor, Address, Message, Recipient, SenderId};
 
 use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_address::RemoteAddress;
-use crate::remote_message::RecipientExt;
+use crate::remote_message::ToRemoteMessageRecipient;
 use crate::session::Session;
 
-pub mod errors;
-use errors::{DecodeError, EncodeError};
+mod errors;
+pub use errors::{DecodeError, EncodeError};
 
 mod control_message;
 mod ipc_message;
 
 #[cfg(any(feature = "default-codec", feature = "prost-codec"))]
 mod common_codec;
-#[cfg(all(feature = "default-codec", not(feature = "prost-codec")))]
+#[cfg(feature = "default-codec")]
 mod default_codec;
-#[cfg(feature = "prost-codec")]
+#[cfg(all(feature = "prost-codec", not(feature = "default-codec")))]
 mod prost_codec;
 
 /// Context passed through every [`Encode::encode`] call.
 ///
 /// Carries the remote actor registry so that when the address of an actor which can be reached
 /// over IPC is serialized for the first time, it can self-register in the registry.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct EncodeContext {
     /// The actor registry associated with this context.
-    pub registry: RemoteActorRegistry,
+    registry: RemoteActorRegistry,
 }
 
 impl EncodeContext {
     /// Constructs a new [`EncodeContext`] from the given actor registry.
+    #[inline]
     pub fn new(registry: RemoteActorRegistry) -> Self {
         Self { registry }
+    }
+
+    /// Registers the given address/recipient in the actor registry.
+    pub fn register<A>(&self, address: &A) -> Result<(), EncodeError>
+    where
+        A: SenderId + ToRemoteMessageRecipient,
+    {
+        let index = address.index();
+
+        if self.registry.contains(index) {
+            return Ok(());
+        }
+
+        if index.is_remote() {
+            Err(EncodeError::EncodeRemoteAddress)
+        } else {
+            self.registry.insert(address.to_remote_message_recipient()?);
+
+            Ok(())
+        }
     }
 }
 
@@ -48,30 +67,33 @@ impl EncodeContext {
 ///
 /// Carries the IPC session actor address and the remote actor registry which are needed to
 /// reconstruct [`RemoteAddress`]s during decoding.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DecodeContext {
     /// The remote session associated with this context.
-    pub session: Address<Session>,
+    session: Address<Session>,
     /// The actor registry associated with this context.
-    pub registry: RemoteActorRegistry,
-}
-
-impl Debug for DecodeContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DecodeContext")
-            .field(
-                "session",
-                &format_args!("Session({})", self.session.index()),
-            )
-            .field("registry", &self.registry)
-            .finish()
-    }
+    registry: RemoteActorRegistry,
 }
 
 impl DecodeContext {
     /// Constructs a new [`DecodeContext`] from the given remote session and the actor registry.
+    #[inline]
     pub fn new(session: Address<Session>, registry: RemoteActorRegistry) -> Self {
         Self { session, registry }
+    }
+
+    /// Constructs a new [`RemoteAddress`] from the give aactor ID.
+    #[inline]
+    pub fn create_remote_address(&self, actor_id: u64) -> Result<RemoteAddress, DecodeError> {
+        if actor_id.is_remote() {
+            Err(DecodeError::DecodeRemoteAddress)
+        } else {
+            Ok(RemoteAddress::new(
+                actor_id,
+                self.session.clone(),
+                self.registry.clone(),
+            ))
+        }
     }
 }
 
@@ -112,12 +134,8 @@ where
     #[inline]
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         // auto-register the address if it is an local address
-        if !self.index().is_remote() {
-            let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-            if let Ok(recipient) = self.to_recipient_remote_message() {
-                ctx.registry.insert(recipient);
-            }
-        }
+        ctx.ok_or(EncodeError::MissingEncodeContext)?
+            .register(self)?;
         prost::Message::encode(&self.index(), buf).map_err(Into::into)
     }
 }
@@ -134,12 +152,8 @@ where
     #[inline]
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         // auto-register the address if it is an local address
-        if !self.index().is_remote() {
-            let ctx = ctx.ok_or(EncodeError::MissingEncodeContext)?;
-            if let Ok(recipient) = self.to_recipient_remote_message() {
-                ctx.registry.insert(recipient);
-            }
-        }
+        ctx.ok_or(EncodeError::MissingEncodeContext)?
+            .register(self)?;
         prost::Message::encode(&self.index(), buf).map_err(Into::into)
     }
 }
@@ -148,16 +162,8 @@ impl Decode for RemoteAddress {
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let actor_id = <u64 as prost::Message>::decode(buf)?;
-        if actor_id.is_remote() {
-            return Err(DecodeError::DecodeRemoteAddress);
-        }
-        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
-
-        Ok(RemoteAddress::new(
-            actor_id,
-            ctx.session.clone(),
-            ctx.registry.clone(),
-        ))
+        ctx.ok_or(DecodeError::MissingDecodeContext)?
+            .create_remote_address(actor_id)
     }
 }
 

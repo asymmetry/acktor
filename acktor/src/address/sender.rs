@@ -1,4 +1,4 @@
-#[cfg(feature = "erased-recipient")]
+#[cfg(feature = "type-erased-recipient-hook")]
 use std::any::Any;
 
 use crate::actor::ActorId;
@@ -36,7 +36,6 @@ impl SenderId for ActorId {
 pub trait Sender<M, EP = DefaultEnvelopeProxy<M>>: SenderId
 where
     M: Message<EP>,
-    EP: 'static,
 {
     /// Checks if the channel is closed.
     fn is_closed(&self) -> bool;
@@ -69,14 +68,16 @@ where
     /// This method is intended for use cases where you are sending from synchronous code.
     fn blocking_do_send(&self, msg: M) -> DoSendResult<M>;
 
-    /// If the actor backing this sender opted into the conversion via
-    /// [`Actor::erased_recipient_fn`][crate::actor::Actor::erased_recipient_fn], returns the
-    /// resulting type-erased trait object. Downstream crates can then downcast the `Box<dyn Any>`
-    /// back to the concrete type they used to override the
-    /// [`Actor::erased_recipient_fn`][crate::actor::Actor::erased_recipient_fn] method.
-    #[cfg(feature = "erased-recipient")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "erased-recipient")))]
-    fn erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+    /// Returns a type-erased trait object which can be downcast into a concrete
+    /// [`Recipient<M>`][super::recipient::Recipient], where `M` is a specific message type chosen
+    /// by the user who overrides the
+    /// [`Actor::type_erased_recipient_fn`][crate::actor::Actor::type_erased_recipient_fn] method.
+    ///
+    /// See [`Actor::type_erased_recipient_fn`][crate::actor::Actor::type_erased_recipient_fn] for
+    /// details.
+    #[cfg(feature = "type-erased-recipient-hook")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
+    fn type_erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
         None
     }
 }

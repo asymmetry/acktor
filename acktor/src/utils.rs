@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use tracing::{debug, warn};
@@ -46,6 +47,17 @@ pub(crate) fn create_actor_id() -> ActorId {
         MAX_ACTOR_ID
     );
     id
+}
+
+#[inline]
+pub(crate) fn panic_info_to_string(info: &(dyn Any + Send)) -> String {
+    if let Some(s) = info.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = info.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "could not capture the panic info".to_string()
+    }
 }
 
 #[doc(hidden)]

@@ -6,8 +6,9 @@ use thiserror::Error;
 
 use acktor::{RecvError, SendError};
 
-pub use crate::codec::errors::{DecodeError, EncodeError};
+pub use crate::codec::{DecodeError, EncodeError};
 pub use crate::double_map::{KeyConflictError, TryReserveError};
+pub use crate::remote_message::ToRemoteMessageRecipientError;
 
 /// Error type used by [`Node`][crate::node::Node].
 #[derive(Debug, Error)]

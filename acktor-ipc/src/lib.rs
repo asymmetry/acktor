@@ -4,6 +4,7 @@
 pub use bytes;
 
 pub mod errors;
+pub use errors::{NodeError, SessionError};
 
 pub mod ipc_method;
 pub use ipc_method::{IpcConnection, IpcListener};
@@ -12,7 +13,7 @@ mod codec;
 pub use codec::{Decode, DecodeContext, Encode, EncodeContext};
 
 mod remote_actor;
-pub use remote_actor::{RemoteActor, RemoteActorFactory, RemoteActorRegistry};
+pub use remote_actor::{RemoteActor, RemoteActorFactory};
 
 mod actor_handle;
 pub use actor_handle::ActorHandle;

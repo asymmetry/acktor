@@ -6,14 +6,16 @@
 //! actor when it receives the message.
 //!
 
+use std::error::Error;
 use std::future::{self, Future};
 use std::sync::Arc;
 
 use tracing::debug;
 
-use crate::actor::{Actor, ActorContext};
+use crate::actor::Actor;
 use crate::channel::oneshot;
 use crate::envelope::DefaultEnvelopeProxy;
+use crate::errors::ErrorReport;
 
 mod result;
 pub use result::MessageResult;
@@ -25,10 +27,6 @@ pub use future_result::FutureMessageResult;
 pub trait Message<EP = DefaultEnvelopeProxy<Self>>: Send + 'static {
     /// The type of the response produced when this message is handled.
     type Result: Send + 'static;
-}
-
-impl Message for () {
-    type Result = ();
 }
 
 /// Describes how an actor handles a specific message type.
@@ -47,6 +45,24 @@ where
     ) -> impl Future<Output = Self::Result> + Send;
 }
 
+/// Types that can be sent as a response to a message.
+pub trait MessageResponse<A, M, EP = DefaultEnvelopeProxy<M>>: Send
+where
+    A: Actor,
+    M: Message<EP>,
+{
+    /// Handles the response.
+    fn handle(
+        self,
+        ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send;
+}
+
+impl Message for () {
+    type Result = ();
+}
+
 // implement Message trait for a few common wrapper types
 
 impl<M, EP> Message<EP> for Box<M>
@@ -63,45 +79,30 @@ where
     type Result = M::Result;
 }
 
-/// Types that can be sent as a response to a message.
-pub trait MessageResponse<A, M, EP = DefaultEnvelopeProxy<M>>: Send + 'static
-where
-    A: Actor,
-    M: Message<EP>,
-{
-    /// Handles the response.
-    fn handle(
-        self,
-        ctx: &mut A::Context,
-        tx: Option<oneshot::Sender<M::Result>>,
-    ) -> impl Future<Output = ()> + Send;
-}
-
 // implement MessageResponse trait for a few common wrapper types
 
 impl<A, M, EP, T, E> MessageResponse<A, M, EP> for Result<T, E>
 where
     A: Actor,
     M: Message<EP, Result = Self>,
-    T: Send + 'static,
-    E: Send + 'static,
+    T: Send,
+    E: Into<Box<dyn Error + Send + Sync>> + Send,
 {
     fn handle(
         self,
-        ctx: &mut A::Context,
+        _ctx: &mut A::Context,
         tx: Option<oneshot::Sender<M::Result>>,
     ) -> impl Future<Output = ()> + Send {
-        match tx {
-            Some(tx) => {
-                let _ = tx.send(self);
-            }
-            None => {
-                // since this is a result, we log it if there is an error
-                if self.is_err() {
-                    debug!("Ignored an error in actor {}", ctx.index());
-                }
+        if let Some(tx) = tx {
+            if let Err(Err(e)) = tx.send(self) {
+                debug!(
+                    "Could not send the message response since the channel is closed, log the \
+                    dropped response since it is an error: {}",
+                    e.into().report()
+                );
             }
         }
+        // tx is None means the sender does not care about the result, so we simply drop it
         future::ready(())
     }
 }
@@ -110,7 +111,7 @@ impl<A, M, EP, T> MessageResponse<A, M, EP> for Option<T>
 where
     A: Actor,
     M: Message<EP, Result = Self>,
-    T: Send + 'static,
+    T: Send,
 {
     fn handle(
         self,
@@ -128,7 +129,7 @@ impl<A, M, EP, T> MessageResponse<A, M, EP> for Box<T>
 where
     A: Actor,
     M: Message<EP, Result = Self>,
-    T: Send + 'static,
+    T: Send,
 {
     fn handle(
         self,
@@ -146,7 +147,7 @@ impl<A, M, EP, T> MessageResponse<A, M, EP> for Arc<T>
 where
     A: Actor,
     M: Message<EP, Result = Self>,
-    T: Send + Sync + 'static,
+    T: Send + Sync,
 {
     fn handle(
         self,
@@ -164,7 +165,7 @@ impl<A, M, EP, T> MessageResponse<A, M, EP> for Vec<T>
 where
     A: Actor,
     M: Message<EP, Result = Self>,
-    T: Send + 'static,
+    T: Send,
 {
     fn handle(
         self,
@@ -200,17 +201,18 @@ macro_rules! impl_message_response_for {
 }
 
 impl_message_response_for!(());
-impl_message_response_for!(u8);
-impl_message_response_for!(u16);
-impl_message_response_for!(u32);
-impl_message_response_for!(u64);
-impl_message_response_for!(usize);
+impl_message_response_for!(bool);
 impl_message_response_for!(i8);
 impl_message_response_for!(i16);
 impl_message_response_for!(i32);
 impl_message_response_for!(i64);
 impl_message_response_for!(isize);
+impl_message_response_for!(u8);
+impl_message_response_for!(u16);
+impl_message_response_for!(u32);
+impl_message_response_for!(u64);
+impl_message_response_for!(usize);
 impl_message_response_for!(f32);
 impl_message_response_for!(f64);
-impl_message_response_for!(bool);
+impl_message_response_for!(char);
 impl_message_response_for!(String);

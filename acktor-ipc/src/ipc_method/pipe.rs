@@ -44,7 +44,7 @@ impl IpcListener for PipeListener {
         self.name.as_str()
     }
 
-    fn accept<'a>(&'a self) -> IoFuture<'a, Box<dyn IpcConnection>> {
+    fn accept(&self) -> IoFuture<'_, Box<dyn IpcConnection>> {
         Box::pin(async move {
             let stream = self.listener.accept().await?;
 
@@ -92,15 +92,15 @@ impl IpcConnection for PipeConnection {
         self.name.as_str()
     }
 
-    fn close<'a>(&'a mut self) -> IoFuture<'a, ()> {
+    fn close(&mut self) -> IoFuture<'_, ()> {
         Box::pin(async move { Ok(()) })
     }
 
-    fn send<'a>(&'a mut self, buf: Bytes) -> IoFuture<'a, ()> {
+    fn send(&mut self, buf: Bytes) -> IoFuture<'_, ()> {
         Box::pin(self.tx.send(buf))
     }
 
-    fn recv<'a>(&'a mut self) -> IoFuture<'a, Bytes> {
+    fn recv(&mut self) -> IoFuture<'_, Bytes> {
         Box::pin(async move {
             let frame = self
                 .rx

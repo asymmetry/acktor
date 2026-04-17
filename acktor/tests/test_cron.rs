@@ -4,14 +4,19 @@ use pretty_assertions::{assert_eq, assert_ne};
 use tokio::time::{self, Instant};
 
 use acktor::{
-    Actor, Handler, Message, Recipient,
+    Actor, Handler, Message, Recipient, Sender,
     cron::{CronActor, CronActorContext, CronContext, CronSignal},
-    observer::{ObserverSet, SubjectActor},
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct A {
-    observers: ObserverSet<()>,
+    recipient: Recipient<()>,
+}
+
+impl A {
+    pub fn new(recipient: Recipient<()>) -> Self {
+        Self { recipient }
+    }
 }
 
 impl Actor for A {
@@ -19,16 +24,9 @@ impl Actor for A {
     type Error = anyhow::Error;
 }
 
-impl SubjectActor<()> for A {
-    #[inline]
-    fn observers_mut(&mut self) -> &mut ObserverSet<()> {
-        &mut self.observers
-    }
-}
-
 impl CronActor for A {
     async fn task(&mut self, _ctx: &mut Self::Context) -> Result<Duration, Self::Error> {
-        self.notify_observers(()).await;
+        self.recipient.send(()).await.unwrap();
         Ok(Duration::from_millis(50))
     }
 }
@@ -65,14 +63,9 @@ impl Handler<CheckB> for B {
 
 #[tokio::test]
 async fn test_task() {
-    let (recipient, mut rx) = Recipient::create(16);
+    let (recipient, mut rx) = Recipient::create(8);
 
-    let (a_address, _) = A::create("A", |_| {
-        let mut actor = A::default();
-        actor.register_observer(recipient.clone());
-        Ok(actor)
-    })
-    .unwrap();
+    let (a_address, _) = A::new(recipient).run("A").unwrap();
 
     // time between two messages should be 50 ms
 

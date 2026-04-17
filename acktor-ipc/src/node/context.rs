@@ -1,10 +1,10 @@
 use std::io::Error as IoError;
 
 use futures_util::future::select_all;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use acktor::{
-    Actor, ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport,
+    ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport,
     address::Mailbox,
     channel::mpsc,
     envelope::{Envelope, EnvelopeProxy},
@@ -37,60 +37,6 @@ impl NodeContext {
             mailbox: Some(Mailbox::new(rx)),
         }
     }
-
-    async fn processing_loop(
-        &mut self,
-        actor: &mut Node,
-        mailbox: &mut Mailbox<Node>,
-    ) -> Result<(), NodeError> {
-        while self.state() == ActorState::Running {
-            // compute the next event in a scoped block so the `select_all` future (which borrows
-            // `actor.listeners()`) is dropped before we reborrow `actor` mutably
-            let event = {
-                let listeners = actor.listeners();
-
-                if listeners.is_empty() {
-                    LoopEvent::Envelope(mailbox.recv().await)
-                } else {
-                    let accepts = listeners.iter().map(|l| l.accept());
-
-                    tokio::select! {
-                        envelope = mailbox.recv() => LoopEvent::Envelope(envelope),
-                        (result, index, _) = select_all(accepts) => {
-                            let endpoint = listeners[index].local_endpoint();
-                            LoopEvent::Accept(result, endpoint.to_string())
-                        }
-                    }
-                }
-            };
-
-            match event {
-                LoopEvent::Envelope(envelope) => match envelope {
-                    Some(mut envelope) => {
-                        envelope.handle(actor, self).await;
-                    }
-                    None => {
-                        warn!("Mailbox is dropped, terminate the actor");
-                        self.set_state(ActorState::Stopped);
-                    }
-                },
-                LoopEvent::Accept(Ok(connection), _) => {
-                    if let Err(e) = actor.create_session(connection, None, self).await {
-                        warn!("Could not create new session: {}", e.report());
-                    }
-                }
-                LoopEvent::Accept(Err(e), endpoint) => {
-                    warn!(
-                        "Could not accept connection from {}: {}",
-                        endpoint,
-                        e.report(),
-                    );
-                }
-            }
-        }
-
-        Ok(())
-    }
 }
 
 impl ActorContext<Node> for NodeContext {
@@ -122,30 +68,54 @@ impl ActorContext<Node> for NodeContext {
         self.state = state;
     }
 
-    async fn processing(
+    async fn process_loop(
         &mut self,
         actor: &mut Node,
-        mut mailbox: Mailbox<Node>,
+        mailbox: &mut Mailbox<Node>,
     ) -> Result<(), NodeError> {
-        actor.post_start(self).await?;
+        while self.state() == ActorState::Running {
+            // compute the next event in a scoped block so the `select_all` future (which borrows
+            // `actor.listeners()`) is dropped before we reborrow `actor` mutably
+            let event = {
+                if actor.listeners.is_empty() {
+                    LoopEvent::Envelope(mailbox.recv().await)
+                } else {
+                    let accepts = actor.listeners.iter().map(|l| l.accept());
 
-        debug!("Actor {} is started", self.index());
-        self.set_state(ActorState::Running);
+                    tokio::select! {
+                        envelope = mailbox.recv() => LoopEvent::Envelope(envelope),
+                        (result, index, _) = select_all(accepts) => {
+                            let endpoint = actor.listeners[index].local_endpoint();
+                            LoopEvent::Accept(result, endpoint.to_string())
+                        }
+                    }
+                }
+            };
 
-        let result = self.processing_loop(actor, &mut mailbox).await;
-
-        if self.state() != ActorState::Stopped {
-            self.set_state(ActorState::Stopped);
+            match event {
+                LoopEvent::Envelope(envelope) => match envelope {
+                    Some(mut envelope) => {
+                        envelope.handle(actor, self).await;
+                    }
+                    None => {
+                        warn!("Mailbox is dropped, terminate the actor");
+                        self.set_state(ActorState::Stopped);
+                    }
+                },
+                LoopEvent::Accept(Ok(connection), _) => {
+                    if let Err(e) = actor.create_session(connection, None, self).await {
+                        warn!("Could not create new session: {}", e.report());
+                    }
+                }
+                LoopEvent::Accept(Err(e), endpoint) => {
+                    warn!(
+                        "Could not accept connection from {}: {}",
+                        endpoint,
+                        e.report(),
+                    );
+                }
+            }
         }
-
-        // drop mailbox so any actor holds the address of this actor will not be able to send messages
-        // after it is stopped
-        drop(mailbox);
-
-        let result_post_stop = actor.post_stop(self).await;
-
-        result?;
-        result_post_stop?;
 
         Ok(())
     }

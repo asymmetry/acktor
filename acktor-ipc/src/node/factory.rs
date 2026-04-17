@@ -8,7 +8,7 @@ use acktor::{
     utils::debug_trace,
 };
 
-use super::{FactoryRegistry, LabelMap};
+use super::{LabelMap, RemoteActorFactoryRegistry};
 use crate::errors::{NodeError, SessionError};
 use crate::remote_actor::RemoteActorRegistry;
 
@@ -25,30 +25,30 @@ pub struct CreateActor {
 /// An actor which is responsible for creating actors in the current process on behalf of remote
 /// peers. It also keeps track of the actors in the registy and removes the stale ones.
 pub struct Factory {
-    factories: FactoryRegistry,
+    factory_registry: RemoteActorFactoryRegistry,
     registry: RemoteActorRegistry,
     label_map: LabelMap,
 }
 
 impl Debug for Factory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let factory_types: Vec<&str> = self.factories.keys().map(|s| s.as_str()).collect();
+        let factory_registry: Vec<&str> =
+            self.factory_registry.keys().map(|s| s.as_str()).collect();
         f.debug_struct("Factory")
-            .field("factories", &factory_types)
-            .field("registry", &self.registry)
-            .field("label_map", &self.label_map)
+            .field("factory_registry", &factory_registry)
+            // registry and label_map are not included since they are shared with the node
             .finish()
     }
 }
 
 impl Factory {
     pub(crate) fn new(
-        factories: FactoryRegistry,
+        factory_registry: RemoteActorFactoryRegistry,
         registry: RemoteActorRegistry,
         label_map: LabelMap,
     ) -> Self {
         Self {
-            factories,
+            factory_registry,
             registry,
             label_map,
         }
@@ -61,10 +61,7 @@ impl Actor for Factory {
 }
 
 impl CronActor for Factory {
-    async fn task(
-        &mut self,
-        _ctx: &mut Self::Context,
-    ) -> std::result::Result<Duration, Self::Error> {
+    async fn task(&mut self, _ctx: &mut Self::Context) -> Result<Duration, NodeError> {
         self.registry.retain(|_, recipient| !recipient.is_closed());
         self.label_map
             .retain(|_, actor_id| self.registry.contains(*actor_id));
@@ -85,21 +82,21 @@ impl Handler<CreateActor> for Factory {
             config,
         } = msg;
 
+        let Some(factory) = self.factory_registry.get(&r#type) else {
+            return Err(SessionError::CreateActorFailed(
+                format!("no factory registered for actor type {}", r#type).into(),
+            ));
+        };
+
         if let Some(actor_id) = self.label_map.get(&label) {
             return Err(SessionError::CreateActorFailed(
                 format!(
-                    "actor with label {} already exists with id {}",
+                    "actor with label {} already existed with id {}",
                     label, *actor_id
                 )
                 .into(),
             ));
         }
-
-        let Some(factory) = self.factories.get(&r#type) else {
-            return Err(SessionError::CreateActorFailed(
-                format!("no factory registered for actor type {}", r#type).into(),
-            ));
-        };
 
         let factory = factory.clone();
         let label_cloned = label.clone();

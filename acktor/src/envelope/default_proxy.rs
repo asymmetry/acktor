@@ -3,6 +3,7 @@ use std::fmt::{self, Debug};
 use std::pin::Pin;
 
 use futures_util::future::FutureExt;
+use tracing::debug;
 
 use super::{Envelope, EnvelopeProxy, FromEnvelope, ToEnvelope};
 use crate::actor::{Actor, ActorContext};
@@ -59,15 +60,13 @@ where
         async {
             let tx = self.tx.take();
 
-            // if the provided result sender is closed, we will skip processing the message
-            // to avoid unnecessary resource usage.
-            if let Some(t) = &tx {
-                if t.is_closed() {
+            if let Some(msg) = self.message.take() {
+                if tx.as_ref().is_some_and(oneshot::Sender::is_closed) {
+                    debug!("Skipping handling of the message since result sender is closed");
+
                     return;
                 }
-            }
 
-            if let Some(msg) = self.message.take() {
                 let result = actor.handle(msg, ctx).await;
                 result.handle(ctx, tx).await;
             }

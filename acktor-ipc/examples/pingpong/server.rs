@@ -7,8 +7,7 @@ use acktor::{
     observer::{Observer, ObserverSet, SubjectActor},
 };
 use acktor_ipc::{
-    Decode, Encode, RemoteActor, RemoteActorFactory, RemoteMessage, remote,
-    remote_message::{RemoteMessageKind, RemoteObserver},
+    Decode, Encode, RemoteActor, RemoteActorFactory, RemoteMessage, RemoteMessageKind, remote,
 };
 
 use crate::message::{Ping, Pong};
@@ -52,11 +51,7 @@ impl Handler<RemoteMessage> for Server {
         } = msg;
 
         // Dispatch: Observer<Pong> control message, else Ping.
-        if let Ok(observer) = RemoteObserver::decode(message.clone(), decode_context.as_ref()) {
-            let observer = match observer {
-                RemoteObserver::Register(addr) => Observer::<Pong>::Register(addr.into()),
-                RemoteObserver::Unregister(addr) => Observer::<Pong>::Unregister(addr.into()),
-            };
+        if let Ok(observer) = Observer::<Pong>::decode(message.clone(), decode_context.as_ref()) {
             <Self as Handler<Observer<Pong>>>::handle(self, observer, ctx).await;
         } else if let Ok(ping) = Ping::decode(message, decode_context.as_ref()) {
             <Self as Handler<Ping>>::handle(self, ping, ctx).await;

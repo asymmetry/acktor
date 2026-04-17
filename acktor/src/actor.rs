@@ -2,27 +2,28 @@ use std::error::Error;
 use std::fmt::Display;
 use std::panic::{self, AssertUnwindSafe};
 
-#[cfg(feature = "erased-recipient")]
+#[cfg(feature = "type-erased-recipient-hook")]
 use std::any::Any;
 
-use futures_util::future::{FutureExt, TryFutureExt};
+use futures_util::future::FutureExt;
 use tracing::{Instrument, Span, debug, error, error_span, warn};
 
 use crate::address::{Address, Mailbox, Recipient, Sender};
 use crate::errors::ErrorReport;
 use crate::supervisor::SupervisionEvent;
+use crate::utils::panic_info_to_string;
 
 /// Actor index type.
 pub type ActorId = u64;
 
 pub use tokio::task::JoinHandle;
 
-/// Function-pointer type returned by [`Actor::erased_recipient_fn`], which converts an
-/// [`Address<A>`] into a type-erased trait object which can be downcast into a concrete
+/// Function-pointer type returned by [`Actor::type_erased_recipient_fn`], which converts an
+/// [`Address<A>`] into a type-erased trait object that can be downcast into a concrete
 /// [`Recipient<M>`].
-#[cfg(feature = "erased-recipient")]
-#[cfg_attr(docsrs, doc(cfg(feature = "erased-recipient")))]
-pub type ErasedRecipientFn<A> = fn(&Address<A>) -> Box<dyn Any + Send + Sync>;
+#[cfg(feature = "type-erased-recipient-hook")]
+#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
+pub type TypeErasedRecipientFn<A> = fn(&Address<A>) -> Box<dyn Any + Send + Sync>;
 
 /// State of an actor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,7 +94,8 @@ pub trait Actor: Sized + Send + 'static {
     /// once, asynchronously. The actor will enter the [`Running`][ActorState::Running] state
     /// after this method returns.
     ///
-    /// Panics in this method will be notified to the supervisor if there is one.
+    /// Panics in this method terminates the actor immediately and will be notified to the
+    /// supervisor if there is one.
     #[allow(unused_variables)]
     fn post_start(
         &mut self,
@@ -184,25 +186,30 @@ pub trait Actor: Sized + Send + 'static {
         ctx.run(actor, span)
     }
 
-    /// Optional conversion hook that turns an [`Address<A>`] into a type-erased trait object
-    /// which can be downcast into a concrete [`Recipient<M>`].
+    /// Opt-in hook that turns an [`Address<A>`] into a type-erased trait object which can be
+    /// downcast into a concrete [`Recipient<M>`], where `M` is a specific message type
+    /// chosen in the overridden implementation of this method.
     ///
-    /// It is intended for use cases where you want to convert from any [`Recipient<N>`] into
-    /// a [`Recipient<M>`] without knowing the concrete actor type `A`. Here `N` can be any
-    /// message type which the actor has implemented [`Handler<N>`][crate::message::Handler<N>]
-    /// for, and `M` is the type chosen by the implementor when they override this method. The
-    /// [`ErasedRecipientFn`] will convert an [`Address<A>`] into [`Recipient<M>`] first, and then
-    /// type-erase it into a `Box<dyn Any + Send + Sync>`.
+    /// Sometimes users may need to convert a `Recipient<N>` backed by an `Address<A>` into a
+    /// `Recipient<M>`. If the actor type `A` is known, users can retrieve the `Address<A>` by
+    /// downcasting the trait object in the `Recipient<N>`, and then the `Address<A>` can be
+    /// converted into a `Recipient<M>`. However, if the concrete actor type `A` is not known
+    /// (e.g., in a function receives a `Recipient<N>` backed by several different actor types),
+    /// this approach does not work.
     ///
-    /// Returning `Some(f)` causes [`Address::new`] to bake `f` into every address for this
-    /// actor; Returning `None` (the default) means this actor type does not opt into any
-    /// such conversion.
+    /// This hook allows users to provide a function `f`, which defines a two-step conversion from
+    /// an `Address<A>` to a `Recipient<M>` first, with `M` being a specific message type chosen
+    /// by the user, and then to a type-erased `Box<dyn Any + Send + Sync>`. Returning `Some(f)`
+    /// causes [`Address::new`] to bake `f` into every address for this actor. To convert a
+    /// `Recipient<N>` into a `Recipient<M>`, users can use the [`Sender::erased_recipient`]
+    /// method, which will invoke the function `f` and return the type-erased trait object, and
+    /// convert the type-erased trait object back into a `Recipient<M>` by downcasting.
     ///
-    /// Crates that extend actors with extra capabilities based on this feature should ship
-    /// an attribute macro that generates the overridden method.
-    #[cfg(feature = "erased-recipient")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "erased-recipient")))]
-    fn erased_recipient_fn() -> Option<ErasedRecipientFn<Self>> {
+    /// Crates that extend actors with extra capabilities based on this feature can provide a
+    /// macro which overrides this method automatically for their users to avoid boilerplate.
+    #[cfg(feature = "type-erased-recipient-hook")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
+    fn type_erased_recipient_fn() -> Option<TypeErasedRecipientFn<Self>> {
         None
     }
 }
@@ -233,9 +240,9 @@ where
     /// Moves the mailbox of the actor out of the context, leaving `None` in its place.
     ///
     /// Typically the address and the mailbox are created together in the constructor of the
-    /// context. However, since the [`processing`][Self::processing] method consumes the mailbox,
-    /// the context needs to provide a way to move the mailbox out of itself so that it
-    /// can be passed into the [`processing`][Self::processing] method.
+    /// context. However, since the [`process`][Self::process] method consumes the mailbox, the
+    /// context needs to provide a way to move the mailbox out of itself so that it can be
+    /// passed into the [`process`][Self::process] method.
     ///
     /// # Example
     ///
@@ -266,15 +273,14 @@ where
     /// Sets the state of the actor.
     fn set_state(&mut self, state: ActorState);
 
-    /// The main processing loop of the actor.
+    /// The message processing loop of the actor.
     ///
-    /// This method is called after [`post_start`][Actor::post_start] and drives the actor until
-    /// it stops. It is responsible for receiving messages from the mailbox and dispatching them
-    /// to the actor.
-    fn processing(
+    /// This method is invoked by [`process`][Self::process]. It is responsible for
+    /// receiving messages from the mailbox and handling them.
+    fn process_loop(
         &mut self,
         actor: &mut A,
-        mailbox: Mailbox<A>,
+        mailbox: &mut Mailbox<A>,
     ) -> impl Future<Output = Result<(), A::Error>> + Send;
 
     // provided methods
@@ -360,61 +366,45 @@ where
         // Some(..); run() consumes the mailbox, so it will not be able to be used again
         let mailbox = self.take_mailbox().unwrap();
 
+        let index = self.index();
+        #[cfg(feature = "tokio-tracing")]
+        let label = self.label().to_string();
+
         {
             let _enter = span.enter();
             let result = panic::catch_unwind(AssertUnwindSafe(|| actor.pre_start(&mut self)));
             match result {
                 Ok(r) => r?,
-                Err(e) => {
-                    let index = self.index();
-                    let msg: String = match e.downcast_ref::<String>() {
-                        Some(s) => s.clone(),
-                        None => match e.downcast_ref::<&str>() {
-                            Some(s) => s.to_string(),
-                            None => "could not capture the panic message".to_string(),
-                        },
-                    };
-                    error!("Actor {} is panicked: {}", index, msg);
-                    panic::resume_unwind(e);
+                Err(info) => {
+                    let msg: String = panic_info_to_string(&*info);
+                    error!("Actor {} panicked in pre_start: {}", index, msg);
+                    panic::resume_unwind(info);
                 }
             }
             self.set_state(ActorState::Starting);
         }
 
-        let index = self.index();
-        #[cfg(feature = "tokio-tracing")]
-        let label = self.label().to_string();
-
         let future = async move {
-            match self.processing(&mut actor, mailbox).await {
-                Ok(_) => {
+            match self.process(&mut actor, mailbox).await {
+                Ok(Ok(_)) => {
                     self.try_notify_supervisor(SupervisionEvent::Terminated(self.address(), None));
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     self.try_notify_supervisor(SupervisionEvent::Terminated(
                         self.address(),
                         Some(e),
                     ));
                 }
+                Err(e) => {
+                    let msg: String = panic_info_to_string(&*e);
+                    self.try_notify_supervisor(SupervisionEvent::Panicked(self.address(), msg));
+                }
             }
 
             debug!("Actor {} is stopped", index);
-        };
-
-        let future = AssertUnwindSafe(future)
-            .catch_unwind()
-            .unwrap_or_else(move |e| {
-                let msg: String = match e.downcast_ref::<String>() {
-                    Some(s) => s.clone(),
-                    None => match e.downcast_ref::<&str>() {
-                        Some(s) => s.to_string(),
-                        None => "could not capture the panic message".to_string(),
-                    },
-                };
-                error!("Actor {} is panicked: {}", index, msg);
-            })
-            .instrument(span.or_current())
-            .boxed();
+        }
+        .instrument(span.or_current())
+        .boxed();
 
         #[cfg(not(feature = "tokio-tracing"))]
         let join_handle = tokio::spawn(future);
@@ -425,5 +415,72 @@ where
             .unwrap();
 
         Ok((address, join_handle))
+    }
+
+    /// The main processing flow of the actor.
+    ///
+    /// This method is invoked by [`run`][Self::run]. It is responsible for invoking the
+    /// [`post_start`][Actor::post_start] and the [`post_stop`][Actor::post_stop] lifecycle
+    /// hooks. It is the user's responsibility to choose where to invoke the
+    /// [`stopping`][Actor::stopping] lifecycle hook. The default implementation handles the
+    /// [`stopping`][Actor::stopping] in the [`process_loop`][Self::process_loop], but users can
+    /// handle it here by overriding the default implementation.
+    fn process(
+        &mut self,
+        actor: &mut A,
+        mut mailbox: Mailbox<A>,
+    ) -> impl Future<Output = Result<Result<(), A::Error>, Box<dyn Any + Send>>> + Send {
+        async move {
+            let result = AssertUnwindSafe(actor.post_start(self))
+                .catch_unwind()
+                .await
+                .inspect_err(|e| {
+                    let msg: String = panic_info_to_string(e);
+                    error!("Actor {} panicked in post_start: {}", self.index(), msg);
+                });
+
+            if !matches!(result, Ok(Ok(()))) {
+                return result;
+            }
+
+            debug!("Actor {} is started", self.index());
+            self.set_state(ActorState::Running);
+
+            let result = AssertUnwindSafe(self.process_loop(actor, &mut mailbox))
+                .catch_unwind()
+                .await
+                .inspect_err(|e| {
+                    let msg: String = panic_info_to_string(e);
+                    error!("Actor {} panicked in process_loop: {}", self.index(), msg);
+                });
+
+            if self.state() != ActorState::Stopped {
+                self.set_state(ActorState::Stopped);
+            }
+
+            // drop mailbox so any actor holds the address of this actor will not be able to send messages
+            // after it is stopped
+            drop(mailbox);
+
+            // if the process_loop panicked, post_stop is skipped since the actor's state is
+            // not predictable after the panic
+            let result = result?;
+
+            let result_post_stop = AssertUnwindSafe(actor.post_stop(self))
+                .catch_unwind()
+                .await
+                .inspect_err(|e| {
+                    let msg: String = panic_info_to_string(e);
+                    error!("Actor {} panicked in post_stop: {}", self.index(), msg);
+                })?;
+
+            if result.is_err() {
+                Ok(result)
+            } else if result_post_stop.is_err() {
+                Ok(result_post_stop)
+            } else {
+                Ok(Ok(()))
+            }
+        }
     }
 }

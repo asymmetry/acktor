@@ -40,7 +40,7 @@ impl IpcListener for WebSocketListener {
         self.local_addr.as_str()
     }
 
-    fn accept<'a>(&'a self) -> IoFuture<'a, Box<dyn IpcConnection>> {
+    fn accept(&self) -> IoFuture<'_, Box<dyn IpcConnection>> {
         Box::pin(async move {
             let (socket, peer_addr) = self.listener.accept().await?;
 
@@ -118,7 +118,7 @@ impl IpcConnection for WebSocketConnection {
         self.peer_addr.as_str()
     }
 
-    fn close<'a>(&'a mut self) -> IoFuture<'a, ()> {
+    fn close(&mut self) -> IoFuture<'_, ()> {
         Box::pin(async move {
             self.tx.close().await.map_err(|e| match e {
                 WebSocketError::Io(e) => e,
@@ -127,11 +127,11 @@ impl IpcConnection for WebSocketConnection {
         })
     }
 
-    fn send<'a>(&'a mut self, buf: Bytes) -> IoFuture<'a, ()> {
+    fn send(&mut self, buf: Bytes) -> IoFuture<'_, ()> {
         Box::pin(self.send(WebSocketMessage::Binary(buf)))
     }
 
-    fn recv<'a>(&'a mut self) -> IoFuture<'a, Bytes> {
+    fn recv(&mut self) -> IoFuture<'_, Bytes> {
         Box::pin(async move {
             loop {
                 // send any buffered Pong, the payload is cloned so `self.pending_pong` keeps
