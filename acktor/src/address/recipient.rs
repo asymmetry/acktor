@@ -28,11 +28,11 @@ use crate::utils::create_actor_id;
 /// only available for messages with empty [`Message::Result`].
 pub struct Recipient<M, EP = DefaultEnvelopeProxy<M>>(pub Arc<dyn Sender<M, EP> + Send + Sync>)
 where
-    M: Message<EP>;
+    M: Message;
 
 impl<M, EP> Debug for Recipient<M, EP>
 where
-    M: Message<EP>,
+    M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple(&format!("Recipient<{}>", crate::utils::type_name::<M>()))
@@ -43,7 +43,7 @@ where
 
 impl<M, EP> Clone for Recipient<M, EP>
 where
-    M: Message<EP>,
+    M: Message,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
@@ -52,18 +52,18 @@ where
 
 impl<M, EP> PartialEq for Recipient<M, EP>
 where
-    M: Message<EP>,
+    M: Message,
 {
     fn eq(&self, other: &Self) -> bool {
         self.0.index().eq(&other.0.index())
     }
 }
 
-impl<M, EP> Eq for Recipient<M, EP> where M: Message<EP> {}
+impl<M, EP> Eq for Recipient<M, EP> where M: Message {}
 
 impl<M, EP> Hash for Recipient<M, EP>
 where
-    M: Message<EP>,
+    M: Message,
 {
     fn hash<H>(&self, state: &mut H)
     where
@@ -75,7 +75,7 @@ where
 
 impl<M, EP> Recipient<M, EP>
 where
-    M: Message<EP>,
+    M: Message,
 {
     /// Constructs a recipient from a trait object of [`Sender`].
     pub fn new(tx: Arc<dyn Sender<M, EP> + Send + Sync>) -> Self {
@@ -105,9 +105,8 @@ where
 
 impl<A, M, EP> From<Address<A>> for Recipient<M, EP>
 where
-    A: Actor,
-    M: Message<EP>,
-    A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+    A: Actor + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+    M: Message,
 {
     fn from(addr: Address<A>) -> Self {
         Self::new(Arc::new(addr))
@@ -116,7 +115,7 @@ where
 
 impl<M, EP> SenderId for Recipient<M, EP>
 where
-    M: Message<EP>,
+    M: Message,
 {
     fn index(&self) -> ActorId {
         self.0.index()
@@ -125,7 +124,7 @@ where
 
 impl<M, EP> Sender<M, EP> for Recipient<M, EP>
 where
-    M: Message<EP>,
+    M: Message,
 {
     fn is_closed(&self) -> bool {
         self.0.is_closed()
@@ -135,7 +134,7 @@ where
         self.0.capacity()
     }
 
-    fn send(&self, msg: M) -> SendResultFuture<'_, M, EP> {
+    fn send(&self, msg: M) -> SendResultFuture<'_, M> {
         self.0.send(msg)
     }
 
@@ -143,7 +142,7 @@ where
         self.0.do_send(msg)
     }
 
-    fn try_send(&self, msg: M) -> SendResult<M, EP> {
+    fn try_send(&self, msg: M) -> SendResult<M> {
         self.0.try_send(msg)
     }
 
@@ -151,7 +150,7 @@ where
         self.0.try_do_send(msg)
     }
 
-    fn blocking_send(&self, msg: M) -> SendResult<M, EP> {
+    fn blocking_send(&self, msg: M) -> SendResult<M> {
         self.0.blocking_send(msg)
     }
 

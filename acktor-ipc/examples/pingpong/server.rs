@@ -33,14 +33,23 @@ impl Handler<Ping> for Server {
     type Result = ();
 
     async fn handle(&mut self, msg: Ping, _ctx: &mut Self::Context) -> Self::Result {
-        info!("Process {} received Ping({})", process::id(), msg.id);
+        info!(
+            "Process {} received a Ping({}, {})",
+            process::id(),
+            msg.id,
+            msg.timestamp,
+        );
 
-        self.notify_observers(Pong { id: msg.id }).await;
+        self.notify_observers(Pong {
+            id: msg.id,
+            timestamp: msg.timestamp,
+        })
+        .await;
     }
 }
 
 impl Handler<RemoteMessage> for Server {
-    type Result = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    type Result = ();
 
     async fn handle(&mut self, msg: RemoteMessage, ctx: &mut Self::Context) -> Self::Result {
         let RemoteMessage {
@@ -50,20 +59,20 @@ impl Handler<RemoteMessage> for Server {
             ..
         } = msg;
 
-        // Dispatch: Observer<Pong> control message, else Ping.
-        if let Ok(observer) = Observer::<Pong>::decode(message.clone(), decode_context.as_ref()) {
-            <Self as Handler<Observer<Pong>>>::handle(self, observer, ctx).await;
-        } else if let Ok(ping) = Ping::decode(message, decode_context.as_ref()) {
-            <Self as Handler<Ping>>::handle(self, ping, ctx).await;
+        let encode_context = decode_context
+            .as_ref()
+            .map(|ctx| ctx.create_encode_context());
 
-            if let RemoteMessageKind::Send(tx) = kind {
-                if let Ok(bytes) = Encode::encode_to_bytes(&(), None) {
-                    let _ = tx.send(bytes);
-                }
-            }
+        if let Ok(observer) = Observer::<Pong>::decode(message.clone(), decode_context.as_ref()) {
+            self.handle(observer, ctx).await;
+        } else if let Ok(ping) = Ping::decode(message, decode_context.as_ref()) {
+            self.handle(ping, ctx).await;
         }
 
-        Ok(())
+        if let RemoteMessageKind::Send(tx) = kind {
+            let result = ().encode_to_bytes(encode_context.as_ref());
+            let _ = tx.send(result.map_err(Into::into));
+        }
     }
 }
 

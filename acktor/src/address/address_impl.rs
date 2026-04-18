@@ -119,53 +119,53 @@ where
     /// Converts this address into a recipient of a specific message type.
     pub fn recipient<M, EP>(self) -> Recipient<M, EP>
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        M: Message,
     {
         self.into()
     }
 
     /// Sends a message to an actor and returns a [`Receiver`][crate::channel::oneshot::Receiver]
     /// which can be used to receive the message response.
-    pub fn send<M, EP>(&self, msg: M) -> impl Future<Output = SendResult<M, EP>> + Send + '_
+    pub fn send<M, EP>(&self, msg: M) -> impl Future<Output = SendResult<M>> + Send + '_
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        M: Message,
     {
         let (tx, rx) = oneshot::channel();
         self.tx
-            .send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)))
+            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)))
             .map_ok(|_| rx)
-            .map_err(|e| SendError::Closed(<A::Context as FromEnvelope<A, M, EP>>::unpack(e.0)))
+            .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
     }
 
     /// Sends a message to an actor without expecting a response.
     pub fn do_send<M, EP>(&self, msg: M) -> impl Future<Output = DoSendResult<M>> + Send + '_
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        M: Message,
     {
         self.tx
-            .send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, None))
-            .map_err(|e| SendError::Closed(<A::Context as FromEnvelope<A, M, EP>>::unpack(e.0)))
+            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, None))
+            .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
     }
 
     /// Attempts to send a message to an actor and returns a
     /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the
     /// message response.
-    pub fn try_send<M, EP>(&self, msg: M) -> SendResult<M, EP>
+    pub fn try_send<M, EP>(&self, msg: M) -> SendResult<M>
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        M: Message,
     {
         let (tx, rx) = oneshot::channel();
-        let envelope = <A::Context as ToEnvelope<A, M, EP>>::pack(msg, Some(tx));
+        let envelope = <A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx));
         self.tx.try_send(envelope).map(|_| rx).map_err(|e| match e {
             mpsc::error::TrySendError::Closed(envelope) => {
-                SendError::Closed(<A::Context as FromEnvelope<A, M, EP>>::unpack(envelope))
+                SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
             }
             mpsc::error::TrySendError::Full(envelope) => {
-                SendError::Full(<A::Context as FromEnvelope<A, M, EP>>::unpack(envelope))
+                SendError::Full(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
             }
         })
     }
@@ -173,16 +173,16 @@ where
     /// Attempts to send a message to an actor without expecting a response.
     pub fn try_do_send<M, EP>(&self, msg: M) -> DoSendResult<M>
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        M: Message,
     {
-        let envelope = <A::Context as ToEnvelope<A, M, EP>>::pack(msg, None);
+        let envelope = <A as ToEnvelope<A, M, EP>>::pack(msg, None);
         self.tx.try_send(envelope).map_err(|e| match e {
             mpsc::error::TrySendError::Closed(envelope) => {
-                SendError::Closed(<A::Context as FromEnvelope<A, M, EP>>::unpack(envelope))
+                SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
             }
             mpsc::error::TrySendError::Full(envelope) => {
-                SendError::Full(<A::Context as FromEnvelope<A, M, EP>>::unpack(envelope))
+                SendError::Full(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
             }
         })
     }
@@ -191,16 +191,16 @@ where
     /// which can be used to receive the message response.
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
-    pub fn blocking_send<M, EP>(&self, msg: M) -> SendResult<M, EP>
+    pub fn blocking_send<M, EP>(&self, msg: M) -> SendResult<M>
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        M: Message,
     {
         let (tx, rx) = oneshot::channel();
         self.tx
-            .blocking_send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)))
+            .blocking_send(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)))
             .map(|_| rx)
-            .map_err(|e| SendError::Closed(<A::Context as FromEnvelope<A, M, EP>>::unpack(e.0)))
+            .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
     }
 
     /// Sends a message to an actor without expecting a response.
@@ -208,12 +208,12 @@ where
     /// This method is intended for use cases where you are sending from synchronous code.
     pub fn blocking_do_send<M, EP>(&self, msg: M) -> DoSendResult<M>
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        M: Message,
     {
         self.tx
-            .blocking_send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, None))
-            .map_err(|e| SendError::Closed(<A::Context as FromEnvelope<A, M, EP>>::unpack(e.0)))
+            .blocking_send(<A as ToEnvelope<A, M, EP>>::pack(msg, None))
+            .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
     }
 
     /// Reserves channel capacity to send one message to an actor.
@@ -289,9 +289,8 @@ where
 
 impl<A, M, EP> Sender<M, EP> for Address<A>
 where
-    A: Actor,
-    M: Message<EP>,
-    A::Context: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+    A: Actor + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+    M: Message,
 {
     fn is_closed(&self) -> bool {
         self.tx.is_closed()
@@ -301,7 +300,7 @@ where
         self.tx.capacity()
     }
 
-    fn send(&self, msg: M) -> SendResultFuture<'_, M, EP> {
+    fn send(&self, msg: M) -> SendResultFuture<'_, M> {
         self.send(msg).boxed()
     }
 
@@ -309,7 +308,7 @@ where
         self.do_send(msg).boxed()
     }
 
-    fn try_send(&self, msg: M) -> SendResult<M, EP> {
+    fn try_send(&self, msg: M) -> SendResult<M> {
         self.try_send(msg)
     }
 
@@ -317,7 +316,7 @@ where
         self.try_do_send(msg)
     }
 
-    fn blocking_send(&self, msg: M) -> SendResult<M, EP> {
+    fn blocking_send(&self, msg: M) -> SendResult<M> {
         self.blocking_send(msg)
     }
 

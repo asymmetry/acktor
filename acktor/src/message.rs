@@ -14,7 +14,6 @@ use tracing::debug;
 
 use crate::actor::Actor;
 use crate::channel::oneshot;
-use crate::envelope::DefaultEnvelopeProxy;
 use crate::errors::ErrorReport;
 
 mod result;
@@ -24,18 +23,18 @@ mod future_result;
 pub use future_result::FutureMessageResult;
 
 /// Types that can be sent between actors.
-pub trait Message<EP = DefaultEnvelopeProxy<Self>>: Send + 'static {
+pub trait Message: Send + 'static {
     /// The type of the response produced when this message is handled.
     type Result: Send + 'static;
 }
 
 /// Describes how an actor handles a specific message type.
-pub trait Handler<M, EP = DefaultEnvelopeProxy<M>>: Actor
+pub trait Handler<M>: Actor
 where
-    M: Message<EP>,
+    M: Message,
 {
     /// The return type of the handler, which must implement [`MessageResponse`].
-    type Result: MessageResponse<Self, M, EP>;
+    type Result: MessageResponse<Self, M>;
 
     /// Handles a message.
     fn handle(
@@ -46,10 +45,10 @@ where
 }
 
 /// Types that can be sent as a response to a message.
-pub trait MessageResponse<A, M, EP = DefaultEnvelopeProxy<M>>: Send
+pub trait MessageResponse<A, M>: Send
 where
     A: Actor,
-    M: Message<EP>,
+    M: Message,
 {
     /// Handles the response.
     fn handle(
@@ -65,26 +64,26 @@ impl Message for () {
 
 // implement Message trait for a few common wrapper types
 
-impl<M, EP> Message<EP> for Box<M>
+impl<M> Message for Box<M>
 where
-    M: Message<EP>,
+    M: Message,
 {
     type Result = M::Result;
 }
 
-impl<M, EP> Message<EP> for Arc<M>
+impl<M> Message for Arc<M>
 where
-    M: Message<EP> + Sync,
+    M: Message + Sync,
 {
     type Result = M::Result;
 }
 
 // implement MessageResponse trait for a few common wrapper types
 
-impl<A, M, EP, T, E> MessageResponse<A, M, EP> for Result<T, E>
+impl<A, M, T, E> MessageResponse<A, M> for Result<T, E>
 where
     A: Actor,
-    M: Message<EP, Result = Self>,
+    M: Message<Result = Self>,
     T: Send,
     E: Into<Box<dyn Error + Send + Sync>> + Send,
 {
@@ -107,10 +106,10 @@ where
     }
 }
 
-impl<A, M, EP, T> MessageResponse<A, M, EP> for Option<T>
+impl<A, M, T> MessageResponse<A, M> for Option<T>
 where
     A: Actor,
-    M: Message<EP, Result = Self>,
+    M: Message<Result = Self>,
     T: Send,
 {
     fn handle(
@@ -125,10 +124,10 @@ where
     }
 }
 
-impl<A, M, EP, T> MessageResponse<A, M, EP> for Box<T>
+impl<A, M, T> MessageResponse<A, M> for Box<T>
 where
     A: Actor,
-    M: Message<EP, Result = Self>,
+    M: Message<Result = Self>,
     T: Send,
 {
     fn handle(
@@ -143,10 +142,10 @@ where
     }
 }
 
-impl<A, M, EP, T> MessageResponse<A, M, EP> for Arc<T>
+impl<A, M, T> MessageResponse<A, M> for Arc<T>
 where
     A: Actor,
-    M: Message<EP, Result = Self>,
+    M: Message<Result = Self>,
     T: Send + Sync,
 {
     fn handle(
@@ -161,10 +160,10 @@ where
     }
 }
 
-impl<A, M, EP, T> MessageResponse<A, M, EP> for Vec<T>
+impl<A, M, T> MessageResponse<A, M> for Vec<T>
 where
     A: Actor,
-    M: Message<EP, Result = Self>,
+    M: Message<Result = Self>,
     T: Send,
 {
     fn handle(
@@ -181,10 +180,10 @@ where
 
 macro_rules! impl_message_response_for {
     ($type:ty) => {
-        impl<A, M, EP> MessageResponse<A, M, EP> for $type
+        impl<A, M> MessageResponse<A, M> for $type
         where
             A: Actor,
-            M: Message<EP, Result = Self>,
+            M: Message<Result = Self>,
         {
             fn handle(
                 self,

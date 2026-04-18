@@ -6,7 +6,7 @@ use futures_util::future::FutureExt;
 use tracing::debug;
 
 use super::{Envelope, EnvelopeProxy, FromEnvelope, ToEnvelope};
-use crate::actor::{Actor, ActorContext};
+use crate::actor::Actor;
 use crate::channel::oneshot;
 use crate::message::{Handler, Message, MessageResponse};
 
@@ -16,7 +16,7 @@ use crate::message::{Handler, Message, MessageResponse};
 /// an oneshot channel if provided.
 pub struct DefaultEnvelopeProxy<M>
 where
-    M: Message<Self>,
+    M: Message,
 {
     pub(crate) message: Option<M>,
     pub(crate) tx: Option<oneshot::Sender<M::Result>>,
@@ -24,7 +24,7 @@ where
 
 impl<M> Debug for DefaultEnvelopeProxy<M>
 where
-    M: Message<Self>,
+    M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
@@ -36,7 +36,7 @@ where
 
 impl<M> DefaultEnvelopeProxy<M>
 where
-    M: Message<Self>,
+    M: Message,
 {
     /// Takes the message out of the envelope proxy, leaving [`None`] in its place.
     pub fn message(&mut self) -> Option<M> {
@@ -46,8 +46,8 @@ where
 
 impl<A, M> EnvelopeProxy<A> for DefaultEnvelopeProxy<M>
 where
-    A: Actor + Handler<M, Self>,
-    M: Message<Self>,
+    A: Actor + Handler<M>,
+    M: Message,
 {
     fn handle<'a, 'b>(
         &'a mut self,
@@ -83,10 +83,9 @@ where
     }
 }
 
-impl<A, C, M> ToEnvelope<A, M, DefaultEnvelopeProxy<M>> for C
+impl<A, M> ToEnvelope<A, M, DefaultEnvelopeProxy<M>> for A
 where
-    A: Actor<Context = Self> + Handler<M>,
-    C: ActorContext<A>,
+    A: Actor + Handler<M>,
     M: Message,
 {
     fn pack(msg: M, tx: Option<oneshot::Sender<M::Result>>) -> Envelope<A> {
@@ -94,10 +93,9 @@ where
     }
 }
 
-impl<A, C, M> FromEnvelope<A, M, DefaultEnvelopeProxy<M>> for C
+impl<A, M> FromEnvelope<A, M, DefaultEnvelopeProxy<M>> for A
 where
-    A: Actor<Context = Self> + Handler<M>,
-    C: ActorContext<A>,
+    A: Actor + Handler<M>,
     M: Message,
 {
     fn unpack(mut envelope: Envelope<A>) -> M {

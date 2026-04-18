@@ -22,7 +22,7 @@ pub use default_proxy::DefaultEnvelopeProxy;
 pub trait ToEnvelope<A, M, EP = DefaultEnvelopeProxy<M>>
 where
     A: Actor,
-    M: Message<EP>,
+    M: Message,
 {
     /// Packs the message and the optional response sender into an envelope.
     fn pack(msg: M, tx: Option<oneshot::Sender<M::Result>>) -> Envelope<A>;
@@ -32,7 +32,7 @@ where
 pub trait FromEnvelope<A, M, EP = DefaultEnvelopeProxy<M>>
 where
     A: Actor,
-    M: Message<EP>,
+    M: Message,
 {
     /// Unpacks the message from the envelope.
     fn unpack(envelope: Envelope<A>) -> M;

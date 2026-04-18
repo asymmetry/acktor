@@ -11,6 +11,7 @@ use acktor_ipc::{Decode, Encode};
 #[result_type(())]
 pub struct Ping {
     pub id: u64,
+    pub timestamp: i64,
 }
 
 #[derive(
@@ -21,4 +22,5 @@ pub struct Ping {
 #[result_type(())]
 pub struct Pong {
     pub id: u64,
+    pub timestamp: i64,
 }

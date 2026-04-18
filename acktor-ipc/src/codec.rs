@@ -82,6 +82,14 @@ impl DecodeContext {
         Self { session, registry }
     }
 
+    /// Constructs a new [`EncodeContext`] from this decode context.
+    #[inline]
+    pub fn create_encode_context(&self) -> EncodeContext {
+        EncodeContext {
+            registry: self.registry.clone(),
+        }
+    }
+
     /// Constructs a new [`RemoteAddress`] from the give aactor ID.
     #[inline]
     pub fn create_remote_address(&self, actor_id: u64) -> Result<RemoteAddress, DecodeError> {

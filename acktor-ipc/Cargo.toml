@@ -55,6 +55,7 @@ acktor-ipc-proto = { workspace = true }
 
 [dev-dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 clap.workspace = true
 pretty_assertions.workspace = true
 rkyv.workspace = true

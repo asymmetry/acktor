@@ -81,10 +81,13 @@ pub enum SessionError {
     #[error("could not create the actor on behalf of the remote peer")]
     RemoteActorFactoryError(#[source] Box<dyn StdError + Send + Sync>),
 
-    #[error("could not find the actor {0}")]
+    #[error("could not find actor {0}")]
     ActorNotFound(String),
 
-    #[error("{0}")]
+    #[error("could not handle inbound remote message")]
+    HandleInboundMessageFailed(#[source] Box<dyn StdError + Send + Sync>),
+
+    #[error("remote actor returned an error:{0}")]
     RemotePeerError(String),
 
     #[error(transparent)]

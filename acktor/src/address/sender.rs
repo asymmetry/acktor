@@ -9,11 +9,9 @@ use crate::envelope::DefaultEnvelopeProxy;
 use crate::errors::SendError;
 use crate::message::Message;
 
-pub type SendResult<M, EP = DefaultEnvelopeProxy<M>> =
-    Result<Receiver<<M as Message<EP>>::Result>, SendError<M>>;
+pub type SendResult<M> = Result<Receiver<<M as Message>::Result>, SendError<M>>;
 
-pub type SendResultFuture<'a, M, EP = DefaultEnvelopeProxy<M>> =
-    Pin<Box<dyn Future<Output = SendResult<M, EP>> + Send + 'a>>;
+pub type SendResultFuture<'a, M> = Pin<Box<dyn Future<Output = SendResult<M>> + Send + 'a>>;
 
 pub type DoSendResult<M> = Result<(), SendError<M>>;
 
@@ -48,7 +46,7 @@ impl SenderId for ActorId {
 /// Describes how to send a message.
 pub trait Sender<M, EP = DefaultEnvelopeProxy<M>>: SenderId
 where
-    M: Message<EP>,
+    M: Message,
 {
     /// Checks if the channel is closed.
     fn is_closed(&self) -> bool;
@@ -58,14 +56,14 @@ where
 
     /// Sends a message and returns a [`Receiver`][crate::channel::oneshot::Receiver] which can
     /// be used to receive the message response.
-    fn send(&self, msg: M) -> SendResultFuture<'_, M, EP>;
+    fn send(&self, msg: M) -> SendResultFuture<'_, M>;
 
     /// Sends a message without expecting a response.
     fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M>;
 
     /// Attempts to send a message and returns a [`Receiver`][crate::channel::oneshot::Receiver]
     /// which can be used to receive the message response.
-    fn try_send(&self, msg: M) -> SendResult<M, EP>;
+    fn try_send(&self, msg: M) -> SendResult<M>;
 
     /// Attempts to send a message without expecting a response.
     fn try_do_send(&self, msg: M) -> DoSendResult<M>;
@@ -74,7 +72,7 @@ where
     /// be used to receive the message response.
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
-    fn blocking_send(&self, msg: M) -> SendResult<M, EP>;
+    fn blocking_send(&self, msg: M) -> SendResult<M>;
 
     /// Sends a message without expecting a response.
     ///

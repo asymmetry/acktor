@@ -4,7 +4,6 @@ use std::future;
 use super::{Message, MessageResponse};
 use crate::actor::Actor;
 use crate::channel::oneshot;
-use crate::envelope::DefaultEnvelopeProxy;
 
 /// A helper type which wraps the result of a message handler as a message response.
 ///
@@ -12,13 +11,13 @@ use crate::envelope::DefaultEnvelopeProxy;
 /// and you can not implement [`MessageResponse`] for the type due to the orphan rule. In this
 /// case, you can wrap the result type with this type and use it as the
 /// [`Result`][super::Handler::Result] associate type in the [`Handler`][super::Handler] trait.
-pub struct MessageResult<M, EP = DefaultEnvelopeProxy<M>>(pub M::Result)
+pub struct MessageResult<M>(pub M::Result)
 where
-    M: Message<EP>;
+    M: Message;
 
-impl<M, EP> Debug for MessageResult<M, EP>
+impl<M> Debug for MessageResult<M>
 where
-    M: Message<EP>,
+    M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
@@ -28,10 +27,10 @@ where
     }
 }
 
-impl<A, M, EP> MessageResponse<A, M, EP> for MessageResult<M, EP>
+impl<A, M> MessageResponse<A, M> for MessageResult<M>
 where
     A: Actor,
-    M: Message<EP>,
+    M: Message,
 {
     fn handle(
         self,

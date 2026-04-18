@@ -19,6 +19,8 @@ use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_message::RemoteMessage;
 use crate::session::Session;
 
+// TODO: better way to handle the error received from the remote peer
+
 /// A type which is used to send messages to a remote actor.
 ///
 /// [`Sender`] trait is implemented for this type, so it can be converted into a [`Recipient`]
@@ -104,17 +106,18 @@ impl RemoteAddress {
     }
 }
 
-async fn wait_for_result<M>(
-    result_bytes_rx: oneshot::Receiver<Bytes>,
-    result_tx: oneshot::Sender<M::Result>,
+async fn forward_result<M>(
+    raw_rx: oneshot::Receiver<Result<Bytes, BoxError>>,
+    tx: oneshot::Sender<M::Result>,
 ) -> Result<(), BoxError>
 where
     M: Message + Encode,
     M::Result: Decode,
 {
-    let result_bytes = result_bytes_rx.await?;
+    let result_bytes = raw_rx.await??;
     let result = M::Result::decode(result_bytes, None)?;
-    result_tx.send(result).map_err(|_| SendError::Closed(()))?;
+    tx.send(result).map_err(|_| SendError::Closed(()))?;
+
     Ok(())
 }
 
@@ -139,105 +142,76 @@ where
     }
 
     fn send(&self, msg: M) -> SendResultFuture<'_, M> {
-        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
+        let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
                 return future::ready(Err(SendError::Other(e.into(), msg))).boxed();
             }
         };
 
-        let (result_tx, result_rx) = oneshot::channel::<M::Result>();
-        let (result_bytes_tx, result_bytes_rx) = oneshot::channel::<Bytes>();
+        let (raw_tx, raw_rx) = oneshot::channel::<Result<Bytes, BoxError>>();
+        let (tx, rx) = oneshot::channel::<M::Result>();
 
         tokio::spawn(
             async move {
-                if let Err(e) = wait_for_result::<M>(result_bytes_rx, result_tx).await {
+                if let Err(e) = forward_result::<M>(raw_rx, tx).await {
                     warn!("Could not receive result from remote actor: {}", e)
                 }
             }
             .in_current_span(),
         );
 
-        // this future will be resolved to Ok only if the message is sent to the remote peer
-        // actor successfully, but not necessarily processed by the remote peer actor
+        // this future will be resolved to Ok once the message is in the session actor's mailbox,
+        // it does not guarantee the message arrives at the remote peer actor, the IPC
+        // communication may fail
         self.session
-            .send(RemoteMessage::send(
+            .do_send(RemoteMessage::send(
                 self.remote_actor_id,
-                msg_bytes,
-                result_bytes_tx,
+                message_bytes,
+                raw_tx,
             ))
             // error return by the sender, which means the session actor is stopped before
             // receiving the message
-            .map_err(|_| SendError::Closed(()))
-            .and_then(|rx| {
-                rx.map(|result| match result {
-                    Ok(Ok(())) => Ok(result_rx),
-                    // error return by the session actor's Handler<RemoteMessage>, which means
-                    // the delevery via IPC is failed
-                    Ok(Err(e)) => Err(SendError::Other(e, ())),
-                    // error return by the receiver of the oneshot channel, which means the
-                    // session actor is stopped after receiving the message, but before sending
-                    // the result back
-                    Err(_) => Err(SendError::Closed(())),
-                })
-            })
-            // convert the error to include the original message to match the trait definition
-            .map_err(|e| match e {
-                SendError::Other(source, _) => SendError::Other(source, msg),
-                _ => SendError::Closed(msg),
+            .map(|result| match result {
+                Ok(_) => Ok(rx),
+                Err(_) => Err(SendError::Closed(msg)),
             })
             .boxed()
     }
 
     fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M> {
-        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
+        let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
                 return future::ready(Err(SendError::Other(e.into(), msg))).boxed();
             }
         };
 
-        // this future will be resolved to Ok only if the message is sent to the remote peer
-        // actor successfully, but not necessarily processed by the remote peer actor
+        // this future will be resolved to Ok once the message is in the session actor's mailbox,
+        // it does not guarantee the message arrives at the remote peer actor, the IPC
+        // communication may fail
         self.session
-            .send(RemoteMessage::do_send(self.remote_actor_id, msg_bytes))
+            .do_send(RemoteMessage::do_send(self.remote_actor_id, message_bytes))
             // error return by the sender, which means the session actor is stopped before
             // receiving the message
-            .map_err(|_| SendError::Closed(()))
-            .and_then(|rx| {
-                rx.map(|result| match result {
-                    Ok(Ok(())) => Ok(()),
-                    // error return by the session actor's Handler<RemoteMessage>, which means
-                    // the delevery via IPC is failed
-                    Ok(Err(e)) => Err(SendError::Other(e, ())),
-                    // error return by the receiver of the oneshot channel, which means the
-                    // session actor is stopped after receiving the message, but before sending
-                    // the result back
-                    Err(_) => Err(SendError::Closed(())),
-                })
-            })
-            // convert the error to include the original message to match the trait definition
-            .map_err(|e| match e {
-                SendError::Other(source, _) => SendError::Other(source, msg),
-                _ => SendError::Closed(msg),
-            })
+            .map_err(|_| SendError::Closed(msg))
             .boxed()
     }
 
     fn try_send(&self, msg: M) -> SendResult<M> {
-        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
+        let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
                 return Err(SendError::Other(e.into(), msg));
             }
         };
 
-        let (result_tx, result_rx) = oneshot::channel::<M::Result>();
-        let (result_bytes_tx, result_bytes_rx) = oneshot::channel::<Bytes>();
+        let (raw_tx, raw_rx) = oneshot::channel::<Result<Bytes, BoxError>>();
+        let (tx, rx) = oneshot::channel::<M::Result>();
 
         tokio::spawn(
             async move {
-                if let Err(e) = wait_for_result::<M>(result_bytes_rx, result_tx).await {
+                if let Err(e) = forward_result::<M>(raw_rx, tx).await {
                     warn!("Could not receive result from remote actor: {}", e)
                 }
             }
@@ -246,21 +220,19 @@ where
 
         match self.session.try_do_send(RemoteMessage::send(
             self.remote_actor_id,
-            msg_bytes,
-            result_bytes_tx,
+            message_bytes,
+            raw_tx,
         )) {
-            Ok(_) => Ok(result_rx),
+            Ok(_) => Ok(rx),
             Err(e) => match e {
-                SendError::Closed(_) => Err(SendError::Closed(msg)),
                 SendError::Full(_) => Err(SendError::Full(msg)),
-                SendError::Timeout(_) => Err(SendError::Timeout(msg)),
-                SendError::Other(source, _) => Err(SendError::Other(source, msg)),
+                _ => Err(SendError::Closed(msg)),
             },
         }
     }
 
     fn try_do_send(&self, msg: M) -> DoSendResult<M> {
-        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
+        let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
                 return Err(SendError::Other(e.into(), msg));
@@ -268,29 +240,27 @@ where
         };
 
         self.session
-            .try_do_send(RemoteMessage::do_send(self.remote_actor_id, msg_bytes))
+            .try_do_send(RemoteMessage::do_send(self.remote_actor_id, message_bytes))
             .map_err(|e| match e {
-                SendError::Closed(_) => SendError::Closed(msg),
                 SendError::Full(_) => SendError::Full(msg),
-                SendError::Timeout(_) => SendError::Timeout(msg),
-                SendError::Other(source, _) => SendError::Other(source, msg),
+                _ => SendError::Closed(msg),
             })
     }
 
     fn blocking_send(&self, msg: M) -> SendResult<M> {
-        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
+        let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
                 return Err(SendError::Other(e.into(), msg));
             }
         };
 
-        let (result_tx, result_rx) = oneshot::channel::<M::Result>();
-        let (result_bytes_tx, result_bytes_rx) = oneshot::channel::<Bytes>();
+        let (raw_tx, raw_rx) = oneshot::channel::<Result<Bytes, BoxError>>();
+        let (tx, rx) = oneshot::channel::<M::Result>();
 
         tokio::spawn(
             async move {
-                if let Err(e) = wait_for_result::<M>(result_bytes_rx, result_tx).await {
+                if let Err(e) = forward_result::<M>(raw_rx, tx).await {
                     warn!("Could not receive result from remote actor: {}", e)
                 }
             }
@@ -299,16 +269,16 @@ where
 
         match self.session.blocking_do_send(RemoteMessage::send(
             self.remote_actor_id,
-            msg_bytes,
-            result_bytes_tx,
+            message_bytes,
+            raw_tx,
         )) {
-            Ok(_) => Ok(result_rx),
+            Ok(_) => Ok(rx),
             Err(_) => Err(SendError::Closed(msg)),
         }
     }
 
     fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
-        let msg_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
+        let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
             Err(e) => {
                 return Err(SendError::Other(e.into(), msg));
@@ -316,7 +286,7 @@ where
         };
 
         self.session
-            .blocking_do_send(RemoteMessage::do_send(self.remote_actor_id, msg_bytes))
+            .blocking_do_send(RemoteMessage::do_send(self.remote_actor_id, message_bytes))
             .map_err(|_| SendError::Closed(msg))
     }
 }

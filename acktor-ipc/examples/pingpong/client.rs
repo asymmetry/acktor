@@ -86,7 +86,17 @@ impl CronActor for Client {
         }
 
         if let Some(server) = &self.server {
-            server.do_send(Ping { id: self.id }).await?;
+            let msg = Ping {
+                id: self.id,
+                timestamp: chrono::Utc::now().timestamp_micros(),
+            };
+            server.do_send(msg).await?;
+            info!(
+                "Process {} sent a Ping({}, {})",
+                process::id(),
+                msg.id,
+                msg.timestamp,
+            );
             self.id += 1;
         }
 
@@ -98,12 +108,18 @@ impl Handler<Pong> for Client {
     type Result = ();
 
     async fn handle(&mut self, msg: Pong, _ctx: &mut Self::Context) -> Self::Result {
-        info!("Process {} received Pong({})", process::id(), msg.id);
+        info!(
+            "Process {} received a Pong({}, {}), latency {} us",
+            process::id(),
+            msg.id,
+            msg.timestamp,
+            chrono::Utc::now().timestamp_micros() - msg.timestamp,
+        );
     }
 }
 
 impl Handler<RemoteMessage> for Client {
-    type Result = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    type Result = ();
 
     async fn handle(&mut self, msg: RemoteMessage, ctx: &mut Self::Context) -> Self::Result {
         let RemoteMessage {
@@ -113,16 +129,17 @@ impl Handler<RemoteMessage> for Client {
             ..
         } = msg;
 
+        let encode_context = decode_context
+            .as_ref()
+            .map(|ctx| ctx.create_encode_context());
+
         if let Ok(pong) = Pong::decode(message, decode_context.as_ref()) {
-            let result = <Self as Handler<Pong>>::handle(self, pong, ctx).await;
+            self.handle(pong, ctx).await;
 
             if let RemoteMessageKind::Send(tx) = kind {
-                if let Ok(bytes) = result.encode_to_bytes(None) {
-                    let _ = tx.send(bytes);
-                }
+                let result = ().encode_to_bytes(encode_context.as_ref());
+                let _ = tx.send(result.map_err(Into::into));
             }
         }
-
-        Ok(())
     }
 }

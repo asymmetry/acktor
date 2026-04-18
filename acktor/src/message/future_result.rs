@@ -7,7 +7,6 @@ use tracing::Instrument;
 use super::{Message, MessageResponse};
 use crate::actor::Actor;
 use crate::channel::oneshot;
-use crate::envelope::DefaultEnvelopeProxy;
 
 /// A helper type which wraps the result of a message handler as a future which runs off the
 /// mailbox.
@@ -18,16 +17,16 @@ use crate::envelope::DefaultEnvelopeProxy;
 ///
 /// The inner future is spawned into the Tokio runtime and is detached from the actor's
 /// lifecycle. It continues running even after the actor is stopped or terminated.
-pub struct FutureMessageResult<M, EP = DefaultEnvelopeProxy<M>>
+pub struct FutureMessageResult<M>
 where
-    M: Message<EP>,
+    M: Message,
 {
     future: Pin<Box<dyn Future<Output = M::Result> + Send>>,
 }
 
-impl<M, EP> Debug for FutureMessageResult<M, EP>
+impl<M> Debug for FutureMessageResult<M>
 where
-    M: Message<EP>,
+    M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
@@ -37,9 +36,9 @@ where
     }
 }
 
-impl<M, EP> FutureMessageResult<M, EP>
+impl<M> FutureMessageResult<M>
 where
-    M: Message<EP>,
+    M: Message,
 {
     /// Wrap a future that produces the handler's result.
     pub fn new<F>(future: F) -> Self
@@ -52,10 +51,10 @@ where
     }
 }
 
-impl<A, M, EP> MessageResponse<A, M, EP> for FutureMessageResult<M, EP>
+impl<A, M> MessageResponse<A, M> for FutureMessageResult<M>
 where
     A: Actor,
-    M: Message<EP>,
+    M: Message,
 {
     fn handle(
         self,

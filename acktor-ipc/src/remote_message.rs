@@ -16,7 +16,7 @@ pub enum RemoteMessageKind {
     /// No response is expected for this message.
     DoSend,
     /// The sender expects a response for this message.
-    Send(oneshot::Sender<Bytes>),
+    Send(oneshot::Sender<Result<Bytes, BoxError>>),
 }
 
 impl Debug for RemoteMessageKind {
@@ -35,7 +35,7 @@ impl Debug for RemoteMessageKind {
 /// (received from an IPC session and forwarded to an actor in the current process for
 /// processing).
 #[derive(Message)]
-#[result_type(Result<(), BoxError>)]
+#[result_type(())]
 pub struct RemoteMessage {
     pub actor_id: u64,
     pub kind: RemoteMessageKind,
@@ -65,10 +65,14 @@ impl RemoteMessage {
     }
 
     /// Constructs a new [`Send`][RemoteMessageKind::Send][`RemoteMessage`].
-    pub fn send(actor_id: u64, message: Bytes, result_tx: oneshot::Sender<Bytes>) -> Self {
+    pub fn send(
+        actor_id: u64,
+        message: Bytes,
+        tx: oneshot::Sender<Result<Bytes, BoxError>>,
+    ) -> Self {
         Self {
             actor_id,
-            kind: RemoteMessageKind::Send(result_tx),
+            kind: RemoteMessageKind::Send(tx),
             message,
             decode_context: None,
         }

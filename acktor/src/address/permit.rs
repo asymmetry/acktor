@@ -23,12 +23,12 @@ where
     /// This method will consume the permit.
     pub fn send<M, EP>(self, msg: M) -> oneshot::Receiver<M::Result>
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP>,
+        M: Message,
     {
         let (tx, rx) = oneshot::channel();
         self.permit
-            .send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)));
+            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)));
         rx
     }
 
@@ -37,11 +37,11 @@ where
     /// This method will consume the permit.
     pub fn do_send<M, EP>(self, msg: M)
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP>,
+        M: Message,
     {
         self.permit
-            .send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, None));
+            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, None));
     }
 }
 
@@ -65,12 +65,12 @@ where
     /// This method will consume the permit.
     pub fn send<M, EP>(self, msg: M) -> oneshot::Receiver<M::Result>
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP>,
+        M: Message,
     {
         let (tx, rx) = oneshot::channel();
         self.permit
-            .send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)));
+            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)));
         rx
     }
 
@@ -79,10 +79,10 @@ where
     /// This method will consume the permit.
     pub fn do_send<M, EP>(self, msg: M)
     where
-        M: Message<EP>,
-        A::Context: ToEnvelope<A, M, EP>,
+        A: ToEnvelope<A, M, EP>,
+        M: Message,
     {
         self.permit
-            .send(<A::Context as ToEnvelope<A, M, EP>>::pack(msg, None));
+            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, None));
     }
 }
