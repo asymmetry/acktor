@@ -1,5 +1,6 @@
 //! Error types used by this crate.
 
+use std::error::Error as StdError;
 use std::io;
 
 use thiserror::Error;
@@ -10,6 +11,8 @@ pub use crate::codec::{DecodeError, EncodeError};
 pub use crate::double_map::{KeyConflictError, TryReserveError};
 pub use crate::remote_message::ToRemoteMessageRecipientError;
 
+pub type BoxError = Box<dyn StdError + Send + Sync>;
+
 /// Error type used by [`Node`][crate::node::Node].
 #[derive(Debug, Error)]
 pub enum NodeError {
@@ -17,7 +20,7 @@ pub enum NodeError {
     ConnectFailed(#[from] io::Error),
 
     #[error("could not create a new session")]
-    CreateSessionFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
+    CreateSessionFailed(#[source] Box<dyn StdError + Send + Sync>),
 
     #[error("could not find the session {0}")]
     SessionNotFound(String),
@@ -29,7 +32,7 @@ pub enum NodeError {
     RemoteActorNotFound(#[source] SessionError),
 
     #[error("could not send message")]
-    SendError(#[source] Box<dyn std::error::Error + Send + Sync>),
+    SendError(#[source] Box<dyn StdError + Send + Sync>),
 
     #[error("could not receive message")]
     RecvError(#[from] RecvError),
@@ -47,14 +50,14 @@ where
 /// Error type used by [`Node`][crate::node::Node] to represent session related errors.
 #[derive(Debug, Error)]
 pub enum SessionError {
-    #[error("could not encode the remote message")]
+    #[error("could not encode the outbound remote message")]
     EncodeError(#[from] EncodeError),
 
-    #[error("could not decode the remote message")]
+    #[error("could not decode the inbound remote message")]
     DecodeError(#[from] DecodeError),
 
     #[error("could not forward the inbound remote message to any actor")]
-    ForwardInboundMessageFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
+    ForwardInboundMessageFailed(#[source] Box<dyn StdError + Send + Sync>),
 
     #[error("could not send the outbound remote message to the remote node")]
     SendOutboundMessageFailed(#[source] io::Error),
@@ -62,23 +65,33 @@ pub enum SessionError {
     #[error("invalid node message reply tag: {0}")]
     InvalidNodeMessageReplyTag(u64),
 
+    #[error(
+        "could not forward the node message reply, whoever is waiting for it closed the channel"
+    )]
+    ForwardNodeMessageReplyFailed,
+
     #[error("invalid actor message reply tag: {0}")]
     InvalidActorMessageReplyTag(u64),
 
-    #[error("could not create the actor")]
-    CreateActorFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error(
+        "could not forward the actor message reply, whoever is waiting for it closed the channel"
+    )]
+    ForwardActorMessageReplyFailed,
+
+    #[error("could not create the actor on behalf of the remote peer")]
+    RemoteActorFactoryError(#[source] Box<dyn StdError + Send + Sync>),
 
     #[error("could not find the actor {0}")]
     ActorNotFound(String),
 
     #[error("{0}")]
-    RemoteActorError(String),
+    RemotePeerError(String),
 
     #[error(transparent)]
     IoError(io::Error),
 
     #[error("could not send message")]
-    SendError(#[source] Box<dyn std::error::Error + Send + Sync>),
+    SendError(#[source] Box<dyn StdError + Send + Sync>),
 
     #[error("could not receive message")]
     RecvError(#[from] RecvError),

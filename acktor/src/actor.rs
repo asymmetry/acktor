@@ -1,9 +1,7 @@
+use std::any::Any;
 use std::error::Error;
 use std::fmt::Display;
 use std::panic::{self, AssertUnwindSafe};
-
-#[cfg(feature = "type-erased-recipient-hook")]
-use std::any::Any;
 
 use futures_util::future::FutureExt;
 use tracing::{Instrument, Span, debug, error, error_span, warn};
@@ -201,7 +199,7 @@ pub trait Actor: Sized + Send + 'static {
     /// an `Address<A>` to a `Recipient<M>` first, with `M` being a specific message type chosen
     /// by the user, and then to a type-erased `Box<dyn Any + Send + Sync>`. Returning `Some(f)`
     /// causes [`Address::new`] to bake `f` into every address for this actor. To convert a
-    /// `Recipient<N>` into a `Recipient<M>`, users can use the [`Sender::erased_recipient`]
+    /// `Recipient<N>` into a `Recipient<M>`, users can use the [`Sender::type_erased_recipient`]
     /// method, which will invoke the function `f` and return the type-erased trait object, and
     /// convert the type-erased trait object back into a `Recipient<M>` by downcasting.
     ///
@@ -299,7 +297,7 @@ where
         self.set_state(ActorState::Stopped);
     }
 
-    /// Returns a reference tothe supervisor of the actor, if any.
+    /// Returns a reference to the supervisor of the actor, if any.
     ///
     /// Override the [`supervisor`][ActorContext::supervisor] method and the
     /// [`set_supervisor`][ActorContext::set_supervisor] method to opt-in the supervisor feature.

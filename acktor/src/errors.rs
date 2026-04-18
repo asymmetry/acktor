@@ -2,27 +2,11 @@
 
 use std::error::Error as StdError;
 use std::fmt::{self, Debug, Display};
-use std::future::Future;
-use std::pin::Pin;
 
 use thiserror::Error;
 
-use crate::channel::oneshot::Receiver;
-use crate::envelope::DefaultEnvelopeProxy;
-use crate::message::Message;
-
 mod report;
 pub use report::ErrorReport;
-
-pub type SendResult<M, EP = DefaultEnvelopeProxy<M>> =
-    Result<Receiver<<M as Message<EP>>::Result>, SendError<M>>;
-
-pub type SendResultFuture<'a, M, EP = DefaultEnvelopeProxy<M>> =
-    Pin<Box<dyn Future<Output = SendResult<M, EP>> + Send + 'a>>;
-
-pub type DoSendResult<M> = Result<(), SendError<M>>;
-
-pub type DoSendResultFuture<'a, M> = Pin<Box<dyn Future<Output = DoSendResult<M>> + Send + 'a>>;
 
 /// Error returned when sending a message.
 pub enum SendError<M> {

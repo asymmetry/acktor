@@ -1,5 +1,5 @@
-//! Oneshot channel with a receiver wraps [`tokio::sync::oneshot::Receiver`] and yields this
-//! crate's [`RecvError`][crate::errors::RecvError] on failure.
+//! Oneshot channel with a receiver that wraps [`tokio::sync::oneshot::Receiver`] and yields
+//! this crate's [`RecvError`][crate::errors::RecvError] on failure.
 
 use std::future::Future;
 use std::pin::Pin;

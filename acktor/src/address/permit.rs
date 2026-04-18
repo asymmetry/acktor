@@ -16,8 +16,8 @@ impl<A> SendPermit<'_, A>
 where
     A: Actor,
 {
-    /// Sends a message to an actor use the permit and returns a
-    /// [`Receiver`][crate::channel::oneshot::Receiver] which could be used to receive the
+    /// Sends a message to an actor using the permit and returns a
+    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the
     /// message response.
     ///
     /// This method will consume the permit.
@@ -32,7 +32,7 @@ where
         rx
     }
 
-    /// Sends a message to an actor use the permit without expecting a response.
+    /// Sends a message to an actor using the permit without expecting a response.
     ///
     /// This method will consume the permit.
     pub fn do_send<M, EP>(self, msg: M)
@@ -58,8 +58,8 @@ impl<A> OwnedSendPermit<A>
 where
     A: Actor,
 {
-    /// Sends a message to an actor use the permit and returns a
-    /// [`Receiver`][crate::channel::oneshot::Receiver] which could be used to receive the
+    /// Sends a message to an actor using the permit and returns a
+    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the
     /// message response.
     ///
     /// This method will consume the permit.
@@ -74,7 +74,7 @@ where
         rx
     }
 
-    /// Sends a message to an actor use the permit without expecting a response.
+    /// Sends a message to an actor using the permit without expecting a response.
     ///
     /// This method will consume the permit.
     pub fn do_send<M, EP>(self, msg: M)

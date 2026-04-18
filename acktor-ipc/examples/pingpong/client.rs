@@ -103,7 +103,7 @@ impl Handler<Pong> for Client {
 }
 
 impl Handler<RemoteMessage> for Client {
-    type Result = ();
+    type Result = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     async fn handle(&mut self, msg: RemoteMessage, ctx: &mut Self::Context) -> Self::Result {
         let RemoteMessage {
@@ -122,5 +122,7 @@ impl Handler<RemoteMessage> for Client {
                 }
             }
         }
+
+        Ok(())
     }
 }

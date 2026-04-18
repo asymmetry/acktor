@@ -43,6 +43,10 @@ macro_rules! __try_notify_observers {
     ($observers:expr, $event:expr) => {
         let mut should_clean = false;
         for observer in $observers.iter() {
+            #[cfg(feature = "bottleneck-warning")]
+            if observer.capacity() == 0 {
+                tracing::debug!("Actor {} is full", observer.index());
+            }
             if let Err($crate::errors::SendError::Closed(_)) = observer.try_do_send($event.clone())
             {
                 should_clean = true;
@@ -60,6 +64,10 @@ pub use crate::__notify_observers as notify_observers;
 pub use crate::__try_notify_observers as try_notify_observers;
 
 /// Container for observers.
+///
+/// Use [`register_observer`][SubjectActor::register_observer]/
+/// [`unregister_observer`][SubjectActor::unregister_observer] to insert into or remove from this
+/// set, otherwise the tracing log is bypassed.
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct ObserverSet<Event>(HashSet<Recipient<Event>>)

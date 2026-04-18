@@ -96,8 +96,8 @@ where
         if let Some(tx) = tx {
             if let Err(Err(e)) = tx.send(self) {
                 debug!(
-                    "Could not send the message response since the channel is closed, log the \
-                    dropped response since it is an error: {}",
+                    "Could not send the result back to the sender since the channel is closed, \
+                    log the dropped error: {}",
                     e.into().report()
                 );
             }

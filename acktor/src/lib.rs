@@ -66,13 +66,14 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub mod errors;
+mod errors;
 pub use errors::{ErrorReport, RecvError, SendError};
 
 pub mod channel;
 
 pub mod utils;
 
+#[doc(hidden)]
 pub mod actor;
 pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
 

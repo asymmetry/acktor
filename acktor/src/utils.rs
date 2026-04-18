@@ -41,6 +41,7 @@ pub const MAX_ACTOR_ID: u64 = (1 << 63) - 1;
 #[inline]
 pub(crate) fn create_actor_id() -> ActorId {
     let id = ACTOR_ID_ALLOCATOR.fetch_add(1, Ordering::Relaxed);
+    // in practice 2^63 actors is impossible to reach, so only a debug assertion here
     debug_assert!(
         id <= MAX_ACTOR_ID,
         "actor id space exhausted (more than {} actors allocated in the current process)",

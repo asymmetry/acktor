@@ -8,6 +8,7 @@ use thiserror::Error;
 use acktor::{Actor, ActorState, Address, Message, Recipient, Sender, channel::oneshot};
 
 use crate::codec::DecodeContext;
+use crate::errors::BoxError;
 use crate::remote_address::RemoteAddress;
 
 /// The kind of a remote message.
@@ -21,8 +22,8 @@ pub enum RemoteMessageKind {
 impl Debug for RemoteMessageKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RemoteMessageKind::DoSend => f.write_str("DoSend"),
-            RemoteMessageKind::Send(_) => f.write_str("Send"),
+            Self::DoSend => f.write_str("DoSend"),
+            Self::Send(_) => f.write_str("Send"),
         }
     }
 }
@@ -34,11 +35,11 @@ impl Debug for RemoteMessageKind {
 /// (received from an IPC session and forwarded to an actor in the current process for
 /// processing).
 #[derive(Message)]
-#[result_type(())]
+#[result_type(Result<(), BoxError>)]
 pub struct RemoteMessage {
     pub actor_id: u64,
-    pub message: Bytes,
     pub kind: RemoteMessageKind,
+    pub message: Bytes,
     pub decode_context: Option<DecodeContext>,
 }
 
@@ -46,18 +47,8 @@ impl Debug for RemoteMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RemoteMessage")
             .field("actor_id", &self.actor_id)
-            .field("message", &format_args!("Bytes({})", self.message.len()))
             .field("kind", &self.kind)
-            .field(
-                "decode_context",
-                &format_args!(
-                    "{}",
-                    match &self.decode_context {
-                        Some(_) => "Some(..)",
-                        None => "None",
-                    }
-                ),
-            )
+            .field("message", &format_args!("Bytes({})", self.message.len()))
             .finish()
     }
 }
@@ -67,18 +58,18 @@ impl RemoteMessage {
     pub fn do_send(actor_id: u64, message: Bytes) -> Self {
         Self {
             actor_id,
-            message,
             kind: RemoteMessageKind::DoSend,
+            message,
             decode_context: None,
         }
     }
 
     /// Constructs a new [`Send`][RemoteMessageKind::Send][`RemoteMessage`].
-    pub fn send(actor_id: u64, message: Bytes, tx: oneshot::Sender<Bytes>) -> Self {
+    pub fn send(actor_id: u64, message: Bytes, result_tx: oneshot::Sender<Bytes>) -> Self {
         Self {
             actor_id,
+            kind: RemoteMessageKind::Send(result_tx),
             message,
-            kind: RemoteMessageKind::Send(tx),
             decode_context: None,
         }
     }

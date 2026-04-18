@@ -8,11 +8,13 @@ use futures_util::{FutureExt, TryFutureExt};
 
 use super::permit::{OwnedSendPermit, SendPermit};
 use super::recipient::Recipient;
-use super::sender::{Sender, SenderId};
+use super::sender::{
+    DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender, SenderId,
+};
 use crate::actor::{Actor, ActorId};
 use crate::channel::{mpsc, oneshot};
 use crate::envelope::{Envelope, FromEnvelope, ToEnvelope};
-use crate::errors::{DoSendResult, DoSendResultFuture, SendError, SendResult, SendResultFuture};
+use crate::errors::SendError;
 use crate::message::Message;
 use crate::utils::create_actor_id;
 
@@ -88,8 +90,8 @@ where
 {
     /// Constructs a new [`Address`] from a [`mpsc::Sender`].
     ///
-    /// Triggers [`Actor::erased_recipient_fn`] once (if the feature `erased-recipient` is
-    /// enabled) and stores the result.
+    /// Triggers [`Actor::type_erased_recipient_fn`] once (if the feature
+    /// `type-erased-recipient-hook` is enabled) and stores the result.
     pub fn new(tx: mpsc::Sender<Envelope<A>>) -> Self {
         Self {
             index: create_actor_id(),
@@ -124,7 +126,7 @@ where
     }
 
     /// Sends a message to an actor and returns a [`Receiver`][crate::channel::oneshot::Receiver]
-    /// which could be used to receive the message response.
+    /// which can be used to receive the message response.
     pub fn send<M, EP>(&self, msg: M) -> impl Future<Output = SendResult<M, EP>> + Send + '_
     where
         M: Message<EP>,
@@ -149,7 +151,7 @@ where
     }
 
     /// Attempts to send a message to an actor and returns a
-    /// [`Receiver`][crate::channel::oneshot::Receiver] which could be used to receive the
+    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the
     /// message response.
     pub fn try_send<M, EP>(&self, msg: M) -> SendResult<M, EP>
     where
@@ -186,7 +188,7 @@ where
     }
 
     /// Sends a message to an actor and returns a [`Receiver`][crate::channel::oneshot::Receiver]
-    /// which could be used to receive the message response.
+    /// which can be used to receive the message response.
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
     pub fn blocking_send<M, EP>(&self, msg: M) -> SendResult<M, EP>

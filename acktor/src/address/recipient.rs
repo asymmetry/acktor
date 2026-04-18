@@ -8,11 +8,12 @@ use std::any::Any;
 use futures_util::future::{FutureExt, TryFutureExt};
 
 use super::address_impl::Address;
-use super::sender::{Sender, SenderId};
+use super::sender::{
+    DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender, SenderId,
+};
 use crate::actor::{Actor, ActorId};
 use crate::channel::{mpsc, oneshot};
 use crate::envelope::{DefaultEnvelopeProxy, FromEnvelope, ToEnvelope};
-use crate::errors::{DoSendResult, DoSendResultFuture, SendResult, SendResultFuture};
 use crate::message::Message;
 use crate::utils::create_actor_id;
 

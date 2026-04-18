@@ -19,13 +19,25 @@ message OptionMessage {
   optional bytes option = 1;
 }
 
-// Packed repeated messages for Vec<T> encoding.
+// A message which represents a Vec<bool>.
 message BoolVec   { repeated bool   values = 1; }
+
+// A message which represents a Vec<i32>.
 message Int32Vec  { repeated int32  values = 1; }
+
+// A message which represents a Vec<i64>.
 message Int64Vec  { repeated int64  values = 1; }
+
+// A message which represents a Vec<u32>.
 message Uint32Vec { repeated uint32 values = 1; }
+
+// A message which represents a Vec<u64>.
 message Uint64Vec { repeated uint64 values = 1; }
+
+// A message which represents a Vec<f32>.
 message FloatVec  { repeated float  values = 1; }
+
+// A message which represents a Vec<f64>.
 message DoubleVec { repeated double values = 1; }
 
 // A message which represents a tuple of up to 10 elements.

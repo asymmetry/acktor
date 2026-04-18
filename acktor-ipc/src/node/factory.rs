@@ -83,13 +83,13 @@ impl Handler<CreateActor> for Factory {
         } = msg;
 
         let Some(factory) = self.factory_registry.get(&r#type) else {
-            return Err(SessionError::CreateActorFailed(
+            return Err(SessionError::RemoteActorFactoryError(
                 format!("no factory registered for actor type {}", r#type).into(),
             ));
         };
 
         if let Some(actor_id) = self.label_map.get(&label) {
-            return Err(SessionError::CreateActorFailed(
+            return Err(SessionError::RemoteActorFactoryError(
                 format!(
                     "actor with label {} already existed with id {}",
                     label, *actor_id
@@ -103,8 +103,8 @@ impl Handler<CreateActor> for Factory {
 
         let (address, _) = tokio::spawn(async move { factory.create_remote(label_cloned, config) })
             .await
-            .map_err(|e| SessionError::CreateActorFailed(e.into()))?
-            .map_err(SessionError::CreateActorFailed)?;
+            .map_err(|e| SessionError::RemoteActorFactoryError(e.into()))?
+            .map_err(SessionError::RemoteActorFactoryError)?;
 
         let actor_id = address.index();
         self.registry.insert(address);

@@ -349,23 +349,19 @@ impl Handler<command::CreateRemoteActor> for Node {
             config,
         } = msg;
 
-        let result: Result<_> = async {
-            let session = self.get_session(&session)?;
+        let session = self.get_session(&session);
 
-            let rx = session
+        FutureMessageResult::new(async move {
+            session?
                 .send(session::command::CreateRemoteActor {
                     label,
                     r#type,
                     config,
                 })
-                .await?;
-
-            Ok(rx)
-        }
-        .await;
-
-        FutureMessageResult::new(async move {
-            result?.await?.map_err(NodeError::CreateRemoteActorFailed)
+                .await?
+                // this await is time consuming since it involves IPC
+                .await?
+                .map_err(NodeError::CreateRemoteActorFailed)
         })
     }
 }
@@ -382,20 +378,16 @@ impl Handler<command::GetRemoteActor> for Node {
 
         let command::GetRemoteActor { session, actor } = msg;
 
-        let result: Result<_> = async {
-            let session = self.get_session(&session)?;
+        let session = self.get_session(&session);
 
-            let rx = session
+        FutureMessageResult::new(async move {
+            session?
                 .send(session::command::GetRemoteActor { actor })
-                .await?;
-
-            Ok(rx)
-        }
-        .await;
-
-        FutureMessageResult::new(
-            async move { result?.await?.map_err(NodeError::RemoteActorNotFound) },
-        )
+                .await?
+                // this await is time consuming since it involves IPC
+                .await?
+                .map_err(NodeError::RemoteActorNotFound)
+        })
     }
 }
 

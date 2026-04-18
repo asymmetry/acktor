@@ -4,16 +4,17 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use futures_util::FutureExt;
+use futures_util::{FutureExt, TryFutureExt};
 use tracing::{Instrument, warn};
 
 use acktor::{
     Address, Message, Recipient, SendError, Sender, SenderId,
+    address::{DoSendResult, DoSendResultFuture, SendResult, SendResultFuture},
     channel::oneshot,
-    errors::{DoSendResult, DoSendResultFuture, SendResult, SendResultFuture},
 };
 
 use crate::codec::{Decode, Encode, EncodeContext};
+use crate::errors::BoxError;
 use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_message::RemoteMessage;
 use crate::session::Session;
@@ -106,7 +107,7 @@ impl RemoteAddress {
 async fn wait_for_result<M>(
     result_bytes_rx: oneshot::Receiver<Bytes>,
     result_tx: oneshot::Sender<M::Result>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+) -> Result<(), BoxError>
 where
     M: Message + Encode,
     M::Result: Decode,
@@ -157,15 +158,33 @@ where
             .in_current_span(),
         );
 
+        // this future will be resolved to Ok only if the message is sent to the remote peer
+        // actor successfully, but not necessarily processed by the remote peer actor
         self.session
-            .do_send(RemoteMessage::send(
+            .send(RemoteMessage::send(
                 self.remote_actor_id,
                 msg_bytes,
                 result_bytes_tx,
             ))
-            .map(|result| match result {
-                Ok(_) => Ok(result_rx),
-                Err(_) => Err(SendError::Closed(msg)),
+            // error return by the sender, which means the session actor is stopped before
+            // receiving the message
+            .map_err(|_| SendError::Closed(()))
+            .and_then(|rx| {
+                rx.map(|result| match result {
+                    Ok(Ok(())) => Ok(result_rx),
+                    // error return by the session actor's Handler<RemoteMessage>, which means
+                    // the delevery via IPC is failed
+                    Ok(Err(e)) => Err(SendError::Other(e, ())),
+                    // error return by the receiver of the oneshot channel, which means the
+                    // session actor is stopped after receiving the message, but before sending
+                    // the result back
+                    Err(_) => Err(SendError::Closed(())),
+                })
+            })
+            // convert the error to include the original message to match the trait definition
+            .map_err(|e| match e {
+                SendError::Other(source, _) => SendError::Other(source, msg),
+                _ => SendError::Closed(msg),
             })
             .boxed()
     }
@@ -178,9 +197,30 @@ where
             }
         };
 
+        // this future will be resolved to Ok only if the message is sent to the remote peer
+        // actor successfully, but not necessarily processed by the remote peer actor
         self.session
-            .do_send(RemoteMessage::do_send(self.remote_actor_id, msg_bytes))
-            .map(|result| result.map_err(|_| SendError::Closed(msg)))
+            .send(RemoteMessage::do_send(self.remote_actor_id, msg_bytes))
+            // error return by the sender, which means the session actor is stopped before
+            // receiving the message
+            .map_err(|_| SendError::Closed(()))
+            .and_then(|rx| {
+                rx.map(|result| match result {
+                    Ok(Ok(())) => Ok(()),
+                    // error return by the session actor's Handler<RemoteMessage>, which means
+                    // the delevery via IPC is failed
+                    Ok(Err(e)) => Err(SendError::Other(e, ())),
+                    // error return by the receiver of the oneshot channel, which means the
+                    // session actor is stopped after receiving the message, but before sending
+                    // the result back
+                    Err(_) => Err(SendError::Closed(())),
+                })
+            })
+            // convert the error to include the original message to match the trait definition
+            .map_err(|e| match e {
+                SendError::Other(source, _) => SendError::Other(source, msg),
+                _ => SendError::Closed(msg),
+            })
             .boxed()
     }
 

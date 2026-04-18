@@ -23,37 +23,43 @@ pub struct OptionMessage {
     #[prost(bytes = "bytes", optional, tag = "1")]
     pub option: ::core::option::Option<::prost::bytes::Bytes>,
 }
-/// Packed repeated messages for Vec<T> encoding.
+/// A message which represents a Vec<bool>.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BoolVec {
     #[prost(bool, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<bool>,
 }
+/// A message which represents a Vec<i32>.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Int32Vec {
     #[prost(int32, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<i32>,
 }
+/// A message which represents a Vec<i64>.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Int64Vec {
     #[prost(int64, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<i64>,
 }
+/// A message which represents a Vec<u32>.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Uint32Vec {
     #[prost(uint32, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<u32>,
 }
+/// A message which represents a Vec<u64>.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Uint64Vec {
     #[prost(uint64, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<u64>,
 }
+/// A message which represents a Vec<f32>.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FloatVec {
     #[prost(float, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<f32>,
 }
+/// A message which represents a Vec<f64>.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DoubleVec {
     #[prost(double, repeated, tag = "1")]

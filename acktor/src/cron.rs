@@ -92,26 +92,37 @@ where
         }
     }
 
-    /// Saves an error in message handlers. The actor will enter the
-    /// [`Stopping`][ActorState::Stopping] state after processing the current message.
+    /// Saves an error in message handlers.
+    ///
+    /// The actor will enter the [`Stopping`][ActorState::Stopping] state after processing
+    /// the current message.
     pub fn save_error(&mut self, error: A::Error) {
         self.error = Some(error);
     }
 
     /// Terminates the actor and saves the error.
     ///
-    /// This method will switch the actor to the [`Stopped`][ActorState::Stopped] state.
+    /// The actor will enter the [`Stopped`][ActorState::Stopped] state after processing the
+    /// current message.
     pub fn terminate_with_error(&mut self, error: A::Error) {
         self.save_error(error);
         self.terminate();
     }
 
-    /// Drains the mailbox of the actor.
+    /// Schedules a one-time discard of messages already queued in the mailbox.
     ///
-    /// The mailbox is not reachable after the actor starts. This method only sets a flag, the
-    /// processing loop will drain the mailbox based on this flag.
+    /// Sets a flag; the processing loop acts on it on its next iteration by snapshotting
+    /// `mailbox.len()` and discarding exactly that many messages. Messages enqueued after
+    /// the snapshot are delivered normally.
     pub fn drain_mailbox(&mut self) {
         self.drain_mailbox = true;
+    }
+
+    fn take_error(&mut self) -> Result<(), A::Error> {
+        match self.error.take() {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
 
     async fn process_one(
@@ -167,11 +178,7 @@ where
             };
         }
 
-        if let Some(e) = self.error.take() {
-            Err(e)
-        } else {
-            Ok(())
-        }
+        self.take_error()
     }
 }
 
@@ -207,6 +214,7 @@ where
         self.state = state;
         self.try_notify_supervisor(SupervisionEvent::State(self.address(), state));
     }
+
     async fn process_loop(
         &mut self,
         actor: &mut A,
@@ -216,13 +224,8 @@ where
             if self.drain_mailbox {
                 let count = mailbox.len();
                 for _ in 0..count {
-                    if mailbox.try_recv().is_err() {
-                        // the mailbox contains `count` messages, so try_recv should never fail
-                        warn!("Unexpected error when draining the mailbox, terminate the actor");
-                        self.set_state(ActorState::Stopped);
-
-                        break;
-                    }
+                    // the mailbox contains `count` messages, so try_recv never fail
+                    let _ = mailbox.try_recv();
                 }
                 self.drain_mailbox = false;
             }
@@ -235,11 +238,11 @@ where
 
             match self.state() {
                 ActorState::Stopping => {
-                    match actor.stopping(self).await? {
-                        Stopping::Stop => {
-                            return result;
-                        }
-                        Stopping::Continue => {
+                    // if `stopping` returns `Err`, the actor will stop, if there is a saved error,
+                    // the error is returned, otherwise the error from `stopping` is returned
+                    match actor.stopping(self).await {
+                        Ok(Stopping::Stop) => return result,
+                        Ok(Stopping::Continue) => {
                             // resumed by the actor itself
                             if let Err(e) = result {
                                 self.try_notify_supervisor(SupervisionEvent::Warn(
@@ -249,6 +252,7 @@ where
                             };
                             self.set_state(ActorState::Running);
                         }
+                        Err(e) => return result.or(Err(e)),
                     }
                 }
                 ActorState::Stopped => {
