@@ -129,16 +129,21 @@ impl Handler<RemoteMessage> for Client {
             ..
         } = msg;
 
-        let encode_context = decode_context
-            .as_ref()
-            .map(|ctx| ctx.create_encode_context());
+        #[allow(clippy::let_unit_value)]
+        let result = if let Ok(pong) = Pong::decode(message, decode_context.as_ref()) {
+            self.handle(pong, ctx).await
+        };
 
-        if let Ok(pong) = Pong::decode(message, decode_context.as_ref()) {
-            self.handle(pong, ctx).await;
+        let encode_context = decode_context.map(|ctx| ctx.into_encode_context());
 
-            if let RemoteMessageKind::Send(tx) = kind {
-                let result = ().encode_to_bytes(encode_context.as_ref());
-                let _ = tx.send(result.map_err(Into::into));
+        if let RemoteMessageKind::Send(tx) = kind {
+            match result.encode_to_bytes(encode_context.as_ref()) {
+                Ok(bytes) => {
+                    let _ = tx.send(bytes);
+                }
+                Err(e) => {
+                    let _ = tx.send_err(e);
+                }
             }
         }
     }

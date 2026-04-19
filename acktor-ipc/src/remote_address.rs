@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use futures_util::{FutureExt, TryFutureExt};
-use tracing::{Instrument, warn};
+use tracing::Instrument;
 
 use acktor::{
     Address, Message, Recipient, SendError, Sender, SenderId,
@@ -13,8 +13,7 @@ use acktor::{
     channel::oneshot,
 };
 
-use crate::codec::{Decode, Encode, EncodeContext};
-use crate::errors::BoxError;
+use crate::codec::{Decode, DecodeContext, Encode, EncodeContext};
 use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_message::RemoteMessage;
 use crate::session::Session;
@@ -104,21 +103,37 @@ impl RemoteAddress {
             encode_context: EncodeContext::new(registry),
         }
     }
+
+    fn decode_context(&self) -> DecodeContext {
+        self.encode_context
+            .create_decode_context(self.session.clone())
+    }
 }
 
-async fn forward_result<M>(
-    raw_rx: oneshot::Receiver<Result<Bytes, BoxError>>,
+async fn decode_and_forward<M>(
+    raw_rx: oneshot::Receiver<Bytes>,
     tx: oneshot::Sender<M::Result>,
-) -> Result<(), BoxError>
-where
+    decode_context: DecodeContext,
+) where
     M: Message + Encode,
     M::Result: Decode,
 {
-    let result_bytes = raw_rx.await??;
-    let result = M::Result::decode(result_bytes, None)?;
-    tx.send(result).map_err(|_| SendError::Closed(()))?;
+    let decode_result = match raw_rx.await {
+        Ok(bytes) => M::Result::decode(bytes, Some(&decode_context)),
+        Err(e) => {
+            let _ = tx.send_err(e);
+            return;
+        }
+    };
 
-    Ok(())
+    match decode_result {
+        Ok(result) => {
+            let _ = tx.send(result);
+        }
+        Err(e) => {
+            let _ = tx.send_err(e);
+        }
+    }
 }
 
 impl SenderId for RemoteAddress {
@@ -144,19 +159,17 @@ where
     fn send(&self, msg: M) -> SendResultFuture<'_, M> {
         let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(e) => {
-                return future::ready(Err(SendError::Other(e.into(), msg))).boxed();
-            }
+            Err(e) => return future::ready(Err(SendError::other(e, msg))).boxed(),
         };
 
-        let (raw_tx, raw_rx) = oneshot::channel::<Result<Bytes, BoxError>>();
+        let (raw_tx, raw_rx) = oneshot::channel::<Bytes>();
         let (tx, rx) = oneshot::channel::<M::Result>();
+
+        let decode_context = self.decode_context();
 
         tokio::spawn(
             async move {
-                if let Err(e) = forward_result::<M>(raw_rx, tx).await {
-                    warn!("Could not receive result from remote actor: {}", e)
-                }
+                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
             }
             .in_current_span(),
         );
@@ -182,9 +195,7 @@ where
     fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M> {
         let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(e) => {
-                return future::ready(Err(SendError::Other(e.into(), msg))).boxed();
-            }
+            Err(e) => return future::ready(Err(SendError::other(e, msg))).boxed(),
         };
 
         // this future will be resolved to Ok once the message is in the session actor's mailbox,
@@ -201,19 +212,17 @@ where
     fn try_send(&self, msg: M) -> SendResult<M> {
         let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(e) => {
-                return Err(SendError::Other(e.into(), msg));
-            }
+            Err(e) => return Err(SendError::other(e, msg)),
         };
 
-        let (raw_tx, raw_rx) = oneshot::channel::<Result<Bytes, BoxError>>();
+        let (raw_tx, raw_rx) = oneshot::channel::<Bytes>();
         let (tx, rx) = oneshot::channel::<M::Result>();
+
+        let decode_context = self.decode_context();
 
         tokio::spawn(
             async move {
-                if let Err(e) = forward_result::<M>(raw_rx, tx).await {
-                    warn!("Could not receive result from remote actor: {}", e)
-                }
+                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
             }
             .in_current_span(),
         );
@@ -234,9 +243,7 @@ where
     fn try_do_send(&self, msg: M) -> DoSendResult<M> {
         let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(e) => {
-                return Err(SendError::Other(e.into(), msg));
-            }
+            Err(e) => return Err(SendError::other(e, msg)),
         };
 
         self.session
@@ -250,19 +257,17 @@ where
     fn blocking_send(&self, msg: M) -> SendResult<M> {
         let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(e) => {
-                return Err(SendError::Other(e.into(), msg));
-            }
+            Err(e) => return Err(SendError::other(e, msg)),
         };
 
-        let (raw_tx, raw_rx) = oneshot::channel::<Result<Bytes, BoxError>>();
+        let (raw_tx, raw_rx) = oneshot::channel::<Bytes>();
         let (tx, rx) = oneshot::channel::<M::Result>();
+
+        let decode_context = self.decode_context();
 
         tokio::spawn(
             async move {
-                if let Err(e) = forward_result::<M>(raw_rx, tx).await {
-                    warn!("Could not receive result from remote actor: {}", e)
-                }
+                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
             }
             .in_current_span(),
         );
@@ -280,9 +285,7 @@ where
     fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
         let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
             Ok(bytes) => bytes,
-            Err(e) => {
-                return Err(SendError::Other(e.into(), msg));
-            }
+            Err(e) => return Err(SendError::other(e, msg)),
         };
 
         self.session

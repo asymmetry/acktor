@@ -4,16 +4,37 @@ use std::error::Error as StdError;
 use std::fmt::{self, Debug, Display};
 
 use thiserror::Error;
+use tokio::sync::{
+    mpsc::error::{
+        SendError as MpscSendError, SendTimeoutError as MpscSendTimeoutError,
+        TryRecvError as MpscTryRecvError, TrySendError as MpscTrySendError,
+    },
+    oneshot::error::{RecvError as OneshotRecvError, TryRecvError as OneshotTryRecvError},
+};
 
 mod report;
 pub use report::ErrorReport;
+
+/// Alias for a type-erased error type.
+pub type BoxError = Box<dyn StdError + Send + Sync>;
 
 /// Error returned when sending a message.
 pub enum SendError<M> {
     Closed(M),
     Full(M),
     Timeout(M),
-    Other(Box<dyn StdError + Send + Sync>, M),
+    // the behavior is similar to the #[transparent] attribute of this error
+    Other(BoxError, M),
+}
+
+impl<M> SendError<M> {
+    /// Constructs a new [`SendError`] from an arbitrary error and the message that failed to be sent.
+    pub fn other<E>(error: E, message: M) -> Self
+    where
+        E: Into<BoxError>,
+    {
+        Self::Other(error.into(), message)
+    }
 }
 
 impl<M> Debug for SendError<M> {
@@ -49,26 +70,26 @@ impl<M> StdError for SendError<M> {
     }
 }
 
-impl<M> From<tokio::sync::mpsc::error::SendError<M>> for SendError<M> {
-    fn from(e: tokio::sync::mpsc::error::SendError<M>) -> Self {
+impl<M> From<MpscSendError<M>> for SendError<M> {
+    fn from(e: MpscSendError<M>) -> Self {
         Self::Closed(e.0)
     }
 }
 
-impl<M> From<tokio::sync::mpsc::error::TrySendError<M>> for SendError<M> {
-    fn from(e: tokio::sync::mpsc::error::TrySendError<M>) -> Self {
+impl<M> From<MpscTrySendError<M>> for SendError<M> {
+    fn from(e: MpscTrySendError<M>) -> Self {
         match e {
-            tokio::sync::mpsc::error::TrySendError::Closed(m) => Self::Closed(m),
-            tokio::sync::mpsc::error::TrySendError::Full(m) => Self::Full(m),
+            MpscTrySendError::Closed(m) => Self::Closed(m),
+            MpscTrySendError::Full(m) => Self::Full(m),
         }
     }
 }
 
-impl<M> From<tokio::sync::mpsc::error::SendTimeoutError<M>> for SendError<M> {
-    fn from(e: tokio::sync::mpsc::error::SendTimeoutError<M>) -> Self {
+impl<M> From<MpscSendTimeoutError<M>> for SendError<M> {
+    fn from(e: MpscSendTimeoutError<M>) -> Self {
         match e {
-            tokio::sync::mpsc::error::SendTimeoutError::Closed(m) => Self::Closed(m),
-            tokio::sync::mpsc::error::SendTimeoutError::Timeout(m) => Self::Timeout(m),
+            MpscSendTimeoutError::Closed(m) => Self::Closed(m),
+            MpscSendTimeoutError::Timeout(m) => Self::Timeout(m),
         }
     }
 }
@@ -86,29 +107,57 @@ pub enum RecvError {
     Timeout,
 
     #[error(transparent)]
-    Other(Box<dyn StdError + Send + Sync>),
+    Other(BoxError),
 }
 
-impl From<tokio::sync::mpsc::error::TryRecvError> for RecvError {
-    fn from(e: tokio::sync::mpsc::error::TryRecvError) -> Self {
+impl RecvError {
+    /// Constructs a new [`RecvError`] from an arbitrary error.
+    pub fn other<E>(error: E) -> Self
+    where
+        E: Into<BoxError>,
+    {
+        Self::Other(error.into())
+    }
+}
+
+impl From<MpscTryRecvError> for RecvError {
+    fn from(e: MpscTryRecvError) -> Self {
         match e {
-            tokio::sync::mpsc::error::TryRecvError::Disconnected => Self::Closed,
-            tokio::sync::mpsc::error::TryRecvError::Empty => Self::Empty,
+            MpscTryRecvError::Disconnected => Self::Closed,
+            MpscTryRecvError::Empty => Self::Empty,
         }
     }
 }
 
-impl From<tokio::sync::oneshot::error::RecvError> for RecvError {
-    fn from(_: tokio::sync::oneshot::error::RecvError) -> Self {
+impl From<OneshotRecvError> for RecvError {
+    fn from(_: OneshotRecvError) -> Self {
         Self::Closed
     }
 }
 
-impl From<tokio::sync::oneshot::error::TryRecvError> for RecvError {
-    fn from(e: tokio::sync::oneshot::error::TryRecvError) -> Self {
+impl From<OneshotTryRecvError> for RecvError {
+    fn from(e: OneshotTryRecvError) -> Self {
         match e {
-            tokio::sync::oneshot::error::TryRecvError::Closed => Self::Closed,
-            tokio::sync::oneshot::error::TryRecvError::Empty => Self::Empty,
+            OneshotTryRecvError::Closed => Self::Closed,
+            OneshotTryRecvError::Empty => Self::Empty,
         }
+    }
+}
+
+impl From<BoxError> for RecvError {
+    fn from(e: BoxError) -> Self {
+        Self::Other(e)
+    }
+}
+
+impl From<String> for RecvError {
+    fn from(s: String) -> Self {
+        Self::other(s)
+    }
+}
+
+impl From<&str> for RecvError {
+    fn from(s: &str) -> Self {
+        Self::other(s)
     }
 }

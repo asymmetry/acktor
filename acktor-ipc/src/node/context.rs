@@ -4,7 +4,7 @@ use futures_util::future::select_all;
 use tracing::warn;
 
 use acktor::{
-    ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport,
+    ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, RecvError,
     address::Mailbox,
     channel::mpsc,
     envelope::{Envelope, EnvelopeProxy},
@@ -15,7 +15,7 @@ use crate::errors::NodeError;
 use crate::ipc_method::IpcConnection;
 
 enum LoopEvent {
-    Envelope(Option<Envelope<Node>>),
+    Envelope(Result<Envelope<Node>, RecvError>),
     Accept(Result<Box<dyn IpcConnection>, IoError>, String),
 }
 
@@ -94,10 +94,10 @@ impl ActorContext<Node> for NodeContext {
 
             match event {
                 LoopEvent::Envelope(envelope) => match envelope {
-                    Some(mut envelope) => {
+                    Ok(mut envelope) => {
                         envelope.handle(actor, self).await;
                     }
-                    None => {
+                    _ => {
                         warn!("Mailbox is dropped, terminate the actor");
                         self.set_state(ActorState::Stopped);
                     }

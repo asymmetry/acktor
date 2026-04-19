@@ -68,10 +68,10 @@ impl ActorContext<Session> for SessionContext {
             tokio::select! {
                 envelope = mailbox.recv() => {
                     match envelope {
-                        Some(mut envelope) => {
+                        Ok(mut envelope) => {
                             envelope.handle(actor, self).await;
                         }
-                        None => {
+                        _ => {
                             warn!("Mailbox is dropped, terminate the actor");
                             self.set_state(ActorState::Stopped);
                         }

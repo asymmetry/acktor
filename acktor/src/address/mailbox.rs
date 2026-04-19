@@ -6,12 +6,10 @@ use crate::envelope::Envelope;
 use crate::errors::RecvError;
 
 /// The mailbox of an actor, which holds a queue of messages to be processed by the actor.
-pub struct Mailbox<A>
+#[repr(transparent)]
+pub struct Mailbox<A>(mpsc::Receiver<Envelope<A>>)
 where
-    A: Actor,
-{
-    rx: tokio::sync::mpsc::Receiver<Envelope<A>>,
-}
+    A: Actor;
 
 impl<A> Debug for Mailbox<A>
 where
@@ -28,48 +26,46 @@ where
 {
     /// Constructs a new [`Mailbox`] with the given receiver.
     pub fn new(rx: mpsc::Receiver<Envelope<A>>) -> Self {
-        Self {
-            rx: rx.into_inner(),
-        }
+        Self(rx)
     }
 
-    /// Receives the next message for this mailbox.
-    pub fn recv(&mut self) -> impl Future<Output = Option<Envelope<A>>> + Send + '_ {
-        self.rx.recv()
+    /// Receives a message from the mailbox.
+    pub fn recv(&mut self) -> impl Future<Output = Result<Envelope<A>, RecvError>> + Send {
+        self.0.recv()
     }
 
-    /// Tries to receive the next message for this mailbox.
+    /// Attempts to receive a message from the mailbox.
     pub fn try_recv(&mut self) -> Result<Envelope<A>, RecvError> {
-        self.rx.try_recv().map_err(Into::into)
+        self.0.try_recv()
     }
 
     /// Closes the mailbox, preventing any new messages from being sent to it.
     pub fn close(&mut self) {
-        self.rx.close();
+        self.0.close();
     }
 
-    /// Checks if a mailbox is closed.
+    /// Checks if the mailbox is closed.
     pub fn is_closed(&self) -> bool {
-        self.rx.is_closed()
+        self.0.is_closed()
     }
 
-    /// Checks if a mailbox is empty.
+    /// Checks if the mailbox is empty.
     pub fn is_empty(&self) -> bool {
-        self.rx.is_empty()
+        self.0.is_empty()
     }
 
     /// Returns the number of messages in the mailbox.
     pub fn len(&self) -> usize {
-        self.rx.len()
+        self.0.len()
     }
 
     /// Returns the current capacity of the mailbox.
     pub fn capacity(&self) -> usize {
-        self.rx.capacity()
+        self.0.capacity()
     }
 
     /// Returns the maximum buffer capacity of the mailbox.
     pub fn max_capacity(&self) -> usize {
-        self.rx.max_capacity()
+        self.0.max_capacity()
     }
 }

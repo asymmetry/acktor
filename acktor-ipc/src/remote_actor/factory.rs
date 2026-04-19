@@ -1,7 +1,6 @@
-use std::error::Error;
 use std::marker::PhantomData;
 
-use acktor::{Actor, Address, JoinHandle, Recipient};
+use acktor::{Actor, Address, BoxError, JoinHandle, Recipient};
 
 use super::RemoteActor;
 use crate::remote_message::RemoteMessage;
@@ -37,7 +36,7 @@ pub(crate) trait DynRemoteActorFactory: Send + Sync + 'static {
         &self,
         label: String,
         config: String,
-    ) -> Result<(Recipient<RemoteMessage>, JoinHandle<()>), Box<dyn Error + Send + Sync>>;
+    ) -> Result<(Recipient<RemoteMessage>, JoinHandle<()>), BoxError>;
 }
 
 /// Zero-sized generic adapter that bridges a [`RemoteActorFactory`] impl into the
@@ -52,7 +51,7 @@ where
         &self,
         label: String,
         config: String,
-    ) -> Result<(Recipient<RemoteMessage>, JoinHandle<()>), Box<dyn Error + Send + Sync>> {
+    ) -> Result<(Recipient<RemoteMessage>, JoinHandle<()>), BoxError> {
         let (address, join_handle) = A::create_remote(label, config).map_err(Into::into)?;
         Ok((address.into(), join_handle))
     }

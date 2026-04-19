@@ -3,7 +3,7 @@ use std::fmt::Display;
 use bytes::{Bytes, BytesMut};
 
 use acktor::{
-    Actor, ActorState, Message, SenderId, Signal,
+    Actor, ActorState, Address, Message, SenderId, Signal,
     cron::CronSignal,
     observer::Observer,
     supervisor::{SupervisionEvent, Supervisor},
@@ -188,6 +188,35 @@ impl Decode for CronSignal {
     }
 }
 
+fn build_supervision_event_message<A>(event: &SupervisionEvent<A>) -> (ControlMessage, &Address<A>)
+where
+    A: Actor,
+    A::Error: Display,
+{
+    let (proto_event, address) = match event {
+        SupervisionEvent::Warn(address, error) => (
+            proto::SupervisionEvent::warn(address.index(), error.to_string()),
+            address,
+        ),
+        SupervisionEvent::Terminated(address, error) => (
+            proto::SupervisionEvent::terminated(
+                address.index(),
+                error.as_ref().map(|e| e.to_string()),
+            ),
+            address,
+        ),
+        SupervisionEvent::Panicked(address, info) => (
+            proto::SupervisionEvent::panicked(address.index(), info.to_string()),
+            address,
+        ),
+        SupervisionEvent::State(address, state) => (
+            proto::SupervisionEvent::state(address.index(), *state as i32),
+            address,
+        ),
+    };
+    (ControlMessage::supervision_event(proto_event), address)
+}
+
 impl<A> Encode for SupervisionEvent<A>
 where
     A: Actor,
@@ -195,96 +224,25 @@ where
 {
     #[inline]
     fn encoded_len(&self) -> usize {
-        let event = match self {
-            SupervisionEvent::Warn(address, error) => {
-                proto::SupervisionEvent::warn(address.index(), error.to_string())
-            }
-
-            SupervisionEvent::Terminated(address, error) => proto::SupervisionEvent::terminated(
-                address.index(),
-                error.as_ref().map(|e| e.to_string()),
-            ),
-
-            SupervisionEvent::Panicked(address, info) => {
-                proto::SupervisionEvent::panicked(address.index(), info.to_string())
-            }
-
-            SupervisionEvent::State(address, state) => {
-                proto::SupervisionEvent::state(address.index(), *state as i32)
-            }
-        };
-        let message = ControlMessage::supervision_event(event);
+        let (message, _) = build_supervision_event_message(self);
         prost::Message::encoded_len(&message)
     }
 
     #[inline]
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
-        let event = match self {
-            SupervisionEvent::Warn(address, error) => {
-                ctx.ok_or(EncodeError::MissingEncodeContext)?
-                    .register(address)?;
-                proto::SupervisionEvent::warn(address.index(), error.to_string())
-            }
-
-            SupervisionEvent::Terminated(address, error) => {
-                ctx.ok_or(EncodeError::MissingEncodeContext)?
-                    .register(address)?;
-                proto::SupervisionEvent::terminated(
-                    address.index(),
-                    error.as_ref().map(|e| e.to_string()),
-                )
-            }
-
-            SupervisionEvent::Panicked(address, info) => {
-                ctx.ok_or(EncodeError::MissingEncodeContext)?
-                    .register(address)?;
-                proto::SupervisionEvent::panicked(address.index(), info.to_string())
-            }
-
-            SupervisionEvent::State(address, state) => {
-                ctx.ok_or(EncodeError::MissingEncodeContext)?
-                    .register(address)?;
-                proto::SupervisionEvent::state(address.index(), *state as i32)
-            }
-        };
-        let message = ControlMessage::supervision_event(event);
+        let (message, address) = build_supervision_event_message(self);
+        ctx.ok_or(EncodeError::MissingEncodeContext)?
+            .register(address)?;
         prost::Message::encode(&message, buf).map_err(Into::into)
     }
 
     #[inline]
     fn encode_to_bytes(&self, ctx: Option<&EncodeContext>) -> Result<Bytes, EncodeError> {
-        let event = match self {
-            SupervisionEvent::Warn(address, error) => {
-                ctx.ok_or(EncodeError::MissingEncodeContext)?
-                    .register(address)?;
-                proto::SupervisionEvent::warn(address.index(), error.to_string())
-            }
-
-            SupervisionEvent::Terminated(address, error) => {
-                ctx.ok_or(EncodeError::MissingEncodeContext)?
-                    .register(address)?;
-                proto::SupervisionEvent::terminated(
-                    address.index(),
-                    error.as_ref().map(|e| e.to_string()),
-                )
-            }
-
-            SupervisionEvent::Panicked(address, info) => {
-                ctx.ok_or(EncodeError::MissingEncodeContext)?
-                    .register(address)?;
-                proto::SupervisionEvent::panicked(address.index(), info.to_string())
-            }
-
-            SupervisionEvent::State(address, state) => {
-                ctx.ok_or(EncodeError::MissingEncodeContext)?
-                    .register(address)?;
-                proto::SupervisionEvent::state(address.index(), *state as i32)
-            }
-        };
-        let message = ControlMessage::supervision_event(event);
+        let (message, address) = build_supervision_event_message(self);
+        ctx.ok_or(EncodeError::MissingEncodeContext)?
+            .register(address)?;
         let mut buf = BytesMut::with_capacity(prost::Message::encoded_len(&message));
         prost::Message::encode(&message, &mut buf)?;
-
         Ok(buf.freeze())
     }
 }

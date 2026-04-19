@@ -1,5 +1,4 @@
 use std::any::Any;
-use std::error::Error;
 use std::fmt::Display;
 use std::panic::{self, AssertUnwindSafe};
 
@@ -7,7 +6,7 @@ use futures_util::future::FutureExt;
 use tracing::{Instrument, Span, debug, error, error_span, warn};
 
 use crate::address::{Address, Mailbox, Recipient, Sender};
-use crate::errors::ErrorReport;
+use crate::errors::{BoxError, ErrorReport};
 use crate::supervisor::SupervisionEvent;
 use crate::utils::panic_info_to_string;
 
@@ -63,10 +62,10 @@ pub enum Stopping {
 pub trait Actor: Sized + Send + 'static {
     /// The execution context type for this actor.
     type Context: ActorContext<Self>;
-    // NOTE: this bound is chosen to be compatible with `std::error::Error`, `Box<dyn Error>`
-    // and `anyhow::Error`
+    // NOTE: this bound is chosen to be compatible with `StdError`, `Box<dyn Error>` and
+    // `anyhow::Error`
     /// The error type returned by lifecycle hooks and message handlers.
-    type Error: Into<Box<dyn Error + Send + Sync>> + Display + Send + 'static;
+    type Error: Into<BoxError> + Display + Send + 'static;
 
     /// Invoked before an actor is spawned into the tokio runtime. The actor should be in
     /// [`Unstarted`][ActorState::Unstarted] state.
@@ -137,7 +136,7 @@ pub trait Actor: Sized + Send + 'static {
         ctx.run(self, span)
     }
 
-    /// Constructs a new actor, starts it and spawns it to the tokio runtime, returns its actor
+    /// Creates a new actor, starts it and spawns it to the tokio runtime, returns its actor
     /// address and the join handle.
     fn create<S, F>(label: S, f: F) -> Result<(Address<Self>, JoinHandle<()>), Self::Error>
     where
@@ -223,7 +222,7 @@ where
 {
     // required methods
 
-    /// Constructs a new context.
+    /// Constructs a new actor context.
     fn new(label: String) -> Self;
 
     /// Returns the index of the actor.
@@ -359,10 +358,10 @@ where
     fn run(mut self, mut actor: A, span: Span) -> Result<(Address<A>, JoinHandle<()>), A::Error> {
         let address = self.address();
 
-        // unwrap() is safe
-        // Context is always created with a mailbox, so when run() is called, mailbox is always
-        // Some(..); run() consumes the mailbox, so it will not be able to be used again
-        let mailbox = self.take_mailbox().unwrap();
+        let mailbox = self.take_mailbox().expect(
+            "ActorContext::take_mailbox() returned None on first call to run(); \
+             custom ActorContext implementations must provide a mailbox in new()",
+        );
 
         let index = self.index();
         #[cfg(feature = "tokio-tracing")]

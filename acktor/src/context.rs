@@ -125,13 +125,13 @@ where
             }
 
             match mailbox.recv().await {
-                Some(mut envelope) => {
+                Ok(mut envelope) => {
                     envelope.handle(actor, self).await;
                     if self.error.is_some() && self.state() == ActorState::Running {
                         self.set_state(ActorState::Stopping);
                     }
                 }
-                None => {
+                Err(_) => {
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
                 }

@@ -63,11 +63,12 @@
 //! | `derive` | Yes | Enables `#[derive(Message)]` and `#[derive(MessageResponse)]` macros. |
 //! | `tokio-tracing` | No | Names spawned actor tasks for [`tokio-console`](https://docs.rs/console-subscriber). Requires building with `RUSTFLAGS="--cfg tokio_unstable"`. |
 //! | `bottleneck-warning` | No | Emits `tracing::debug!` logs when an observer's mailbox is full during notification, useful for spotting slow consumers. |
+//!
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod errors;
-pub use errors::{ErrorReport, RecvError, SendError};
+pub use errors::{BoxError, ErrorReport, RecvError, SendError};
 
 pub mod channel;
 

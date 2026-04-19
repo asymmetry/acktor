@@ -16,7 +16,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
     quote! {
         impl #impl_generics ::acktor::MessageResponse<_A, _M> for #name #ty_generics #where_clause {
-            async fn handle(self, _: &mut _A::Context, tx: Option<::tokio::sync::oneshot::Sender<Self>>) {
+            async fn handle(self, _: &mut _A::Context, tx: Option<::acktor::channel::oneshot::Sender<Self>>) {
                 if let Some(tx) = tx {
                     let _ = tx.send(self);
                 }

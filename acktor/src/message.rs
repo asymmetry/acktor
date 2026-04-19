@@ -6,7 +6,6 @@
 //! actor when it receives the message.
 //!
 
-use std::error::Error;
 use std::future::{self, Future};
 use std::sync::Arc;
 
@@ -14,7 +13,7 @@ use tracing::debug;
 
 use crate::actor::Actor;
 use crate::channel::oneshot;
-use crate::errors::ErrorReport;
+use crate::errors::{BoxError, ErrorReport, SendError};
 
 mod result;
 pub use result::MessageResult;
@@ -85,7 +84,7 @@ where
     A: Actor,
     M: Message<Result = Self>,
     T: Send,
-    E: Into<Box<dyn Error + Send + Sync>> + Send,
+    E: Into<BoxError> + Send,
 {
     fn handle(
         self,
@@ -93,7 +92,7 @@ where
         tx: Option<oneshot::Sender<M::Result>>,
     ) -> impl Future<Output = ()> + Send {
         if let Some(tx) = tx {
-            if let Err(Err(e)) = tx.send(self) {
+            if let Err(SendError::Closed(Err(e))) = tx.send(self) {
                 debug!(
                     "Could not send the result back to the sender since the channel is closed, \
                     log the dropped error: {}",

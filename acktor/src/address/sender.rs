@@ -11,11 +11,14 @@ use crate::message::Message;
 
 pub type SendResult<M> = Result<Receiver<<M as Message>::Result>, SendError<M>>;
 
-pub type SendResultFuture<'a, M> = Pin<Box<dyn Future<Output = SendResult<M>> + Send + 'a>>;
+pub type SendResultFuture<'a, M> = Pin<
+    Box<dyn Future<Output = Result<Receiver<<M as Message>::Result>, SendError<M>>> + Send + 'a>,
+>;
 
 pub type DoSendResult<M> = Result<(), SendError<M>>;
 
-pub type DoSendResultFuture<'a, M> = Pin<Box<dyn Future<Output = DoSendResult<M>> + Send + 'a>>;
+pub type DoSendResultFuture<'a, M> =
+    Pin<Box<dyn Future<Output = Result<(), SendError<M>>> + Send + 'a>>;
 
 /// Describes how to retrieve the index of a sender.
 ///
@@ -72,11 +75,19 @@ where
     /// be used to receive the message response.
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if called within an asynchronous execution context.
     fn blocking_send(&self, msg: M) -> SendResult<M>;
 
     /// Sends a message without expecting a response.
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if called within an asynchronous execution context.
     fn blocking_do_send(&self, msg: M) -> DoSendResult<M>;
 
     /// Returns a type-erased trait object which can be downcast into a concrete

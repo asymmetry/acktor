@@ -191,6 +191,10 @@ where
     /// which can be used to receive the message response.
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if called within an asynchronous execution context.
     pub fn blocking_send<M, EP>(&self, msg: M) -> SendResult<M>
     where
         A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
@@ -206,6 +210,10 @@ where
     /// Sends a message to an actor without expecting a response.
     ///
     /// This method is intended for use cases where you are sending from synchronous code.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if called within an asynchronous execution context.
     pub fn blocking_do_send<M, EP>(&self, msg: M) -> DoSendResult<M>
     where
         A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
@@ -219,9 +227,7 @@ where
     /// Reserves channel capacity to send one message to an actor.
     ///
     /// This method borrows the internal [`mpsc::Sender`] and returns a [`SendPermit`].
-    pub fn reserve(
-        &self,
-    ) -> impl Future<Output = Result<SendPermit<'_, A>, SendError<()>>> + Send + '_ {
+    pub fn reserve(&self) -> impl Future<Output = Result<SendPermit<'_, A>, SendError<()>>> + Send {
         self.tx
             .reserve()
             .map_ok(|permit| SendPermit { permit })
@@ -243,7 +249,7 @@ where
     /// This method clones the internal [`mpsc::Sender`] and returns a [`OwnedSendPermit`].
     pub fn reserve_owned(
         &self,
-    ) -> impl Future<Output = Result<OwnedSendPermit<A>, SendError<()>>> + Send + '_ {
+    ) -> impl Future<Output = Result<OwnedSendPermit<A>, SendError<()>>> + Send {
         self.tx
             .clone()
             .reserve_owned()

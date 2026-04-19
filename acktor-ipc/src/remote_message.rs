@@ -8,7 +8,6 @@ use thiserror::Error;
 use acktor::{Actor, ActorState, Address, Message, Recipient, Sender, channel::oneshot};
 
 use crate::codec::DecodeContext;
-use crate::errors::BoxError;
 use crate::remote_address::RemoteAddress;
 
 /// The kind of a remote message.
@@ -16,7 +15,7 @@ pub enum RemoteMessageKind {
     /// No response is expected for this message.
     DoSend,
     /// The sender expects a response for this message.
-    Send(oneshot::Sender<Result<Bytes, BoxError>>),
+    Send(oneshot::Sender<Bytes>),
 }
 
 impl Debug for RemoteMessageKind {
@@ -54,7 +53,7 @@ impl Debug for RemoteMessage {
 }
 
 impl RemoteMessage {
-    /// Constructs a new [`DoSend`][RemoteMessageKind::DoSend][`RemoteMessage`].
+    /// Constructs a new [`RemoteMessage`] with [`DoSend`][RemoteMessageKind::DoSend] kind.
     pub fn do_send(actor_id: u64, message: Bytes) -> Self {
         Self {
             actor_id,
@@ -64,12 +63,8 @@ impl RemoteMessage {
         }
     }
 
-    /// Constructs a new [`Send`][RemoteMessageKind::Send][`RemoteMessage`].
-    pub fn send(
-        actor_id: u64,
-        message: Bytes,
-        tx: oneshot::Sender<Result<Bytes, BoxError>>,
-    ) -> Self {
+    /// Constructs a new [`RemoteMessage`] with [`Send`][RemoteMessageKind::Send] kind.
+    pub fn send(actor_id: u64, message: Bytes, tx: oneshot::Sender<Bytes>) -> Self {
         Self {
             actor_id,
             kind: RemoteMessageKind::Send(tx),

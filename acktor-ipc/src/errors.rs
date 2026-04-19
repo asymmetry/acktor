@@ -1,17 +1,14 @@
 //! Error types used by this crate.
 
-use std::error::Error as StdError;
 use std::io;
 
 use thiserror::Error;
 
-use acktor::{RecvError, SendError};
+use acktor::{BoxError, RecvError, SendError};
 
 pub use crate::codec::{DecodeError, EncodeError};
 pub use crate::double_map::{KeyConflictError, TryReserveError};
 pub use crate::remote_message::ToRemoteMessageRecipientError;
-
-pub type BoxError = Box<dyn StdError + Send + Sync>;
 
 /// Error type used by [`Node`][crate::node::Node].
 #[derive(Debug, Error)]
@@ -20,7 +17,7 @@ pub enum NodeError {
     ConnectFailed(#[from] io::Error),
 
     #[error("could not create a new session")]
-    CreateSessionFailed(#[source] Box<dyn StdError + Send + Sync>),
+    CreateSessionFailed(#[source] BoxError),
 
     #[error("could not find the session {0}")]
     SessionNotFound(String),
@@ -32,7 +29,7 @@ pub enum NodeError {
     RemoteActorNotFound(#[source] SessionError),
 
     #[error("could not send message")]
-    SendError(#[source] Box<dyn StdError + Send + Sync>),
+    SendError(#[source] BoxError),
 
     #[error("could not receive message")]
     RecvError(#[from] RecvError),
@@ -57,7 +54,7 @@ pub enum SessionError {
     DecodeError(#[from] DecodeError),
 
     #[error("could not forward the inbound remote message to any actor")]
-    ForwardInboundMessageFailed(#[source] Box<dyn StdError + Send + Sync>),
+    ForwardInboundMessageFailed(#[source] BoxError),
 
     #[error("could not send the outbound remote message to the remote node")]
     SendOutboundMessageFailed(#[source] io::Error),
@@ -79,13 +76,13 @@ pub enum SessionError {
     ForwardActorMessageReplyFailed,
 
     #[error("could not create the actor on behalf of the remote peer")]
-    RemoteActorFactoryError(#[source] Box<dyn StdError + Send + Sync>),
+    RemoteActorFactoryError(#[source] BoxError),
 
     #[error("could not find actor {0}")]
     ActorNotFound(String),
 
     #[error("could not handle inbound remote message")]
-    HandleInboundMessageFailed(#[source] Box<dyn StdError + Send + Sync>),
+    HandleInboundMessageFailed(#[source] BoxError),
 
     #[error("remote actor returned an error:{0}")]
     RemotePeerError(String),
@@ -94,7 +91,7 @@ pub enum SessionError {
     IoError(io::Error),
 
     #[error("could not send message")]
-    SendError(#[source] Box<dyn StdError + Send + Sync>),
+    SendError(#[source] BoxError),
 
     #[error("could not receive message")]
     RecvError(#[from] RecvError),

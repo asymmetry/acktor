@@ -14,7 +14,7 @@ use acktor_ipc_proto::{actor_message, ipc_message, node_message};
 
 use crate::actor_handle::ActorHandle;
 use crate::codec::{Decode, DecodeContext, Encode};
-use crate::errors::{BoxError, DecodeError, SessionError};
+use crate::errors::{DecodeError, SessionError};
 use crate::ipc_method::IpcConnection;
 use crate::node::{
     LabelMap,
@@ -75,7 +75,7 @@ pub struct Session {
     tag: u64, // unique tag generator
     decode_context: Option<DecodeContext>,
     node_msg_reply_map: HashMap<u64, oneshot::Sender<Result<RemoteAddress>>>,
-    actor_msg_reply_map: HashMap<u64, oneshot::Sender<StdResult<Bytes, BoxError>>>,
+    actor_msg_reply_map: HashMap<u64, oneshot::Sender<Bytes>>,
 }
 
 impl Debug for Session {
@@ -126,8 +126,10 @@ impl Session {
         Ok(())
     }
 
-    fn decode_context(&self) -> Option<&DecodeContext> {
-        self.decode_context.as_ref()
+    fn decode_context(&self) -> Result<&DecodeContext> {
+        self.decode_context
+            .as_ref()
+            .ok_or_else(|| DecodeError::MissingDecodeContext.into())
     }
 
     fn find_actor(&self, handle: &node_message::ActorHandle) -> Result<Recipient<RemoteMessage>> {
@@ -164,7 +166,7 @@ impl Session {
                 let factory = self.factory.clone();
                 let address = ctx.address();
 
-                // spwan a task to handle the potentially time consuming actor creation process
+                // spawn a task to handle the potentially time consuming actor creation process
                 tokio::spawn(
                     async move {
                         factory
@@ -230,8 +232,7 @@ impl Session {
 
                 let result = match result {
                     Some(node_message::CreateActorResultType::Ok(actor_id)) => self
-                        .decode_context()
-                        .ok_or(DecodeError::MissingDecodeContext)?
+                        .decode_context()?
                         .create_remote_address(actor_id)
                         .map_err(Into::into),
 
@@ -261,8 +262,7 @@ impl Session {
 
                 let result = match result {
                     Some(node_message::GetActorResultType::Ok(actor_id)) => self
-                        .decode_context()
-                        .ok_or(DecodeError::MissingDecodeContext)?
+                        .decode_context()?
                         .create_remote_address(actor_id)
                         .map_err(Into::into),
 
@@ -315,27 +315,24 @@ impl Session {
 
                 let recipient = self.find_actor_to_forward(actor_id);
 
-                let decode_context = self.decode_context().cloned();
+                let decode_context = self.decode_context()?.clone();
 
                 let (tx, rx) = oneshot::channel();
 
-                // spwan a task to handle the potentially time consuming message handling process
+                // spawn a task to handle the potentially time consuming message handling process
                 tokio::spawn(
                     async move {
                         recipient?
-                            .do_send(RemoteMessage {
-                                actor_id,
-                                message,
-                                kind: RemoteMessageKind::Send(tx),
-                                decode_context,
-                            })
+                            .do_send(
+                                RemoteMessage::send(actor_id, message, tx)
+                                    .with_context(decode_context),
+                            )
                             .await
                             .map_err(|e| SessionError::ForwardInboundMessageFailed(e.into()))?;
 
                         let result = rx
                             .await
-                            .map_err(|e| SessionError::HandleInboundMessageFailed(e.into()))?
-                            .map_err(SessionError::HandleInboundMessageFailed)?;
+                            .map_err(|e| SessionError::HandleInboundMessageFailed(e.into()))?;
 
                         Ok::<Bytes, SessionError>(result)
                     }
@@ -373,12 +370,10 @@ impl Session {
                 };
 
                 recipient
-                    .do_send(RemoteMessage {
-                        actor_id,
-                        message,
-                        kind: RemoteMessageKind::DoSend,
-                        decode_context: self.decode_context().cloned(),
-                    })
+                    .do_send(
+                        RemoteMessage::do_send(actor_id, message)
+                            .with_context(self.decode_context()?.clone()),
+                    )
                     .await
                     .map_err(|e| SessionError::ForwardInboundMessageFailed(e.into()))
             }
@@ -389,7 +384,7 @@ impl Session {
                     .remove(&tag)
                     .ok_or(SessionError::InvalidActorMessageReplyTag(tag))?;
 
-                let result = match result {
+                let result: Result<_> = match result {
                     Some(actor_message::ReplyResultType::Ok(message)) => Ok(message),
 
                     Some(actor_message::ReplyResultType::Err(err)) => {
@@ -399,12 +394,16 @@ impl Session {
                     None => {
                         Err(DecodeError::from("missing field `result` in `Reply` message").into())
                     }
-                }
-                .map_err(Into::into);
+                };
 
-                sender
-                    .send(result)
-                    .map_err(|_| SessionError::ForwardActorMessageReplyFailed)
+                match result {
+                    Ok(bytes) => sender
+                        .send(bytes)
+                        .map_err(|_| SessionError::ForwardActorMessageReplyFailed),
+                    Err(e) => sender
+                        .send_err(e)
+                        .map_err(|_| SessionError::ForwardActorMessageReplyFailed),
+                }
             }
 
             _ => Err(DecodeError::from("missing field `message` in `ActorMessage` message").into()),
@@ -577,7 +576,7 @@ impl Handler<RemoteMessage> for Session {
                         "Could not send `ActorMessage::Send` to remote peer: {}",
                         e.report()
                     );
-                    let _ = tx.send(Err(e.into()));
+                    let _ = tx.send_err(e);
 
                     return;
                 }
