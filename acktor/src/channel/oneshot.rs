@@ -8,6 +8,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use futures_util::FutureExt;
 use tokio::{
     sync::oneshot::{
         Receiver as OneshotReceiver, Sender as OneshotSender, channel as oneshot_channel,
@@ -111,6 +112,11 @@ impl<T> Receiver<T> {
 
     // new methods
 
+    /// Receives a value.
+    pub fn recv(self) -> impl Future<Output = Result<T, RecvError>> {
+        self.0.map(|r| Ok(r??))
+    }
+
     /// Awaits a value with a timeout.
     ///
     /// It returns [`RecvError::Timeout`] if `timeout` elapses before a value is received. The
@@ -152,7 +158,7 @@ mod tests {
         // custom error path
         let (tx, rx) = channel::<u32>();
         tx.send_err("boom").unwrap();
-        match rx.await {
+        match rx.recv().await {
             Err(RecvError::Other(e)) => assert_eq!(e.to_string(), "boom"),
             other => panic!("expected RecvError::Other, got {:?}", other),
         }

@@ -2,6 +2,7 @@ use std::fmt::{self, Debug};
 use std::future;
 use std::hash::Hash;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::{FutureExt, TryFutureExt};
@@ -9,7 +10,7 @@ use tracing::Instrument;
 
 use acktor::{
     Address, Message, Recipient, SendError, Sender, SenderId,
-    address::{DoSendResult, DoSendResultFuture, SendResult, SendResultFuture},
+    address::{ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture},
     channel::oneshot,
 };
 
@@ -148,6 +149,10 @@ where
     M: Message + Encode,
     M::Result: Decode,
 {
+    fn closed(&self) -> ClosedResultFuture<'_> {
+        self.session.closed().boxed()
+    }
+
     fn is_closed(&self) -> bool {
         self.session.is_closed()
     }
@@ -252,6 +257,61 @@ where
                 SendError::Full(_) => SendError::Full(msg),
                 _ => SendError::Closed(msg),
             })
+    }
+
+    fn send_timeout(&self, msg: M, timeout: Duration) -> SendResultFuture<'_, M> {
+        let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
+            Ok(bytes) => bytes,
+            Err(e) => return future::ready(Err(SendError::other(e, msg))).boxed(),
+        };
+
+        let (raw_tx, raw_rx) = oneshot::channel::<Bytes>();
+        let (tx, rx) = oneshot::channel::<M::Result>();
+
+        let decode_context = self.decode_context();
+
+        tokio::spawn(
+            async move {
+                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
+            }
+            .in_current_span(),
+        );
+
+        // this future will be resolved to Ok once the message is in the session actor's mailbox,
+        // it does not guarantee the message arrives at the remote peer actor, the IPC
+        // communication may fail
+        self.session
+            .do_send_timeout(
+                RemoteMessage::send(self.remote_actor_id, message_bytes, raw_tx),
+                timeout,
+            )
+            // error return by the sender, which means the session actor is stopped before
+            // receiving the message
+            .map(|result| match result {
+                Ok(_) => Ok(rx),
+                Err(_) => Err(SendError::Closed(msg)),
+            })
+            .boxed()
+    }
+
+    fn do_send_timeout(&self, msg: M, timeout: Duration) -> DoSendResultFuture<'_, M> {
+        let message_bytes = match msg.encode_to_bytes(Some(&self.encode_context)) {
+            Ok(bytes) => bytes,
+            Err(e) => return future::ready(Err(SendError::other(e, msg))).boxed(),
+        };
+
+        // this future will be resolved to Ok once the message is in the session actor's mailbox,
+        // it does not guarantee the message arrives at the remote peer actor, the IPC
+        // communication may fail
+        self.session
+            .do_send_timeout(
+                RemoteMessage::do_send(self.remote_actor_id, message_bytes),
+                timeout,
+            )
+            // error return by the sender, which means the session actor is stopped before
+            // receiving the message
+            .map_err(|_| SendError::Closed(msg))
+            .boxed()
     }
 
     fn blocking_send(&self, msg: M) -> SendResult<M> {

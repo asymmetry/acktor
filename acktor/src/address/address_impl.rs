@@ -1,21 +1,24 @@
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 #[cfg(feature = "type-erased-recipient-hook")]
 use std::any::Any;
 
 use futures_util::{FutureExt, TryFutureExt};
+use tokio::time::Duration;
 
 use super::permit::{OwnedSendPermit, SendPermit};
 use super::recipient::Recipient;
 use super::sender::{
-    DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender, SenderId,
+    ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender,
+    SenderId,
 };
 use crate::actor::{Actor, ActorId};
 use crate::channel::{mpsc, oneshot};
 use crate::envelope::{Envelope, FromEnvelope, ToEnvelope};
 use crate::errors::SendError;
-use crate::message::Message;
+use crate::message::{Handler, Message};
 use crate::utils::create_actor_id;
 
 #[cfg(feature = "type-erased-recipient-hook")]
@@ -106,30 +109,27 @@ where
         self.index
     }
 
+    /// Completes when the mailbox of the actor has been closed.
+    pub fn closed(&self) -> impl Future<Output = ()> + Send {
+        self.tx.closed()
+    }
+
     /// Checks if the mailbox of the actor is closed.
     pub fn is_closed(&self) -> bool {
         self.tx.is_closed()
     }
 
-    /// Returns the capacity of the mailbox of the actor.
+    /// Returns the current capacity of the mailbox of the actor.
     pub fn capacity(&self) -> usize {
         self.tx.capacity()
     }
 
-    /// Converts this address into a recipient of a specific message type.
-    pub fn recipient<M, EP>(self) -> Recipient<M, EP>
-    where
-        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-        M: Message,
-    {
-        self.into()
-    }
-
-    /// Sends a message to an actor and returns a [`Receiver`][crate::channel::oneshot::Receiver]
-    /// which can be used to receive the message response.
+    /// Sends a message, waiting until there is capacity, and returns a
+    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
+    ///  response.
     pub fn send<M, EP>(&self, msg: M) -> impl Future<Output = SendResult<M>> + Send + '_
     where
-        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
         M: Message,
     {
         let (tx, rx) = oneshot::channel();
@@ -139,10 +139,10 @@ where
             .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
     }
 
-    /// Sends a message to an actor without expecting a response.
+    /// Sends a message, waiting until there is capacity, without expecting a response.
     pub fn do_send<M, EP>(&self, msg: M) -> impl Future<Output = DoSendResult<M>> + Send + '_
     where
-        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
         M: Message,
     {
         self.tx
@@ -150,12 +150,12 @@ where
             .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
     }
 
-    /// Attempts to send a message to an actor and returns a
-    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the
-    /// message response.
+    /// Attempts to immediately send a message and returns a
+    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
+    /// response.
     pub fn try_send<M, EP>(&self, msg: M) -> SendResult<M>
     where
-        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
         M: Message,
     {
         let (tx, rx) = oneshot::channel();
@@ -170,10 +170,10 @@ where
         })
     }
 
-    /// Attempts to send a message to an actor without expecting a response.
+    /// Attempts to immediately send a message without expecting a response.
     pub fn try_do_send<M, EP>(&self, msg: M) -> DoSendResult<M>
     where
-        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
         M: Message,
     {
         let envelope = <A as ToEnvelope<A, M, EP>>::pack(msg, None);
@@ -187,17 +187,66 @@ where
         })
     }
 
-    /// Sends a message to an actor and returns a [`Receiver`][crate::channel::oneshot::Receiver]
-    /// which can be used to receive the message response.
+    /// Sends a message, waiting until there is capacity, but only for a limited time, and returns
+    /// a [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
+    /// response.
+    pub fn send_timeout<M, EP>(
+        &self,
+        msg: M,
+        timeout: Duration,
+    ) -> impl Future<Output = SendResult<M>> + Send + '_
+    where
+        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        M: Message,
+    {
+        let (tx, rx) = oneshot::channel();
+        self.tx
+            .send_timeout(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)), timeout)
+            .map_ok(|_| rx)
+            .map_err(|e| match e {
+                mpsc::error::SendTimeoutError::Closed(envelope) => {
+                    SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
+                }
+                mpsc::error::SendTimeoutError::Timeout(envelope) => {
+                    SendError::Timeout(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
+                }
+            })
+    }
+
+    /// Sends a message, waiting until there is capacity, but only for a limited time, without
+    /// expecting a response.
+    pub fn do_send_timeout<M, EP>(
+        &self,
+        msg: M,
+        timeout: Duration,
+    ) -> impl Future<Output = DoSendResult<M>> + Send + '_
+    where
+        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        M: Message,
+    {
+        self.tx
+            .send_timeout(<A as ToEnvelope<A, M, EP>>::pack(msg, None), timeout)
+            .map_err(|e| match e {
+                mpsc::error::SendTimeoutError::Closed(envelope) => {
+                    SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
+                }
+                mpsc::error::SendTimeoutError::Timeout(envelope) => {
+                    SendError::Timeout(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
+                }
+            })
+    }
+
+    /// Blocking send to call outside of asynchronous contexts.
     ///
-    /// This method is intended for use cases where you are sending from synchronous code.
+    /// This method is intended for use cases where you are sending from synchronous code to
+    /// asynchronous code.
     ///
     /// # Panics
     ///
     /// This function panics if called within an asynchronous execution context.
     pub fn blocking_send<M, EP>(&self, msg: M) -> SendResult<M>
     where
-        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
         M: Message,
     {
         let (tx, rx) = oneshot::channel();
@@ -207,16 +256,17 @@ where
             .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
     }
 
-    /// Sends a message to an actor without expecting a response.
+    /// Blocking do_send to call outside of asynchronous contexts.
     ///
-    /// This method is intended for use cases where you are sending from synchronous code.
+    /// This method is intended for use cases where you are sending from synchronous code to
+    /// asynchronous code.
     ///
     /// # Panics
     ///
     /// This function panics if called within an asynchronous execution context.
     pub fn blocking_do_send<M, EP>(&self, msg: M) -> DoSendResult<M>
     where
-        A: ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
         M: Message,
     {
         self.tx
@@ -224,7 +274,7 @@ where
             .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
     }
 
-    /// Reserves channel capacity to send one message to an actor.
+    /// Reserves channel capacity to send one message.
     ///
     /// This method borrows the internal [`mpsc::Sender`] and returns a [`SendPermit`].
     pub fn reserve(&self) -> impl Future<Output = Result<SendPermit<'_, A>, SendError<()>>> + Send {
@@ -234,7 +284,7 @@ where
             .map_err(Into::into)
     }
 
-    /// Attempts to reserve channel capacity to send one message to an actor.
+    /// Attempts to reserve channel capacity to send one message.
     ///
     /// This method borrows the internal [`mpsc::Sender`] and returns a [`SendPermit`].
     pub fn try_reserve(&self) -> Result<SendPermit<'_, A>, SendError<()>> {
@@ -244,7 +294,7 @@ where
             .map_err(Into::into)
     }
 
-    /// Reserves channel capacity to send one message to an actor.
+    /// Reserves channel capacity to send one message.
     ///
     /// This method clones the internal [`mpsc::Sender`] and returns a [`OwnedSendPermit`].
     pub fn reserve_owned(
@@ -257,7 +307,7 @@ where
             .map_err(Into::into)
     }
 
-    /// Attempts to reserve channel capacity to send one message to an actor.
+    /// Attempts to reserve channel capacity to send one message.
     ///
     /// This method clones the internal [`mpsc::Sender`] and returns a [`OwnedSendPermit`].
     pub fn try_reserve_owned(&self) -> Result<OwnedSendPermit<A>, SendError<()>> {
@@ -295,9 +345,13 @@ where
 
 impl<A, M, EP> Sender<M, EP> for Address<A>
 where
-    A: Actor + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+    A: Actor + Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
     M: Message,
 {
+    fn closed(&self) -> ClosedResultFuture<'_> {
+        self.closed().boxed()
+    }
+
     fn is_closed(&self) -> bool {
         self.tx.is_closed()
     }
@@ -312,6 +366,14 @@ where
 
     fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M> {
         self.do_send(msg).boxed()
+    }
+
+    fn send_timeout(&self, msg: M, timeout: Duration) -> SendResultFuture<'_, M> {
+        self.send_timeout(msg, timeout).boxed()
+    }
+
+    fn do_send_timeout(&self, msg: M, timeout: Duration) -> DoSendResultFuture<'_, M> {
+        self.do_send_timeout(msg, timeout).boxed()
     }
 
     fn try_send(&self, msg: M) -> SendResult<M> {
@@ -333,5 +395,15 @@ where
     #[cfg(feature = "type-erased-recipient-hook")]
     fn type_erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
         self.type_erased_recipient()
+    }
+}
+
+impl<A, M, EP> From<Address<A>> for Recipient<M, EP>
+where
+    A: Actor + Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
+    M: Message,
+{
+    fn from(addr: Address<A>) -> Self {
+        Self::new(Arc::new(addr))
     }
 }

@@ -3,6 +3,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tracing::{debug, warn};
 
+use crate::actor::{ActorId, JoinHandle};
+use crate::address::{Recipient, Sender, SenderId};
+use crate::signal::Signal;
+
 /// Logs at info level only in debug mode.
 #[doc(hidden)]
 #[macro_export]
@@ -27,10 +31,6 @@ macro_rules! __debug_trace {
 pub use crate::__debug_info as debug_info;
 #[doc(inline)]
 pub use crate::__debug_trace as debug_trace;
-
-use crate::actor::{ActorId, JoinHandle};
-use crate::address::{Recipient, Sender, SenderId};
-use crate::signal::Signal;
 
 static ACTOR_ID_ALLOCATOR: AtomicU64 = AtomicU64::new(0);
 

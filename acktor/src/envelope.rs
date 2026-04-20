@@ -21,7 +21,7 @@ pub use default_proxy::DefaultEnvelopeProxy;
 /// Describes how to pack the message into a proper envelope type for a specific actor type.
 pub trait ToEnvelope<A, M, EP = DefaultEnvelopeProxy<M>>
 where
-    A: Actor,
+    A: Actor + Handler<M>,
     M: Message,
 {
     /// Packs the message and the optional response sender into an envelope.
@@ -31,7 +31,7 @@ where
 /// Describes how to unpack the message from the envelope for a specific actor type.
 pub trait FromEnvelope<A, M, EP = DefaultEnvelopeProxy<M>>
 where
-    A: Actor,
+    A: Actor + Handler<M>,
     M: Message,
 {
     /// Unpacks the message from the envelope.
@@ -80,18 +80,6 @@ impl<A> Envelope<A>
 where
     A: Actor,
 {
-    /// Constructs a new [`Envelope`] with a message and an optional response sender.
-    pub fn new<M>(msg: M, tx: Option<oneshot::Sender<M::Result>>) -> Self
-    where
-        A: Handler<M>,
-        M: Message,
-    {
-        Self(Box::new(DefaultEnvelopeProxy {
-            message: Some(msg),
-            tx,
-        }))
-    }
-
     /// Constructs a new [`Envelope`] with a boxed trait object of [`EnvelopeProxy`].
     pub fn with_proxy(proxy: Box<dyn EnvelopeProxy<A> + Send>) -> Self {
         Self(proxy)

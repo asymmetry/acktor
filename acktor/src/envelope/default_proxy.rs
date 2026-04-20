@@ -89,7 +89,10 @@ where
     M: Message,
 {
     fn pack(msg: M, tx: Option<oneshot::Sender<M::Result>>) -> Envelope<A> {
-        Envelope::new(msg, tx)
+        Envelope::with_proxy(Box::new(DefaultEnvelopeProxy {
+            message: Some(msg),
+            tx,
+        }))
     }
 }
 

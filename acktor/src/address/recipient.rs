@@ -6,14 +6,15 @@ use std::sync::Arc;
 use std::any::Any;
 
 use futures_util::future::{FutureExt, TryFutureExt};
+use tokio::time::Duration;
 
-use super::address_impl::Address;
 use super::sender::{
-    DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender, SenderId,
+    ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender,
+    SenderId,
 };
-use crate::actor::{Actor, ActorId};
+use crate::actor::ActorId;
 use crate::channel::{mpsc, oneshot};
-use crate::envelope::{DefaultEnvelopeProxy, FromEnvelope, ToEnvelope};
+use crate::envelope::DefaultEnvelopeProxy;
 use crate::message::Message;
 use crate::utils::create_actor_id;
 
@@ -103,16 +104,6 @@ where
     }
 }
 
-impl<A, M, EP> From<Address<A>> for Recipient<M, EP>
-where
-    A: Actor + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-    M: Message,
-{
-    fn from(addr: Address<A>) -> Self {
-        Self::new(Arc::new(addr))
-    }
-}
-
 impl<M, EP> SenderId for Recipient<M, EP>
 where
     M: Message,
@@ -126,6 +117,10 @@ impl<M, EP> Sender<M, EP> for Recipient<M, EP>
 where
     M: Message,
 {
+    fn closed(&self) -> ClosedResultFuture<'_> {
+        self.0.closed()
+    }
+
     fn is_closed(&self) -> bool {
         self.0.is_closed()
     }
@@ -148,6 +143,14 @@ where
 
     fn try_do_send(&self, msg: M) -> DoSendResult<M> {
         self.0.try_do_send(msg)
+    }
+
+    fn send_timeout(&self, msg: M, timeout: Duration) -> SendResultFuture<'_, M> {
+        self.0.send_timeout(msg, timeout)
+    }
+
+    fn do_send_timeout(&self, msg: M, timeout: Duration) -> DoSendResultFuture<'_, M> {
+        self.0.do_send_timeout(msg, timeout)
     }
 
     fn blocking_send(&self, msg: M) -> SendResult<M> {
@@ -221,6 +224,10 @@ impl<M> Sender<M> for RecipientProxy<M>
 where
     M: Message<Result = ()>,
 {
+    fn closed(&self) -> ClosedResultFuture<'_> {
+        self.tx.closed().boxed()
+    }
+
     fn is_closed(&self) -> bool {
         self.tx.is_closed()
     }
@@ -262,6 +269,27 @@ where
 
     fn try_do_send(&self, msg: M) -> DoSendResult<M> {
         self.tx.try_send(msg).map_err(Into::into)
+    }
+
+    fn send_timeout(&self, msg: M, timeout: Duration) -> SendResultFuture<'_, M> {
+        self.tx
+            .send_timeout(msg, timeout)
+            .map_ok(|_| {
+                // return a pre-resolved receiver to satisfy the FutureSendResult return type
+                // since M::Result is (), the response is immediately available
+                let (tx, rx) = oneshot::channel();
+                let _ = tx.send(());
+                rx
+            })
+            .map_err(Into::into)
+            .boxed()
+    }
+
+    fn do_send_timeout(&self, msg: M, timeout: Duration) -> DoSendResultFuture<'_, M> {
+        self.tx
+            .send_timeout(msg, timeout)
+            .map_err(Into::into)
+            .boxed()
     }
 
     fn blocking_send(&self, msg: M) -> SendResult<M> {

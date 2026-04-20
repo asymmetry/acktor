@@ -19,7 +19,7 @@ mod actor_handle;
 pub use actor_handle::ActorHandle;
 
 pub mod node;
-pub use node::Node;
+pub use node::{Node, NodeEvent};
 
 pub mod session;
 pub use session::Session;

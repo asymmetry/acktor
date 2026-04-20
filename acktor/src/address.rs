@@ -16,7 +16,8 @@ pub use permit::{OwnedSendPermit, SendPermit};
 
 mod sender;
 pub use sender::{
-    DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender, SenderId,
+    ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender,
+    SenderId,
 };
 
 mod recipient;

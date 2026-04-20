@@ -1,7 +1,7 @@
 use crate::actor::Actor;
 use crate::channel::{mpsc, oneshot};
 use crate::envelope::{Envelope, ToEnvelope};
-use crate::message::Message;
+use crate::message::{Handler, Message};
 
 /// Permit to send one message to an actor.
 #[derive(Debug)]
@@ -16,14 +16,14 @@ impl<A> SendPermit<'_, A>
 where
     A: Actor,
 {
-    /// Sends a message to an actor using the permit and returns a
-    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the
-    /// message response.
+    /// Sends a message using the permit and returns a
+    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
+    /// response.
     ///
     /// This method will consume the permit.
     pub fn send<M, EP>(self, msg: M) -> oneshot::Receiver<M::Result>
     where
-        A: ToEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP>,
         M: Message,
     {
         let (tx, rx) = oneshot::channel();
@@ -32,12 +32,12 @@ where
         rx
     }
 
-    /// Sends a message to an actor using the permit without expecting a response.
+    /// Sends a message using the permit without expecting a response.
     ///
     /// This method will consume the permit.
     pub fn do_send<M, EP>(self, msg: M)
     where
-        A: ToEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP>,
         M: Message,
     {
         self.permit
@@ -58,14 +58,14 @@ impl<A> OwnedSendPermit<A>
 where
     A: Actor,
 {
-    /// Sends a message to an actor using the permit and returns a
-    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the
-    /// message response.
+    /// Sends a message using the permit and returns a
+    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
+    /// response.
     ///
     /// This method will consume the permit.
     pub fn send<M, EP>(self, msg: M) -> oneshot::Receiver<M::Result>
     where
-        A: ToEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP>,
         M: Message,
     {
         let (tx, rx) = oneshot::channel();
@@ -74,12 +74,12 @@ where
         rx
     }
 
-    /// Sends a message to an actor using the permit without expecting a response.
+    /// Sends a message using the permit without expecting a response.
     ///
     /// This method will consume the permit.
     pub fn do_send<M, EP>(self, msg: M)
     where
-        A: ToEnvelope<A, M, EP>,
+        A: Handler<M> + ToEnvelope<A, M, EP>,
         M: Message,
     {
         self.permit
