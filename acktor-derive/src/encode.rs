@@ -2,10 +2,16 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::detect_backend::{Backend, detect_backend};
+use crate::detect_index::detect_index;
 
 pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let config = match detect_backend(ast) {
         Ok(config) => config,
+        Err(err) => return err.to_compile_error(),
+    };
+
+    let index = match detect_index(ast) {
+        Ok(index) => index,
         Err(err) => return err.to_compile_error(),
     };
 
@@ -85,6 +91,8 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
     quote! {
         impl #impl_generics ::acktor_ipc::Encode for #name #ty_generics #where_clause {
+            const ID: u64 = #index;
+
             #[inline]
             fn encoded_len(&self) -> usize {
                 #encoded_len_body

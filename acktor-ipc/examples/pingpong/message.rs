@@ -7,6 +7,7 @@ use acktor_ipc::{Decode, Encode};
     Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
 )]
 #[codec(zerocopy)]
+#[index(1)]
 #[repr(C)]
 #[result_type(())]
 pub struct Ping {
@@ -18,6 +19,7 @@ pub struct Ping {
     Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
 )]
 #[codec(zerocopy)]
+#[index(2)]
 #[repr(C)]
 #[result_type(())]
 pub struct Pong {

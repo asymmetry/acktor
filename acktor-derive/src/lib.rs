@@ -2,6 +2,7 @@ use proc_macro::TokenStream;
 
 mod decode;
 mod detect_backend;
+mod detect_index;
 mod encode;
 mod message;
 mod message_response;
@@ -75,6 +76,10 @@ pub fn message_response_derive(input: TokenStream) -> TokenStream {
 /// - `#[codec(rkyv)]` — delegates to [`rkyv::to_bytes`]. The target type must also
 ///   implement [`rkyv::Serialize`].
 ///
+/// A `#[index(N)]` attribute must also be present and sets the [`Encode::ID`] constant
+/// to the given `u64` literal. The value in [`Encode`] and [`Decode`] must match for the
+/// same message type.
+///
 /// # Example
 ///
 /// ```ignore
@@ -82,6 +87,7 @@ pub fn message_response_derive(input: TokenStream) -> TokenStream {
 ///
 /// #[derive(zerocopy::IntoBytes, Encode)]
 /// #[codec(zerocopy)]
+/// #[index(1)]
 /// struct Ping(u64);
 /// ```
 ///
@@ -93,7 +99,7 @@ pub fn message_response_derive(input: TokenStream) -> TokenStream {
 /// [`zerocopy::IntoBytes::as_bytes`]: https://docs.rs/zerocopy/latest/zerocopy/trait.IntoBytes.html#method.as_bytes
 /// [`rkyv::to_bytes`]: https://docs.rs/rkyv/latest/rkyv/fn.to_bytes.html
 /// [`rkyv::Serialize`]: https://docs.rs/rkyv/latest/rkyv/trait.Serialize.html
-#[proc_macro_derive(Encode, attributes(codec))]
+#[proc_macro_derive(Encode, attributes(codec, index))]
 pub fn encode_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
 
@@ -113,6 +119,10 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 /// - `#[codec(rkyv)]` — delegates to [`rkyv::from_bytes`]. The target type must also
 ///   implement [`rkyv::Archive`] + [`rkyv::Deserialize`].
 ///
+/// A `#[index(N)]` attribute must also be present and sets the [`Decode::ID`] constant
+/// to the given `u64` literal. The value in [`Encode`] and [`Decode`] must match for the
+/// same message type.
+///
 /// # Example
 ///
 /// ```ignore
@@ -120,6 +130,7 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 ///
 /// #[derive(zerocopy::FromBytes, Decode)]
 /// #[codec(zerocopy)]
+/// #[index(1)]
 /// struct Ping(u64);
 /// ```
 ///
@@ -132,7 +143,7 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 /// [`rkyv::from_bytes`]: https://docs.rs/rkyv/latest/rkyv/fn.from_bytes.html
 /// [`rkyv::Archive`]: https://docs.rs/rkyv/latest/rkyv/trait.Archive.html
 /// [`rkyv::Deserialize`]: https://docs.rs/rkyv/latest/rkyv/trait.Deserialize.html
-#[proc_macro_derive(Decode, attributes(codec))]
+#[proc_macro_derive(Decode, attributes(codec, index))]
 pub fn decode_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
 

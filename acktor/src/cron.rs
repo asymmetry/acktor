@@ -162,7 +162,7 @@ where
         if async_wait {
             match mailbox.recv().await {
                 Ok(mut envelope) => envelope.handle(actor, self).await,
-                _ => {
+                Err(_) => {
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
                 }

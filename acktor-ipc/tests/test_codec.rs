@@ -6,6 +6,7 @@ use acktor_ipc::{Decode, Encode, errors::DecodeError};
 
 #[derive(Debug, PartialEq, Encode, Decode)]
 #[codec(prost, ProstBridge)]
+#[index(1)]
 struct Prost {
     string: String,
     number: u64,
@@ -13,6 +14,7 @@ struct Prost {
 
 #[derive(PartialEq, prost::Message, Encode, Decode)]
 #[codec(prost)]
+#[index(2)]
 struct ProstBridge {
     #[prost(string, tag = "1")]
     string: prost::alloc::string::String,
@@ -42,6 +44,7 @@ impl TryFrom<ProstBridge> for Prost {
 
 #[derive(Debug, PartialEq, Encode, Decode)]
 #[codec(zerocopy, ZerocopyBridge)]
+#[index(3)]
 struct Zerocopy {
     number: u64,
     flags: u8,
@@ -49,6 +52,7 @@ struct Zerocopy {
 
 #[derive(Debug, PartialEq, KnownLayout, Immutable, FromBytes, IntoBytes, Encode, Decode)]
 #[codec(zerocopy)]
+#[index(4)]
 #[repr(C)]
 struct ZerocopyBridge {
     number: u64,
@@ -79,6 +83,7 @@ impl TryFrom<ZerocopyBridge> for Zerocopy {
 
 #[derive(Debug, PartialEq, Encode, Decode)]
 #[codec(rkyv, RkyvBridge)]
+#[index(5)]
 struct Rkyv {
     number: u64,
     string: String,
@@ -87,6 +92,7 @@ struct Rkyv {
 
 #[derive(Debug, PartialEq, Archive, Deserialize, Serialize, Encode, Decode)]
 #[codec(rkyv)]
+#[index(6)]
 struct RkyvBridge {
     number: u64,
     string: String,

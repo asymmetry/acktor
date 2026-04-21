@@ -145,6 +145,8 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use super::*;
     use crate::errors::SendError;
 
@@ -153,6 +155,8 @@ mod tests {
         // value path
         let (tx, rx) = channel::<u32>();
         tx.send(42).unwrap();
+        assert!(!rx.is_empty());
+        assert!(!rx.is_terminated());
         assert_eq!(rx.await.unwrap(), 42);
 
         // custom error path

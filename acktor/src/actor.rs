@@ -437,6 +437,7 @@ where
                 });
 
             if !matches!(result, Ok(Ok(()))) {
+                self.set_state(ActorState::Stopped);
                 return result;
             }
 

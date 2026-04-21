@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 
 use acktor_ipc_proto::utils::{
-    BoolVec, DoubleVec, FloatVec, Int32Vec, Int64Vec, TupleMessage, Uint32Vec, Uint64Vec,
+    Tuple, VecBool, VecDouble, VecFloat, VecInt32, VecInt64, VecUint32, VecUint64,
 };
 
 use super::errors::{DecodeError, EncodeError};
@@ -220,19 +220,19 @@ macro_rules! impl_encode_decode_for_vec {
     };
 }
 
-impl_encode_decode_for_vec!(varint, bool, BoolVec);
-impl_encode_decode_for_vec!(varint, i8, i32, Int32Vec);
-impl_encode_decode_for_vec!(varint, i16, i32, Int32Vec);
-impl_encode_decode_for_vec!(varint, i32, Int32Vec);
-impl_encode_decode_for_vec!(varint, i64, Int64Vec);
+impl_encode_decode_for_vec!(varint, bool, VecBool);
+impl_encode_decode_for_vec!(varint, i8, i32, VecInt32);
+impl_encode_decode_for_vec!(varint, i16, i32, VecInt32);
+impl_encode_decode_for_vec!(varint, i32, VecInt32);
+impl_encode_decode_for_vec!(varint, i64, VecInt64);
 // `Vec<u8>` is handled above by `impl_encode_decode_for!(Vec<u8>)` via prost's bytes field.
-impl_encode_decode_for_vec!(varint, u16, u32, Uint32Vec);
-impl_encode_decode_for_vec!(varint, u32, Uint32Vec);
-impl_encode_decode_for_vec!(varint, u64, Uint64Vec);
-impl_encode_decode_for_vec!(fixed, f32, FloatVec);
-impl_encode_decode_for_vec!(fixed, f64, DoubleVec);
-impl_encode_decode_for_vec!(varint, isize, i64, Int64Vec);
-impl_encode_decode_for_vec!(varint, usize, u64, Uint64Vec);
+impl_encode_decode_for_vec!(varint, u16, u32, VecUint32);
+impl_encode_decode_for_vec!(varint, u32, VecUint32);
+impl_encode_decode_for_vec!(varint, u64, VecUint64);
+impl_encode_decode_for_vec!(fixed, f32, VecFloat);
+impl_encode_decode_for_vec!(fixed, f64, VecDouble);
+impl_encode_decode_for_vec!(varint, isize, i64, VecInt64);
+impl_encode_decode_for_vec!(varint, usize, u64, VecUint64);
 
 macro_rules! impl_encode_decode_for_tuple {
     // $tag = precomputed tag byte: (field_number << 3) | 2
@@ -275,7 +275,7 @@ macro_rules! impl_encode_decode_for_tuple {
         {
             #[inline]
             fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-                let message = <TupleMessage as prost::Message>::decode(buf)?;
+                let message = <Tuple as prost::Message>::decode(buf)?;
 
                 Ok((
                     $($type::decode(

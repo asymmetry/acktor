@@ -161,3 +161,34 @@ impl From<&str> for RecvError {
         Self::other(s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use anyhow::Context;
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_error_report() {
+        let err: SendError<()> = SendError::Closed(());
+        assert_eq!(err.report(), "sending on a closed channel");
+
+        let io_err = io::Error::other("io-level");
+        let err: SendError<()> = SendError::other(io_err, ());
+        assert_eq!(err.report(), "io-level");
+
+        let box_err: BoxError = Box::new(io::Error::other("boxed"));
+        assert_eq!(box_err.report(), "boxed");
+
+        let e = Err::<(), _>(io::Error::other("root cause"))
+            .context("middle context")
+            .context("top context")
+            .unwrap_err();
+
+        let err_ref: &(dyn std::error::Error + Send + Sync) = e.as_ref();
+        assert_eq!(err_ref.report(), "top context: middle context: root cause",);
+    }
+}

@@ -63,3 +63,11 @@ tracing-subscriber.workspace = true
 [[example]]
 name = "pingpong"
 required-features = ["websocket"]
+
+[[test]]
+name = "test_basic_ipc"
+required-features = ["websocket", "pipe"]
+
+[[test]]
+name = "test_send_recv"
+required-features = ["websocket"]
