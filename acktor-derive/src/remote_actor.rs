@@ -47,23 +47,42 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                                 encode_ctx.as_ref(),
                             ) {
                                 ::core::result::Result::Ok(bytes) => {
-                                    let _ = tx.send(bytes);
+                                    if let Err(e) = tx.send(bytes) {
+                                        ::acktor_ipc::tracing::debug!(
+                                            "Could not send the message response to the session\
+                                             actor: {}",
+                                            ::acktor::ErrorReport::report(&e)
+                                        );
+                                    }
                                 }
                                 ::core::result::Result::Err(e) => {
-                                    let _ = tx.send_err(e);
+                                    ::acktor_ipc::tracing::debug!(
+                                        "Could not encode the message response: {}",
+                                        ::acktor::ErrorReport::report(&e)
+                                    );
+                                    if let Err(e) = tx.send_err(e) {
+                                        ::acktor_ipc::tracing::debug!(
+                                            "Could not report the error to the session actor: {}",
+                                            ::acktor::ErrorReport::report(&e)
+                                        );
+                                    }
                                 }
                             }
                         }
+                        // sender has explicitly indicated that it does not care about the result
+                        // of this message
                     }
                     ::core::result::Result::Err(e) => {
+                        ::acktor_ipc::tracing::debug!(
+                            "Could not decode the message: {}", ::acktor::ErrorReport::report(&e)
+                        );
                         if let ::core::option::Option::Some(tx) = result_tx {
-                            let _ = tx.send_err(e);
-                        } else {
-                            ::acktor_ipc::tracing::debug!(
-                                error = %e,
-                                message_id = message_id,
-                                "discarding remote message decode error (no result_tx)",
-                            );
+                            if let Err(e) = tx.send_err(e) {
+                                ::acktor_ipc::tracing::debug!(
+                                    "Could not report the error to the session actor: {}",
+                                    ::acktor::ErrorReport::report(&e)
+                                );
+                            }
                         }
                     }
                 }
@@ -116,10 +135,18 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                 match message_id {
                     #(#arms)*
                     _ => {
+                        ::acktor_ipc::tracing::debug!(
+                            "Received a message with unknown message id {}", message_id
+                        );
                         if let ::core::option::Option::Some(tx) = result_tx {
-                            let _ = tx.send_err(
+                            if let Err(e) = tx.send_err(
                                 ::acktor_ipc::errors::DecodeError::UnknownMessageId(message_id),
-                            );
+                            ) {
+                                ::acktor_ipc::tracing::debug!(
+                                    "Could not report the error to the session actor: {}",
+                                    ::acktor::ErrorReport::report(&e)
+                                );
+                            }
                         }
                     }
                 }
@@ -143,32 +170,27 @@ mod tests {
     }
 
     #[test]
-    fn no_attribute_returns_none() {
-        let ast = input("struct Foo;");
-        assert!(parse_message_list(&ast).unwrap().is_none());
-    }
+    fn accepts_valid_forms() {
+        // absent attribute → None
+        assert!(parse_message_list(&input("struct Foo;")).unwrap().is_none());
 
-    #[test]
-    fn non_empty_attribute_returns_types() {
-        let ast = input("#[message(Ping, Echo)] struct Foo;");
-        let list = parse_message_list(&ast).unwrap().unwrap();
+        // list of plain types
+        let list = parse_message_list(&input("#[message(Ping, Echo)] struct Foo;"))
+            .unwrap()
+            .unwrap();
         assert_eq!(list.len(), 2);
-    }
 
-    #[test]
-    fn generic_path_is_accepted() {
-        let ast = input("#[message(Observer<Pong>)] struct Foo;");
-        let list = parse_message_list(&ast).unwrap().unwrap();
+        // generic paths are accepted
+        let list = parse_message_list(&input("#[message(Observer<Pong>)] struct Foo;"))
+            .unwrap()
+            .unwrap();
         assert_eq!(list.len(), 1);
     }
 
     #[test]
-    fn empty_attribute_is_rejected() {
-        let ast = input("#[message()] struct Foo;");
-        match parse_message_list(&ast) {
-            Err(err) => {
-                assert!(err.to_string().contains("at least one message type"));
-            }
+    fn rejects_empty_attribute() {
+        match parse_message_list(&input("#[message()] struct Foo;")) {
+            Err(err) => assert!(err.to_string().contains("at least one message type")),
             Ok(_) => panic!("expected error for empty message attribute"),
         }
     }

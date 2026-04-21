@@ -119,7 +119,11 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_ansi(io::stdout().is_terminal())
         .with_target(false)
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(tracing::Level::INFO.into())
+                .from_env_lossy(),
+        )
         .init();
 
     let args = Args::parse();

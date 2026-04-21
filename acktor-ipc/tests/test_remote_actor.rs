@@ -7,10 +7,10 @@ use acktor_ipc::{Decode, Encode, RemoteActor, RemoteMessage};
 #[derive(
     Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
 )]
+#[result_type(i64)]
 #[codec(zerocopy)]
 #[index(1)]
 #[repr(C)]
-#[result_type(i64)]
 pub struct Double {
     pub value: i64,
 }
@@ -18,10 +18,10 @@ pub struct Double {
 #[derive(
     Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
 )]
+#[result_type(i64)]
 #[codec(zerocopy)]
 #[index(2)]
 #[repr(C)]
-#[result_type(i64)]
 pub struct Triple {
     pub value: i64,
 }
@@ -49,39 +49,40 @@ impl Handler<Triple> for Calculator {
     }
 }
 
-async fn roundtrip<M: Encode + Message>(addr: &Address<Calculator>, msg: M) -> i64
+async fn roundtrip<M>(address: &Address<Calculator>, msg: M) -> i64
 where
-    <M as Message>::Result: 'static,
+    M: Message + Encode,
+    M::Result: Decode,
 {
     let bytes = msg.encode_to_bytes(None).unwrap();
     let (tx, rx) = oneshot::channel::<Bytes>();
     let rm = RemoteMessage::send(0, <M as acktor_ipc::Encode>::ID, bytes, tx);
-    addr.do_send(rm).await.unwrap();
+    address.do_send(rm).await.unwrap();
     let bytes = rx.await.unwrap();
     <i64 as Decode>::decode(bytes, None).unwrap()
 }
 
 #[tokio::test]
-async fn dispatches_by_message_id() {
-    let (addr, handle) = Calculator.run("calc").unwrap();
+async fn test_derived_handler() {
+    let (address, handle) = Calculator.run("calc").unwrap();
 
-    assert_eq!(roundtrip(&addr, Double { value: 5 }).await, 10);
-    assert_eq!(roundtrip(&addr, Triple { value: 5 }).await, 15);
+    assert_eq!(roundtrip(&address, Double { value: 5 }).await, 10);
+    assert_eq!(roundtrip(&address, Triple { value: 5 }).await, 15);
 
-    acktor::utils::terminate_actor(addr, handle).await;
+    acktor::utils::terminate_actor(address, handle).await;
 }
 
 #[tokio::test]
-async fn unknown_id_returns_error() {
-    let (addr, handle) = Calculator.run("calc").unwrap();
+async fn test_unknown_message_id() {
+    let (address, handle) = Calculator.run("calc").unwrap();
 
     let (tx, rx) = oneshot::channel::<Bytes>();
     // 99 is not Double::ID or Triple::ID
     let rm = RemoteMessage::send(0, 99, Bytes::new(), tx);
-    addr.do_send(rm).await.unwrap();
+    address.do_send(rm).await.unwrap();
 
     let err = rx.await.unwrap_err();
-    assert!(format!("{err:?}").contains("UnknownMessageId"));
+    assert!(format!("{:?}", err).contains("UnknownMessageId"));
 
-    acktor::utils::terminate_actor(addr, handle).await;
+    acktor::utils::terminate_actor(address, handle).await;
 }

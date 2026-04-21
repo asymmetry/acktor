@@ -1,11 +1,5 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-// Re-export the bytes crate for use within derived code.
-pub use bytes;
-
-// Re-export the tracing crate for use within derived code.
-pub use tracing;
-
 pub mod errors;
 pub use errors::{NodeError, SessionError};
 
@@ -41,3 +35,10 @@ pub use acktor_ipc_proto as proto;
 pub use acktor_derive::{Decode, Encode, RemoteActor, remote};
 
 pub mod double_map;
+
+// Re-export some dependencies for use in derived code.
+
+#[doc(hidden)]
+pub use bytes;
+#[doc(hidden)]
+pub use tracing;

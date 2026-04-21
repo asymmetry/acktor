@@ -8,14 +8,12 @@ use acktor::{
     cron::{CronActor, CronContext},
     observer::Observer,
 };
-use acktor_ipc::{
-    ActorHandle, Decode, Encode, RemoteActor, RemoteAddress, RemoteMessage, Session, remote,
-    session::command,
-};
+use acktor_ipc::{ActorHandle, RemoteActor, RemoteAddress, Session, remote, session::command};
 
 use crate::message::{Ping, Pong};
 
 #[derive(Debug, RemoteActor)]
+#[message(Pong)]
 pub struct Client {
     session: Address<Session>,
     server: Option<RemoteAddress>,
@@ -115,36 +113,5 @@ impl Handler<Pong> for Client {
             msg.timestamp,
             chrono::Utc::now().timestamp_micros() - msg.timestamp,
         );
-    }
-}
-
-impl Handler<RemoteMessage> for Client {
-    type Result = ();
-
-    async fn handle(&mut self, msg: RemoteMessage, ctx: &mut Self::Context) -> Self::Result {
-        let RemoteMessage {
-            message,
-            result_tx,
-            decode_context,
-            ..
-        } = msg;
-
-        #[allow(clippy::let_unit_value)]
-        let result = if let Ok(pong) = Pong::decode(message, decode_context.as_ref()) {
-            self.handle(pong, ctx).await
-        };
-
-        let encode_context = decode_context.map(|ctx| ctx.into_encode_context());
-
-        if let Some(tx) = result_tx {
-            match result.encode_to_bytes(encode_context.as_ref()) {
-                Ok(bytes) => {
-                    let _ = tx.send(bytes);
-                }
-                Err(e) => {
-                    let _ = tx.send_err(e);
-                }
-            }
-        }
     }
 }
