@@ -6,11 +6,12 @@ use acktor::{
     Actor, Address, Context, Handler, JoinHandle,
     observer::{Observer, ObserverSet, SubjectActor},
 };
-use acktor_ipc::{Decode, Encode, RemoteActor, RemoteActorFactory, RemoteMessage, remote};
+use acktor_ipc::{RemoteActor, RemoteActorFactory, remote};
 
 use crate::message::{Ping, Pong};
 
 #[derive(Debug, Default, RemoteActor)]
+#[message(Ping, Observer<Pong>)]
 pub struct Server {
     observers: ObserverSet<Pong>,
 }
@@ -43,41 +44,6 @@ impl Handler<Ping> for Server {
             timestamp: msg.timestamp,
         })
         .await;
-    }
-}
-
-impl Handler<RemoteMessage> for Server {
-    type Result = ();
-
-    async fn handle(&mut self, msg: RemoteMessage, ctx: &mut Self::Context) -> Self::Result {
-        let RemoteMessage {
-            message,
-            result_tx,
-            decode_context,
-            ..
-        } = msg;
-
-        #[allow(clippy::let_unit_value)]
-        let result = if let Ok(observer) =
-            Observer::<Pong>::decode(message.clone(), decode_context.as_ref())
-        {
-            self.handle(observer, ctx).await
-        } else if let Ok(ping) = Ping::decode(message, decode_context.as_ref()) {
-            self.handle(ping, ctx).await
-        };
-
-        let encode_context = decode_context.map(|ctx| ctx.into_encode_context());
-
-        if let Some(tx) = result_tx {
-            match result.encode_to_bytes(encode_context.as_ref()) {
-                Ok(bytes) => {
-                    let _ = tx.send(bytes);
-                }
-                Err(e) => {
-                    let _ = tx.send_err(e);
-                }
-            }
-        }
     }
 }
 

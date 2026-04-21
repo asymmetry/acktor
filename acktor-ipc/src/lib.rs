@@ -3,6 +3,9 @@
 // Re-export the bytes crate for use within derived code.
 pub use bytes;
 
+// Re-export the tracing crate for use within derived code.
+pub use tracing;
+
 pub mod errors;
 pub use errors::{NodeError, SessionError};
 

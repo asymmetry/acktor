@@ -5,7 +5,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use acktor::{Actor, Context, Handler, Message, Sender};
 use acktor_ipc::{
-    ActorHandle, Decode, Encode, Node, RemoteActor, RemoteAddress, RemoteMessage,
+    ActorHandle, Decode, Encode, Node, RemoteActor, RemoteAddress,
     ipc_method::websocket::{WebSocketConnection, WebSocketListener},
     node::command,
     remote,
@@ -30,6 +30,7 @@ pub struct Echo {
 }
 
 #[derive(Debug, RemoteActor)]
+#[message(Echo)]
 pub struct EchoServer;
 
 #[remote]
@@ -43,36 +44,6 @@ impl Handler<Echo> for EchoServer {
 
     async fn handle(&mut self, msg: Echo, _ctx: &mut Self::Context) -> Self::Result {
         msg.value * 2
-    }
-}
-
-impl Handler<RemoteMessage> for EchoServer {
-    type Result = ();
-
-    async fn handle(&mut self, msg: RemoteMessage, ctx: &mut Self::Context) -> Self::Result {
-        let RemoteMessage {
-            message,
-            result_tx,
-            decode_context,
-            ..
-        } = msg;
-
-        let result: i64 = match Echo::decode(message, decode_context.as_ref()) {
-            Ok(echo) => <Self as Handler<Echo>>::handle(self, echo, ctx).await,
-            Err(_) => 0,
-        };
-
-        let encode_context = decode_context.map(|ctx| ctx.into_encode_context());
-        if let Some(tx) = result_tx {
-            match result.encode_to_bytes(encode_context.as_ref()) {
-                Ok(bytes) => {
-                    let _ = tx.send(bytes);
-                }
-                Err(e) => {
-                    let _ = tx.send_err(e);
-                }
-            }
-        }
     }
 }
 

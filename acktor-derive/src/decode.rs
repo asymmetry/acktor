@@ -1,8 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::detect_backend::{Backend, detect_backend};
-use crate::detect_index::detect_index;
+use crate::common::{Backend, detect_backend, detect_index};
 
 pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let config = match detect_backend(ast) {

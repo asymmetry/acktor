@@ -54,6 +54,9 @@ pub enum DecodeError {
     #[error("missing decode context")]
     MissingDecodeContext,
 
+    #[error("unknown message id: {0}")]
+    UnknownMessageId(u64),
+
     #[error("could not decode the message: {description}")]
     Other { description: Cow<'static, str> },
 }

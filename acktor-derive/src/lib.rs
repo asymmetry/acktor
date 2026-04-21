@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 
+mod common;
+
 mod decode;
-mod detect_backend;
-mod detect_index;
 mod encode;
 mod message;
 mod message_response;
@@ -152,8 +152,36 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
 
 /// Derive the [`RemoteActor`] trait for an actor.
 ///
+/// Without any attribute, only the marker `impl RemoteActor for Self {}` is emitted.
+///
+/// With an optional `#[message(M1, M2, ...)]` attribute, an additional
+/// `impl Handler<RemoteMessage> for Self` is emitted that dispatches inbound messages
+/// by matching on their `message_id` against `<Mi as Decode>::ID`, invoking
+/// `<Self as Handler<Mi>>::handle`, and sending the encoded result back through the
+/// `result_tx` oneshot.
+///
+/// - Decode failures are reported back via `result_tx.send_err(DecodeError)`.
+/// - Unknown message ids are reported as
+///   `DecodeError::UnknownMessageId(id)`.
+/// - The message ids are checked for pairwise uniqueness at compile time.
+///
+/// For each `Mi`, the actor must implement [`Handler<Mi>`] and `<Self as Handler<Mi>>::Result`
+/// must implement [`Encode`].
+///
+/// # Example
+///
+/// ```ignore
+/// use acktor_derive::RemoteActor;
+///
+/// #[derive(RemoteActor)]
+/// #[message(Ping, Echo)]
+/// pub struct MyActor;
+/// ```
+///
 /// [`RemoteActor`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/trait.RemoteActor.html
-#[proc_macro_derive(RemoteActor)]
+/// [`Handler<Mi>`]: https://docs.rs/acktor/latest/acktor/trait.Handler.html
+/// [`Encode`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/codec/trait.Encode.html
+#[proc_macro_derive(RemoteActor, attributes(message))]
 pub fn remote_actor_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
 
