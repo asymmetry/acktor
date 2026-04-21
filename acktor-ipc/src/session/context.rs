@@ -1,3 +1,4 @@
+use tokio::time::{Duration, Instant};
 use tracing::{debug, warn};
 
 use acktor::{
@@ -14,6 +15,7 @@ pub struct SessionContext {
     doorplate: Address<Session>,
     mailbox: Option<Mailbox<Session>>,
     supervisor: Option<Recipient<SupervisionEvent<Session>>>,
+    last_cleanup_time: Instant,
 }
 
 impl SessionContext {
@@ -26,6 +28,7 @@ impl SessionContext {
             doorplate: Address::new(tx),
             mailbox: Some(Mailbox::new(rx)),
             supervisor: None,
+            last_cleanup_time: Instant::now(),
         }
     }
 }
@@ -65,6 +68,11 @@ impl ActorContext<Session> for SessionContext {
         mailbox: &mut Mailbox<Session>,
     ) -> Result<(), SessionError> {
         while self.state() == ActorState::Running {
+            if self.last_cleanup_time.elapsed() >= Duration::from_secs(60) {
+                actor.cleanup_expired_res_tx();
+                self.last_cleanup_time = Instant::now();
+            }
+
             tokio::select! {
                 envelope = mailbox.recv() => {
                     match envelope {

@@ -19,8 +19,6 @@ use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_message::RemoteMessage;
 use crate::session::Session;
 
-// TODO: better way to handle the error received from the remote peer
-
 /// A type which is used to send messages to a remote actor.
 ///
 /// [`Sender`] trait is implemented for this type, so it can be converted into a [`Recipient`]
@@ -185,11 +183,12 @@ where
         self.session
             .do_send(RemoteMessage::send(
                 self.remote_actor_id,
+                <M as Encode>::ID,
                 message_bytes,
                 raw_tx,
             ))
-            // error return by the sender, which means the session actor is stopped before
-            // receiving the message
+            // error return by the sender, which means the session actor's mailbox is closed
+            // before receiving the message
             .map(|result| match result {
                 Ok(_) => Ok(rx),
                 Err(_) => Err(SendError::Closed(msg)),
@@ -207,9 +206,13 @@ where
         // it does not guarantee the message arrives at the remote peer actor, the IPC
         // communication may fail
         self.session
-            .do_send(RemoteMessage::do_send(self.remote_actor_id, message_bytes))
-            // error return by the sender, which means the session actor is stopped before
-            // receiving the message
+            .do_send(RemoteMessage::do_send(
+                self.remote_actor_id,
+                <M as Encode>::ID,
+                message_bytes,
+            ))
+            // error return by the sender, which means the session actor's mailbox is closed
+            // before receiving the message
             .map_err(|_| SendError::Closed(msg))
             .boxed()
     }
@@ -234,6 +237,7 @@ where
 
         match self.session.try_do_send(RemoteMessage::send(
             self.remote_actor_id,
+            <M as Encode>::ID,
             message_bytes,
             raw_tx,
         )) {
@@ -252,7 +256,11 @@ where
         };
 
         self.session
-            .try_do_send(RemoteMessage::do_send(self.remote_actor_id, message_bytes))
+            .try_do_send(RemoteMessage::do_send(
+                self.remote_actor_id,
+                <M as Encode>::ID,
+                message_bytes,
+            ))
             .map_err(|e| match e {
                 SendError::Full(_) => SendError::Full(msg),
                 _ => SendError::Closed(msg),
@@ -282,11 +290,16 @@ where
         // communication may fail
         self.session
             .do_send_timeout(
-                RemoteMessage::send(self.remote_actor_id, message_bytes, raw_tx),
+                RemoteMessage::send(
+                    self.remote_actor_id,
+                    <M as Encode>::ID,
+                    message_bytes,
+                    raw_tx,
+                ),
                 timeout,
             )
-            // error return by the sender, which means the session actor is stopped before
-            // receiving the message
+            // error return by the sender, which means the session actor's mailbox is closed
+            // before receiving the message
             .map(|result| match result {
                 Ok(_) => Ok(rx),
                 Err(_) => Err(SendError::Closed(msg)),
@@ -305,11 +318,11 @@ where
         // communication may fail
         self.session
             .do_send_timeout(
-                RemoteMessage::do_send(self.remote_actor_id, message_bytes),
+                RemoteMessage::do_send(self.remote_actor_id, <M as Encode>::ID, message_bytes),
                 timeout,
             )
-            // error return by the sender, which means the session actor is stopped before
-            // receiving the message
+            // error return by the sender, which means the session actor's mailbox is closed
+            // before receiving the message
             .map_err(|_| SendError::Closed(msg))
             .boxed()
     }
@@ -334,6 +347,7 @@ where
 
         match self.session.blocking_do_send(RemoteMessage::send(
             self.remote_actor_id,
+            <M as Encode>::ID,
             message_bytes,
             raw_tx,
         )) {
@@ -349,7 +363,11 @@ where
         };
 
         self.session
-            .blocking_do_send(RemoteMessage::do_send(self.remote_actor_id, message_bytes))
+            .blocking_do_send(RemoteMessage::do_send(
+                self.remote_actor_id,
+                <M as Encode>::ID,
+                message_bytes,
+            ))
             .map_err(|_| SendError::Closed(msg))
     }
 }

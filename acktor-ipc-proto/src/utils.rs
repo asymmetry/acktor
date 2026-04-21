@@ -1,28 +1,29 @@
 use bytes::Bytes;
 
-pub use crate::proto::utils::result_message::Result as ResultType;
+pub use crate::proto::utils::actor_handle::Handle as ActorHandleType;
+pub use crate::proto::utils::result::Result as ProtoResultType;
 pub use crate::proto::utils::{
-    BoolVec, DoubleVec, FloatVec, Int32Vec, Int64Vec, OptionMessage, ResultMessage, TupleMessage,
-    Uint32Vec, Uint64Vec,
+    ActorHandle, Option as ProtoOption, Result as ProtoResult, Tuple, VecBool, VecDouble, VecFloat,
+    VecInt32, VecInt64, VecUint32, VecUint64,
 };
 
-impl ResultMessage {
+impl ProtoResult {
     #[inline]
     pub fn ok(ok: Bytes) -> Self {
         Self {
-            result: Some(ResultType::Ok(ok)),
+            result: Some(ProtoResultType::Ok(ok)),
         }
     }
 
     #[inline]
     pub fn err(err: String) -> Self {
         Self {
-            result: Some(ResultType::Err(err)),
+            result: Some(ProtoResultType::Err(err)),
         }
     }
 }
 
-impl OptionMessage {
+impl ProtoOption {
     #[inline]
     pub fn some(some: Bytes) -> Self {
         Self { option: Some(some) }
@@ -45,13 +46,13 @@ macro_rules! impl_vec_new {
     };
 }
 
-impl_vec_new!(BoolVec, bool);
-impl_vec_new!(Int32Vec, i32);
-impl_vec_new!(Int64Vec, i64);
-impl_vec_new!(Uint32Vec, u32);
-impl_vec_new!(Uint64Vec, u64);
-impl_vec_new!(FloatVec, f32);
-impl_vec_new!(DoubleVec, f64);
+impl_vec_new!(VecBool, bool);
+impl_vec_new!(VecInt32, i32);
+impl_vec_new!(VecInt64, i64);
+impl_vec_new!(VecUint32, u32);
+impl_vec_new!(VecUint64, u64);
+impl_vec_new!(VecFloat, f32);
+impl_vec_new!(VecDouble, f64);
 
 macro_rules! impl_tuple_ctor {
     ($name:ident, [$($field:ident),+], [$($none:ident),*]) => {
@@ -66,7 +67,7 @@ macro_rules! impl_tuple_ctor {
     };
 }
 
-impl TupleMessage {
+impl Tuple {
     impl_tuple_ctor!(tuple2, [t0, t1], [t2, t3, t4, t5, t6, t7, t8, t9]);
     impl_tuple_ctor!(tuple3, [t0, t1, t2], [t3, t4, t5, t6, t7, t8, t9]);
     impl_tuple_ctor!(tuple4, [t0, t1, t2, t3], [t4, t5, t6, t7, t8, t9]);
@@ -76,4 +77,20 @@ impl TupleMessage {
     impl_tuple_ctor!(tuple8, [t0, t1, t2, t3, t4, t5, t6, t7], [t8, t9]);
     impl_tuple_ctor!(tuple9, [t0, t1, t2, t3, t4, t5, t6, t7, t8], [t9]);
     impl_tuple_ctor!(tuple10, [t0, t1, t2, t3, t4, t5, t6, t7, t8, t9], []);
+}
+
+impl ActorHandle {
+    #[inline]
+    pub fn index(actor_id: u64) -> Self {
+        Self {
+            handle: Some(ActorHandleType::Index(actor_id)),
+        }
+    }
+
+    #[inline]
+    pub fn label(label: String) -> Self {
+        Self {
+            handle: Some(ActorHandleType::Label(label)),
+        }
+    }
 }

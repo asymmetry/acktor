@@ -199,6 +199,7 @@ impl Encode for Vec<bool> {
 }
 
 impl Decode for Vec<bool> {
+    #[inline]
     fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         Ok(buf.iter().map(|&b| b != 0).collect())
     }
@@ -221,6 +222,7 @@ impl Encode for Vec<isize> {
         self.len() * mem::size_of::<i64>()
     }
 
+    #[inline]
     fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let vec: Vec<i64> = self.iter().map(|&v| v as i64).collect();
         buf.extend_from_slice(vec.as_slice().as_bytes());
@@ -230,6 +232,7 @@ impl Encode for Vec<isize> {
 }
 
 impl Decode for Vec<isize> {
+    #[inline]
     fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let vec: Vec<i64> = Ref::<_, [i64]>::from_bytes(buf.as_ref())?.to_vec();
         vec.into_iter()
@@ -244,6 +247,7 @@ impl Encode for Vec<usize> {
         self.len() * mem::size_of::<u64>()
     }
 
+    #[inline]
     fn encode(&self, buf: &mut BytesMut, _ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         let vec: Vec<u64> = self.iter().map(|&v| v as u64).collect();
         buf.extend_from_slice(vec.as_slice().as_bytes());
@@ -253,6 +257,7 @@ impl Encode for Vec<usize> {
 }
 
 impl Decode for Vec<usize> {
+    #[inline]
     fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let vec: Vec<u64> = Ref::<_, [u64]>::from_bytes(buf.as_ref())?.to_vec();
         vec.into_iter()

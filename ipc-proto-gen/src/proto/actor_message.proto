@@ -1,51 +1,42 @@
 syntax = "proto3";
 
+import "utils.proto";
+
 package actor_message;
 
-// A message which is used to send a message to a remote actor and wait for a response.
-// The remote actor should response with the given tag.
-message Send {
-  // The index of the recipient actor in the remote process.
-  uint64 actor_id = 1;
-  // The message to be sent.
-  bytes message = 2;
-  // The tag to be used in the reply.
-  uint64 tag = 3;
-}
-
-// A message which is used to send a message to a remote actor without expecting a
-// response.
-message DoSend {
-  // The index of the recipient actor in the remote process.
-  uint64 actor_id = 1;
-  // The message to be sent.
-  bytes message = 2;
-}
-
-// A message which is used to reply to a message sent by `Send` command.
+// A message which is used to send a message to an actor in the remote node.
 //
-// `result` carries either the successfully-encoded `M::Result` bytes, or a
-// handler-side error reason (e.g. the target actor could not be found).
-message Reply {
-  // The tag of the message to be replied.
-  uint64 tag = 1;
-  // The result of the command.
-  oneof result {
-    // The encoded response payload.
-    bytes ok = 2;
-    // The error reason.
-    string err = 3;
-  }
+// It can not be used to send a message to the remote node itself, use `NodeMessage` instead.
+message ActorMessage {
+  // The index of the target actor in the remote node.
+  uint64 actor_id = 1;
+  // The message identifier of the message to be sent.
+  uint64 message_id = 2;
+  // The message to be sent.
+  bytes message = 3;
+  // The tag to be used in the message response.
+  optional uint64 tag = 4;
 }
 
-// A message which is used to communicate with remote actors.
-message ActorMessage {
-  oneof message {
-    // Sends a message to a remote actor and wait for a response.
-    Send send = 1;
-    // Sends a message to a remote actor without expecting a response.
-    DoSend do_send = 2;
-    // Replies to a message sent by `Send` command.
-    Reply reply = 3;
+// A message which is used as the response of an `ActorMessage`.
+message ActorMessageResponse {
+  // The tag of the message.
+  uint64 tag = 1;
+  // The response of the message. If the message is successfully handled by the target actor,
+  // the `ok` field will be set to the response of the message; otherwise, the `err` field will
+  // be set to the error message.
+  //
+  // Note that a message is considered to be successfully handled by the target actor if the
+  // message handler properly returns a value matches the `Message::Result` type, even if this
+  // value itself is a `Result::Err`.
+  //
+  // Thus, the `err` field is only used to report errors that causes the message to fail to be
+  // handled by the target actor, e.g., the IPC communication error, the encoding/decoding error
+  // and etc.
+  oneof response {
+    // The response of the message.
+    bytes ok = 2;
+    // The error message.
+    string err = 3;
   }
 }

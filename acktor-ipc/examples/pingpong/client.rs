@@ -9,8 +9,8 @@ use acktor::{
     observer::Observer,
 };
 use acktor_ipc::{
-    ActorHandle, Decode, Encode, RemoteActor, RemoteAddress, RemoteMessage, RemoteMessageKind,
-    Session, remote, session::command,
+    ActorHandle, Decode, Encode, RemoteActor, RemoteAddress, RemoteMessage, Session, remote,
+    session::command,
 };
 
 use crate::message::{Ping, Pong};
@@ -124,7 +124,7 @@ impl Handler<RemoteMessage> for Client {
     async fn handle(&mut self, msg: RemoteMessage, ctx: &mut Self::Context) -> Self::Result {
         let RemoteMessage {
             message,
-            kind,
+            result_tx,
             decode_context,
             ..
         } = msg;
@@ -136,7 +136,7 @@ impl Handler<RemoteMessage> for Client {
 
         let encode_context = decode_context.map(|ctx| ctx.into_encode_context());
 
-        if let RemoteMessageKind::Send(tx) = kind {
+        if let Some(tx) = result_tx {
             match result.encode_to_bytes(encode_context.as_ref()) {
                 Ok(bytes) => {
                     let _ = tx.send(bytes);

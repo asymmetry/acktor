@@ -1,4 +1,5 @@
 //! Remote message which can be sent over an IPC channel.
+//!
 
 use std::fmt::{self, Debug};
 
@@ -10,35 +11,19 @@ use acktor::{Actor, ActorState, Address, Message, Recipient, Sender, channel::on
 use crate::codec::DecodeContext;
 use crate::remote_address::RemoteAddress;
 
-/// The kind of a remote message.
-pub enum RemoteMessageKind {
-    /// No response is expected for this message.
-    DoSend,
-    /// The sender expects a response for this message.
-    Send(oneshot::Sender<Bytes>),
-}
-
-impl Debug for RemoteMessageKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::DoSend => f.write_str("DoSend"),
-            Self::Send(_) => f.write_str("Send"),
-        }
-    }
-}
-
 /// A unified remote message used for communication with remote actors.
 ///
 /// This is used both for outbound messages (sent by an actor in the current process to an actor
-/// in a peer process through [`Session`][crate::session::Session]) and for inbound messages
-/// (received from an IPC session and forwarded to an actor in the current process for
-/// processing).
+/// in a remote process through [`Session`][crate::session::Session]) and for inbound messages
+/// (received by a [`Session`][crate::session::Session] and forwarded to an actor in the current
+/// process for handling).
 #[derive(Message)]
 #[result_type(())]
 pub struct RemoteMessage {
     pub actor_id: u64,
-    pub kind: RemoteMessageKind,
+    pub message_id: u64,
     pub message: Bytes,
+    pub result_tx: Option<oneshot::Sender<Bytes>>,
     pub decode_context: Option<DecodeContext>,
 }
 
@@ -46,29 +31,47 @@ impl Debug for RemoteMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RemoteMessage")
             .field("actor_id", &self.actor_id)
-            .field("kind", &self.kind)
+            .field("message_id", &self.message_id)
             .field("message", &format_args!("Bytes({})", self.message.len()))
+            .field(
+                "result_tx",
+                &format_args!(
+                    "{}",
+                    if self.result_tx.is_some() {
+                        "Some(..)"
+                    } else {
+                        "None"
+                    }
+                ),
+            )
             .finish()
     }
 }
 
 impl RemoteMessage {
-    /// Constructs a new [`RemoteMessage`] with [`DoSend`][RemoteMessageKind::DoSend] kind.
-    pub fn do_send(actor_id: u64, message: Bytes) -> Self {
+    /// Constructs a new [`RemoteMessage`] which does not expect a response.
+    pub fn do_send(actor_id: u64, message_id: u64, message: Bytes) -> Self {
         Self {
             actor_id,
-            kind: RemoteMessageKind::DoSend,
+            message_id,
             message,
+            result_tx: None,
             decode_context: None,
         }
     }
 
-    /// Constructs a new [`RemoteMessage`] with [`Send`][RemoteMessageKind::Send] kind.
-    pub fn send(actor_id: u64, message: Bytes, tx: oneshot::Sender<Bytes>) -> Self {
+    /// Constructs a new [`RemoteMessage`] which expects a response.
+    pub fn send(
+        actor_id: u64,
+        message_id: u64,
+        message: Bytes,
+        tx: oneshot::Sender<Bytes>,
+    ) -> Self {
         Self {
             actor_id,
-            kind: RemoteMessageKind::Send(tx),
+            message_id,
             message,
+            result_tx: Some(tx),
             decode_context: None,
         }
     }

@@ -4,13 +4,14 @@ use std::result::Result as StdResult;
 use ahash::HashMap;
 use bytes::Bytes;
 use futures_util::{FutureExt, TryFutureExt};
+use tokio::time::{Duration, Instant};
 use tracing::{Instrument, info, warn};
 
 use acktor::{
     Actor, ActorContext, ActorId, Address, ErrorReport, Handler, Message, Recipient, Sender,
     SenderId, channel::oneshot, message::FutureMessageResult, utils::debug_trace,
 };
-use acktor_ipc_proto::{actor_message, ipc_message, node_message};
+use acktor_ipc_proto::{actor_message, ipc_message, node_message, utils as proto_utils};
 
 use crate::actor_handle::ActorHandle;
 use crate::codec::{Decode, DecodeContext, Encode};
@@ -22,7 +23,7 @@ use crate::node::{
 };
 use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_address::RemoteAddress;
-use crate::remote_message::{RemoteMessage, RemoteMessageKind};
+use crate::remote_message::RemoteMessage;
 
 pub mod command;
 
@@ -36,14 +37,14 @@ type Result<T> = StdResult<T, SessionError>;
 
 #[derive(Message)]
 #[result_type(())]
-struct ActorMessageReply {
+struct ActorMessageResponse {
     tag: u64,
     result: StdResult<Bytes, String>,
 }
 
-impl Debug for ActorMessageReply {
+impl Debug for ActorMessageResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ActorMessageReply")
+        f.debug_struct("ActorMessageResponse")
             .field("tag", &self.tag)
             .field(
                 "result",
@@ -61,9 +62,9 @@ impl Debug for ActorMessageReply {
 
 #[derive(Debug, Message)]
 #[result_type(())]
-struct CreateActorResult {
+struct CreateActorResponse {
     tag: u64,
-    result: Result<ActorId>,
+    result: StdResult<ActorId, String>,
 }
 
 /// An actor which manages the IPC connection to a remote endpoint.
@@ -74,8 +75,8 @@ pub struct Session {
     label_map: LabelMap,
     tag: u64, // unique tag generator
     decode_context: Option<DecodeContext>,
-    node_msg_reply_map: HashMap<u64, oneshot::Sender<Result<RemoteAddress>>>,
-    actor_msg_reply_map: HashMap<u64, oneshot::Sender<Bytes>>,
+    node_msg_res_tx_map: HashMap<u64, (oneshot::Sender<Result<RemoteAddress>>, Instant)>,
+    actor_msg_res_tx_map: HashMap<u64, (oneshot::Sender<Bytes>, Instant)>,
 }
 
 impl Debug for Session {
@@ -105,9 +106,18 @@ impl Session {
             label_map,
             tag: 0,
             decode_context: None,
-            actor_msg_reply_map: HashMap::default(),
-            node_msg_reply_map: HashMap::default(),
+            actor_msg_res_tx_map: HashMap::default(),
+            node_msg_res_tx_map: HashMap::default(),
         }
+    }
+
+    fn cleanup_expired_res_tx(&mut self) {
+        let now = Instant::now();
+
+        self.node_msg_res_tx_map
+            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < Duration::from_secs(60));
+        self.actor_msg_res_tx_map
+            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < Duration::from_secs(60));
     }
 
     fn next_tag(&mut self) -> u64 {
@@ -132,14 +142,19 @@ impl Session {
             .ok_or_else(|| DecodeError::MissingDecodeContext.into())
     }
 
-    fn find_actor(&self, handle: &node_message::ActorHandle) -> Result<Recipient<RemoteMessage>> {
-        match &handle {
-            node_message::ActorHandle::ActorId(actor_id) => self
-                .registry
-                .get(*actor_id)
-                .ok_or_else(|| SessionError::ActorNotFound(actor_id.to_string())),
+    fn find_actor(&self, actor: &ActorHandle) -> Result<Recipient<RemoteMessage>> {
+        match actor {
+            ActorHandle::Index(actor_id) => {
+                if actor_id.is_remote() {
+                    return Err(DecodeError::DecodeRemoteAddress.into());
+                }
 
-            node_message::ActorHandle::Label(label) => self
+                self.registry
+                    .get(*actor_id)
+                    .ok_or_else(|| SessionError::ActorNotFound(actor_id.to_string()))
+            }
+
+            ActorHandle::Label(label) => self
                 .label_map
                 .get(label)
                 .ok_or_else(|| SessionError::ActorNotFound(label.clone()))
@@ -151,13 +166,13 @@ impl Session {
         }
     }
 
-    async fn handle_node_command(
+    async fn handle_node_message(
         &mut self,
-        command: node_message::NodeCommand,
+        message: node_message::NodeMessage,
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<()> {
-        match command.command {
-            Some(node_message::NodeCommandType::CreateActor(node_message::CreateActor {
+        match message.message {
+            Some(node_message::MessageType::CreateActor(node_message::CreateActor {
                 label,
                 r#type,
                 config,
@@ -179,13 +194,22 @@ impl Session {
                             .await?
                     }
                     .then(move |result| async move {
-                        // send the result back to this session actor
-                        // the IpcConnection can not be cloned without mutex lock
-                        address.do_send(CreateActorResult { tag, result }).await
+                        // send the result back to this actor with CreateActorResponse message
+                        // the IpcConnection can not be cloned into the spawned task without a
+                        // Arc<Mutex<..>>, so we convert this into a sequential message handling
+                        // process
+                        address
+                            .do_send(CreateActorResponse {
+                                tag,
+                                result: result.map_err(|e| e.report()),
+                            })
+                            .await
                     })
                     .inspect_err(|e| {
+                        // we can not do much if sending the response back to this actor fails,
+                        // just log it
                         warn!(
-                            "Could not send `NodeMessage::CreateActorResult` to remote peer: {}",
+                            "Could not send `NodeMessageResponse::CreateActor` to remote peer: {}",
                             e.report()
                         );
                     })
@@ -195,128 +219,131 @@ impl Session {
                 Ok(())
             }
 
-            Some(node_message::NodeCommandType::GetActor(node_message::GetActor {
-                actor_handle: Some(actor_handle),
-                tag,
-            })) => {
-                let result = self
-                    .find_actor(&actor_handle)
-                    .map(|recipient| recipient.index());
+            Some(node_message::MessageType::GetActor(node_message::GetActor { actor, tag })) => {
+                // convert proto::utils::ActorHandle to crate::ActorHandle, ugly
+                let actor = match actor {
+                    Some(proto_utils::ActorHandle { handle }) => match handle {
+                        Some(proto_utils::ActorHandleType::Index(actor_id)) => {
+                            ActorHandle::Index(actor_id)
+                        }
+                        Some(proto_utils::ActorHandleType::Label(label)) => {
+                            ActorHandle::Label(label)
+                        }
+                        None => {
+                            return Err(DecodeError::from(
+                                "missing field `handle` in `ActorHandle`",
+                            )
+                            .into());
+                        }
+                    },
 
-                let ipc_msg = ipc_message::IpcMessage::node_message(
-                    node_message::NodeMessage::get_actor_result(tag, result),
+                    _ => {
+                        return Err(DecodeError::from(
+                            "missing field `actor` in `NodeMessage::GetActor`",
+                        )
+                        .into());
+                    }
+                };
+
+                let result = self.find_actor(&actor).map(|recipient| recipient.index());
+
+                let ipc_msg = ipc_message::IpcMessage::node_message_response(
+                    node_message::NodeMessageResponse::get_actor(
+                        tag,
+                        result.map_err(|e| e.report()),
+                    ),
                 );
 
                 self.send_ipc_message(ipc_msg).await.inspect_err(|e| {
+                    // we can not do much if sending the response back to the remote peer fails,
+                    // just log it
                     warn!(
-                        "Could not send `NodeMessage::GetActorResult` to remote peer: {}",
+                        "Could not send `NodeMessageResponse::GetActor` to remote peer: {}",
                         e.report()
-                    )
+                    );
                 })
             }
 
-            _ => Err(DecodeError::from("missing field `command` in `NodeCommand` message").into()),
+            _ => Err(DecodeError::from("missing field `message` in `NodeMessage`").into()),
         }
     }
 
-    async fn handle_node_reply(&mut self, reply: node_message::NodeReply) -> Result<()> {
-        match reply.reply {
-            Some(node_message::NodeReplyType::CreateActor(node_message::CreateActorResult {
-                tag,
+    fn _handle_node_message_response(
+        &mut self,
+        tag: u64,
+        result: Option<node_message::ResultType>,
+        name: &str,
+    ) -> Result<()> {
+        let (sender, _) = self
+            .node_msg_res_tx_map
+            .remove(&tag)
+            // if the tag is not found in the map, we do not know who to send the result to, and
+            // we do not kown who to report the error to either, so just return an error and the
+            // session's context will log it
+            .ok_or(SessionError::InvalidNodeMsgResTxTag(tag))?;
+
+        // remote error and processing error should be reported to the original sender who is
+        // waiting for a `Result<RemoteAddress, SessionError>`
+        let result = match result {
+            Some(node_message::ResultType::ActorId(actor_id)) => match self.decode_context() {
+                Ok(ctx) => ctx.create_remote_address(actor_id).map_err(Into::into),
+                Err(e) => Err(e),
+            },
+            Some(node_message::ResultType::Err(e)) => Err(SessionError::RemotePeerError(e)),
+
+            _ => Err(DecodeError::from(format!(
+                "missing field `result` in `NodeMessageResponse::{}`",
+                name
+            ))
+            .into()),
+        };
+
+        sender
+            .send(result)
+            // we can not do much if sending the result back to the original sender fails, just
+            // return an error and the session's context will log it
+            .map_err(|_| SessionError::ForwardNodeMsgResFailed)
+    }
+
+    fn handle_node_message_response(
+        &mut self,
+        response: node_message::NodeMessageResponse,
+        _ctx: &mut <Self as Actor>::Context,
+    ) -> Result<()> {
+        let tag = response.tag;
+
+        match response.response {
+            Some(node_message::ResponseType::CreateActor(node_message::ResultRemoteAddress {
                 result,
-            })) => {
-                let sender = self
-                    .node_msg_reply_map
-                    .remove(&tag)
-                    .ok_or(SessionError::InvalidNodeMessageReplyTag(tag))?;
+            })) => self._handle_node_message_response(tag, result, "CreateActor"),
 
-                let result = match result {
-                    Some(node_message::CreateActorResultType::Ok(actor_id)) => self
-                        .decode_context()?
-                        .create_remote_address(actor_id)
-                        .map_err(Into::into),
-
-                    Some(node_message::CreateActorResultType::Err(e)) => {
-                        Err(SessionError::RemotePeerError(e))
-                    }
-
-                    _ => Err(DecodeError::from(
-                        "missing field `result` in `CreateActorResult` message",
-                    )
-                    .into()),
-                };
-
-                sender
-                    .send(result)
-                    .map_err(|_| SessionError::ForwardNodeMessageReplyFailed)
-            }
-
-            Some(node_message::NodeReplyType::GetActor(node_message::GetActorResult {
-                tag,
+            Some(node_message::ResponseType::GetActor(node_message::ResultRemoteAddress {
                 result,
-            })) => {
-                let sender = self
-                    .node_msg_reply_map
-                    .remove(&tag)
-                    .ok_or(SessionError::InvalidNodeMessageReplyTag(tag))?;
+            })) => self._handle_node_message_response(tag, result, "GetActor"),
 
-                let result = match result {
-                    Some(node_message::GetActorResultType::Ok(actor_id)) => self
-                        .decode_context()?
-                        .create_remote_address(actor_id)
-                        .map_err(Into::into),
-
-                    Some(node_message::GetActorResultType::Err(e)) => {
-                        Err(SessionError::RemotePeerError(e))
-                    }
-
-                    _ => Err(DecodeError::from(
-                        "missing field `result` in `GetActorResult` message",
-                    )
-                    .into()),
-                };
-
-                sender
-                    .send(result)
-                    .map_err(|_| SessionError::ForwardNodeMessageReplyFailed)
-            }
-
-            _ => Err(DecodeError::from("missing field `reply` in `NodeReply` message").into()),
+            _ => Err(DecodeError::from("missing field `response` in `NodeMessageResponse`").into()),
         }
     }
 
-    fn find_actor_to_forward(&self, actor_id: ActorId) -> Result<Recipient<RemoteMessage>> {
-        if actor_id.is_remote() {
-            return Err(DecodeError::DecodeRemoteAddress.into());
-        }
-
-        self.registry.get(actor_id).ok_or_else(|| {
-            SessionError::ForwardInboundMessageFailed(
-                format!("no actor registered for id {}", actor_id).into(),
-            )
-        })
-    }
-
-    /// Handles an inbound remote message.
     async fn handle_actor_message(
         &mut self,
         message: actor_message::ActorMessage,
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<()> {
-        match message.message {
-            Some(actor_message::ActorMessageType::Send(send)) => {
-                let actor_message::Send {
-                    actor_id,
-                    message,
-                    tag,
-                } = send;
+        let actor_message::ActorMessage {
+            actor_id,
+            message_id,
+            message,
+            tag,
+        } = message;
+
+        match tag {
+            Some(tag) => {
+                // send
 
                 let address = ctx.address();
-
-                let recipient = self.find_actor_to_forward(actor_id);
-
-                let decode_context = self.decode_context()?.clone();
-
+                let recipient = self.find_actor(&ActorHandle::Index(actor_id));
+                let decode_context = self.decode_context().cloned();
                 let (tx, rx) = oneshot::channel();
 
                 // spawn a task to handle the potentially time consuming message handling process
@@ -324,8 +351,8 @@ impl Session {
                     async move {
                         recipient?
                             .do_send(
-                                RemoteMessage::send(actor_id, message, tx)
-                                    .with_context(decode_context),
+                                RemoteMessage::send(actor_id, message_id, message, tx)
+                                    .with_context(decode_context?),
                             )
                             .await
                             .map_err(|e| SessionError::ForwardInboundMessageFailed(e.into()))?;
@@ -337,16 +364,22 @@ impl Session {
                         Ok::<Bytes, SessionError>(result)
                     }
                     .then(move |result| async move {
-                        let result = ActorMessageReply {
-                            tag,
-                            result: result.map_err(|e| e.report()),
-                        };
-
-                        address.do_send(result).await
+                        // send the result back to this actor with ActorMessageResponse message
+                        // the IpcConnection can not be cloned into the spawned task without a
+                        // Arc<Mutex<..>>, so we convert this into a sequential message handling
+                        // process
+                        address
+                            .do_send(ActorMessageResponse {
+                                tag,
+                                result: result.map_err(|e| e.report()),
+                            })
+                            .await
                     })
                     .inspect_err(|e| {
+                        // we can not do much if sending the response back to this actor fails,
+                        // just log it
                         warn!(
-                            "Could not send `ActorMessage::Reply` to remote peer: {}",
+                            "Could not send `ActorMessageResponse` to remote peer: {}",
                             e.report()
                         );
                     })
@@ -356,83 +389,80 @@ impl Session {
                 Ok(())
             }
 
-            Some(actor_message::ActorMessageType::DoSend(do_send)) => {
-                let actor_message::DoSend { actor_id, message } = do_send;
+            None => {
+                // do_send
 
-                if actor_id.is_remote() {
-                    return Err(DecodeError::DecodeRemoteAddress.into());
-                }
-
-                let Some(recipient) = self.registry.get(actor_id) else {
-                    return Err(SessionError::ForwardInboundMessageFailed(
-                        format!("no actor registered for id {}", actor_id).into(),
-                    ));
-                };
-
-                recipient
+                // sender has explicitly indicated that it does not care about the result of this
+                // message, so we just return the error and the session's context will log it
+                self.find_actor(&ActorHandle::Index(actor_id))?
                     .do_send(
-                        RemoteMessage::do_send(actor_id, message)
+                        RemoteMessage::do_send(actor_id, message_id, message)
                             .with_context(self.decode_context()?.clone()),
                     )
                     .await
                     .map_err(|e| SessionError::ForwardInboundMessageFailed(e.into()))
             }
+        }
+    }
 
-            Some(actor_message::ActorMessageType::Reply(actor_message::Reply { tag, result })) => {
-                let sender = self
-                    .actor_msg_reply_map
-                    .remove(&tag)
-                    .ok_or(SessionError::InvalidActorMessageReplyTag(tag))?;
+    async fn handle_actor_message_response(
+        &mut self,
+        response: actor_message::ActorMessageResponse,
+        _ctx: &mut <Self as Actor>::Context,
+    ) -> Result<()> {
+        let tag = response.tag;
 
-                let result: Result<_> = match result {
-                    Some(actor_message::ReplyResultType::Ok(message)) => Ok(message),
+        let (sender, _) = self
+            .actor_msg_res_tx_map
+            .remove(&tag)
+            // if the tag is not found in the map, we do not know who to send the result
+            // to, and we do not kown who to report the error to either, so just return
+            // an error and the session's context will log it
+            .ok_or(SessionError::InvalidActorMsgResTxTag(tag))?;
 
-                    Some(actor_message::ReplyResultType::Err(err)) => {
-                        Err(SessionError::RemotePeerError(err))
-                    }
-
-                    None => {
-                        Err(DecodeError::from("missing field `result` in `Reply` message").into())
-                    }
-                };
-
-                match result {
-                    Ok(bytes) => sender
-                        .send(bytes)
-                        .map_err(|_| SessionError::ForwardActorMessageReplyFailed),
-                    Err(e) => sender
-                        .send_err(e)
-                        .map_err(|_| SessionError::ForwardActorMessageReplyFailed),
-                }
+        // remote error and processing error should be reported to the original sender who is
+        // waiting for a `Result<M::Result, RecvError>`
+        let result: Result<_> = match response.response {
+            Some(actor_message::ResponseType::Ok(bytes)) => Ok(bytes),
+            Some(actor_message::ResponseType::Err(err)) => Err(SessionError::RemotePeerError(err)),
+            None => {
+                Err(DecodeError::from("missing field `response` in `ActorMessageResponse`").into())
             }
+        };
 
-            _ => Err(DecodeError::from("missing field `message` in `ActorMessage` message").into()),
+        // we can not do much if sending the result back to the original sender fails, just return
+        // an error and the session's context will log it
+        match result {
+            Ok(bytes) => sender
+                .send(bytes)
+                .map_err(|_| SessionError::ForwardActorMessageResFailed),
+            Err(e) => sender
+                .send_err(e)
+                .map_err(|_| SessionError::ForwardActorMessageResFailed),
         }
     }
 
     async fn handle_ipc_message(
         &mut self,
-        msg: Bytes,
+        message: Bytes,
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<()> {
-        let ipc_msg = ipc_message::IpcMessage::decode(msg, None)?;
+        let ipc_message = ipc_message::IpcMessage::decode(message, None)?;
 
-        match ipc_msg.message {
-            Some(ipc_message::IpcMessageType::Node(message)) => match message.message {
-                Some(node_message::NodeMessageType::Command(command)) => {
-                    self.handle_node_command(command, ctx).await
-                }
-                Some(node_message::NodeMessageType::Reply(reply)) => {
-                    self.handle_node_reply(reply).await
-                }
-                _ => Err(
-                    DecodeError::from("missing field `message` in `NodeMessage` message").into(),
-                ),
-            },
-            Some(ipc_message::IpcMessageType::Actor(message)) => {
+        match ipc_message.message {
+            Some(ipc_message::IpcMessageType::NodeMessage(message)) => {
+                self.handle_node_message(message, ctx).await
+            }
+            Some(ipc_message::IpcMessageType::NodeMessageResponse(response)) => {
+                self.handle_node_message_response(response, ctx)
+            }
+            Some(ipc_message::IpcMessageType::ActorMessage(message)) => {
                 self.handle_actor_message(message, ctx).await
             }
-            _ => Err(DecodeError::from("missing field `message` in `IpcMessage` message").into()),
+            Some(ipc_message::IpcMessageType::ActorMessageResponse(response)) => {
+                self.handle_actor_message_response(response, ctx).await
+            }
+            _ => Err(DecodeError::from("missing field `message` in `IpcMessage`").into()),
         }
     }
 }
@@ -461,11 +491,11 @@ impl Actor for Session {
     }
 }
 
-/// See [`handle_node_command`][Session::handle_node_command] for what remote session actor will
-/// do when it receives the IpcMessage sent by this handler.
-/// See [`handle_node_reply`][Session::handle_node_reply] for how this session actor sends the
-/// result with the `tx` created in this handler when it receives the corresponding NodeReply
-/// from the remote peer.
+/// See [`handle_node_message`][Session::handle_node_message] for what the remote peer actor will
+/// do when it receives the `NodeMessage` sent by this handler.
+/// See [`handle_node_message_response`][Session::handle_node_message_response] for how this actor
+/// forwards the result to the original sender when it receives the `NodeMessageResponse` from the
+/// remote peer actor.
 impl Handler<command::CreateRemoteActor> for Session {
     type Result = FutureMessageResult<command::CreateRemoteActor>;
 
@@ -494,20 +524,30 @@ impl Handler<command::CreateRemoteActor> for Session {
                 "Could not send `NodeMessage::CreateActor` to remote peer: {}",
                 e.report()
             );
-            let _ = tx.send(Err(e));
+            // sends the error back to the original sender who is waiting for a
+            // `Result<RemoteAddress, SessionError>`
+            if let Err(e) = tx.send(Err(e)) {
+                // we can not do much if sending the error back to the original sender fails, just
+                // log it
+                warn!(
+                    "Could not report the error in `Handler<CreateRemoteActor>` to original\
+                     sender: {}",
+                    e.report()
+                );
+            }
         } else {
-            self.node_msg_reply_map.insert(tag, tx);
+            self.node_msg_res_tx_map.insert(tag, (tx, Instant::now()));
         }
 
         FutureMessageResult::new(rx.map(|r| r.unwrap_or_else(|e| Err(e.into()))))
     }
 }
 
-/// See [`handle_node_command`][Session::handle_node_command] for what remote session actor will
-/// do when it receives the IpcMessage sent by this handler.
-/// See [`handle_node_reply`][Session::handle_node_reply] for how this session actor sends the
-/// result with the `tx` created in this handler when it receives the corresponding NodeReply
-/// from the remote peer.
+/// See [`handle_node_message`][Session::handle_node_message] for what the remote peer actor will
+/// do when it receives the `NodeMessage` sent by this handler.
+/// See [`handle_node_message_response`][Session::handle_node_message_response] for how this actor
+/// forwards the result to the original sender when it receives the `NodeMessageResponse` from the
+/// remote peer actor.
 impl Handler<command::GetRemoteActor> for Session {
     type Result = FutureMessageResult<command::GetRemoteActor>;
 
@@ -537,19 +577,33 @@ impl Handler<command::GetRemoteActor> for Session {
                 "Could not send `NodeMessage::GetActor` to remote peer: {}",
                 e.report()
             );
-            let _ = tx.send(Err(e));
+            // sends the error back to the original sender who is waiting for a
+            // `Result<RemoteAddress, SessionError>`
+            if let Err(e) = tx.send(Err(e)) {
+                // we can not do much if sending the error back to the original sender fails, just
+                // log it
+                warn!(
+                    "Could not report the error in `Handler<GetRemoteActor>` to original sender:\
+                     {}",
+                    e.report()
+                );
+            }
         } else {
-            self.node_msg_reply_map.insert(tag, tx);
+            self.node_msg_res_tx_map.insert(tag, (tx, Instant::now()));
         }
 
         FutureMessageResult::new(rx.map(|r| r.unwrap_or_else(|e| Err(e.into()))))
     }
 }
 
+/// See [`handle_actor_message`][Session::handle_actor_message] for what the remote peer actor
+/// will do when it receives the `ActorMessage` sent by this handler.
+/// See [`handle_actor_message_response`][Session::handle_actor_message_response] for how this
+/// actor forwards the result to the original sender when it receives the `ActorMessageResponse`
+/// from the remote peer actor.
 impl Handler<RemoteMessage> for Session {
     type Result = ();
 
-    /// Handles an outbound remote message.
     async fn handle(
         &mut self,
         msg: RemoteMessage,
@@ -559,38 +613,58 @@ impl Handler<RemoteMessage> for Session {
 
         let RemoteMessage {
             actor_id,
+            message_id,
             message,
-            kind,
+            result_tx,
             ..
         } = msg;
 
-        match kind {
-            RemoteMessageKind::Send(tx) => {
+        match result_tx {
+            Some(tx) => {
+                // send
+
                 let tag = self.next_tag();
                 let ipc_msg = ipc_message::IpcMessage::actor_message(
-                    actor_message::ActorMessage::send(actor_id, message, tag),
+                    actor_message::ActorMessage::send(actor_id, message_id, message, tag),
                 );
 
                 if let Err(e) = self.send_ipc_message(ipc_msg).await {
                     warn!(
-                        "Could not send `ActorMessage::Send` to remote peer: {}",
+                        "Could not send `ActorMessage` to remote peer: {}",
                         e.report()
                     );
-                    let _ = tx.send_err(e);
+                    // sends the error back to the original sender who is waiting for a
+                    // `Result<M::Result, RecvError>`, typically a `RemoteAddress`, note that the
+                    // error original sender receives is a `RecvError` because the signature of
+                    // the `Sender` trait so we need to use `send_err` here
+                    if let Err(e) = tx.send_err(e) {
+                        // we can not do much if sending the error back to the original sender
+                        // fails, just log it
+                        warn!(
+                            "Could not report the error in `Handler<RemoteMessage>` to original\
+                             sender: {}",
+                            e.report()
+                        );
+                    }
 
                     return;
                 }
 
-                self.actor_msg_reply_map.insert(tag, tx);
+                self.actor_msg_res_tx_map.insert(tag, (tx, Instant::now()));
             }
-            RemoteMessageKind::DoSend => {
+
+            None => {
+                // do_send
+
                 let ipc_msg = ipc_message::IpcMessage::actor_message(
-                    actor_message::ActorMessage::do_send(actor_id, message),
+                    actor_message::ActorMessage::do_send(actor_id, message_id, message),
                 );
 
                 if let Err(e) = self.send_ipc_message(ipc_msg).await {
+                    // sender has explicitly indicated that it does not care about the result of
+                    // this message, so we just log the error
                     warn!(
-                        "Could not send `ActorMessage::DoSend` to remote peer: {}",
+                        "Could not do_send `ActorMessage` to remote peer: {}",
                         e.report()
                     );
                 }
@@ -599,45 +673,48 @@ impl Handler<RemoteMessage> for Session {
     }
 }
 
-impl Handler<CreateActorResult> for Session {
+impl Handler<CreateActorResponse> for Session {
     type Result = ();
 
-    async fn handle(&mut self, msg: CreateActorResult, _ctx: &mut Self::Context) -> Self::Result {
+    async fn handle(&mut self, msg: CreateActorResponse, _ctx: &mut Self::Context) -> Self::Result {
         debug_trace!("Handle command {:?}", msg);
 
-        let CreateActorResult { tag, result } = msg;
+        let CreateActorResponse { tag, result } = msg;
 
-        let ipc_msg = ipc_message::IpcMessage::node_message(
-            node_message::NodeMessage::create_actor_result(tag, result),
+        let ipc_msg = ipc_message::IpcMessage::node_message_response(
+            node_message::NodeMessageResponse::create_actor(tag, result),
         );
 
         if let Err(e) = self.send_ipc_message(ipc_msg).await {
+            // we can not do much if sending the response back to the remote peer fails, just log
+            // it
             warn!(
-                "Could not send `NodeMessage::CreateActorResult` to remote peer: {}",
+                "Could not send `NodeMessageResponse::CreateActor` to remote peer: {}",
                 e.report()
             )
         }
     }
 }
 
-impl Handler<ActorMessageReply> for Session {
+impl Handler<ActorMessageResponse> for Session {
     type Result = ();
 
     async fn handle(
         &mut self,
-        msg: ActorMessageReply,
+        msg: ActorMessageResponse,
         _ctx: &mut <Self as Actor>::Context,
     ) -> Self::Result {
         debug_trace!("Handle command {:?}", msg);
 
-        let ActorMessageReply { tag, result } = msg;
+        let ActorMessageResponse { tag, result } = msg;
 
-        let ipc_msg =
-            ipc_message::IpcMessage::actor_message(actor_message::ActorMessage::reply(tag, result));
+        let ipc_msg = ipc_message::IpcMessage::actor_message_response(
+            actor_message::ActorMessageResponse::new(tag, result),
+        );
 
         if let Err(e) = self.send_ipc_message(ipc_msg).await {
             warn!(
-                "Could not send `ActorMessage::Reply` to remote peer: {}",
+                "Could not send `ActorMessageResponse` to remote peer: {}",
                 e.report()
             )
         }

@@ -1,6 +1,20 @@
 syntax = "proto3";
 
+import "utils.proto";
+
 package node_message;
+
+// A message which is used to communicate with the remote node directly.
+//
+// This message will not be forwarded to any actors in the remote node.
+message NodeMessage {
+  oneof message {
+    // Creates a new actor in the remote node.
+    CreateActor create_actor = 1;
+    // Gets the index of a remote actor by its label.
+    GetActor get_actor = 2;
+  }
+}
 
 // A message which is used to create a new actor in the remote node.
 message CreateActor {
@@ -10,72 +24,38 @@ message CreateActor {
   string type = 2;
   // The config of the actor.
   string config = 3;
-  // The tag to be used in the reply.
+  // The tag to be used in the message response.
   uint64 tag = 4;
 }
 
-// A message which is used to get the index of a remote actor by its label.
+// A message which is used to get the index of an actor in the remote node by its actor handle if
+// the actor exists.
 message GetActor {
-  oneof actor_handle {
+  // The actor handle of the actor.
+  utils.ActorHandle actor = 1;
+  // The tag to be used in the message response.
+  uint64 tag = 2;
+}
+
+// A message which is used as the response of a `NodeMessage`.
+message NodeMessageResponse {
+  // The tag of the message.
+  uint64 tag = 1;
+
+  oneof response {
+    // The response of the `CreateActor` message.
+    ResultRemoteAddress create_actor = 2;
+    // The response of the `GetActor` message.
+    ResultRemoteAddress get_actor = 3;
+  }
+}
+
+// A message which represents a `Result<RemoteAddress, E>`.
+message ResultRemoteAddress {
+  oneof result {
+    // The actor id of the actor in the remote node.
     uint64 actor_id = 1;
-    string label    = 2;
-  }
-  // The tag to be used in the reply.
-  uint64 tag = 3;
-}
-
-// A message which is used to control the remote nodes.
-message NodeCommand {
-  oneof command {
-    // Creates a new actor in the remote node.
-    CreateActor create_actor = 1;
-    // Gets the index of a remote actor by its label.
-    GetActor get_actor = 2;
-  }
-}
-
-// The result of CreateActor command.
-message CreateActorResult {
-  // The tag of the message to be replied.
-  uint64 tag = 1;
-  // The result of the command.
-  oneof result {
-    // The index of the actor.
-    uint64 ok = 2;
     // The error message.
-    string err = 3;
-  }
-}
-
-// The result of GetActor command.
-message GetActorResult {
-  // The tag of the message to be replied.
-  uint64 tag = 1;
-  // The result of the command.
-  oneof result {
-    // The index of the actor.
-    uint64 ok = 2;
-    // The error message.
-    string err = 3;
-  }
-}
-
-// A message which is used to reply a node command.
-message NodeReply {
-  oneof reply {
-    // The result of CreateActor command.
-    CreateActorResult create_actor = 1;
-    // The result of GetActor command.
-    GetActorResult get_actor = 2;
-  }
-}
-
-// A message which is used to communicate with remote nodes directly.
-message NodeMessage {
-  oneof message {
-    // Node command.
-    NodeCommand command = 1;
-    // Reply of a node command.
-    NodeReply reply = 2;
+    string err = 2;
   }
 }

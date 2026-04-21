@@ -1,43 +1,39 @@
-use std::fmt::Display;
-
 use bytes::Bytes;
 
-pub use crate::proto::actor_message::actor_message::Message as ActorMessageType;
-pub use crate::proto::actor_message::reply::Result as ReplyResultType;
-pub use crate::proto::actor_message::{ActorMessage, DoSend, Reply, Send};
+pub use crate::proto::actor_message::actor_message_response::Response as ResponseType;
+pub use crate::proto::actor_message::{ActorMessage, ActorMessageResponse};
 
 impl ActorMessage {
     #[inline]
-    pub fn send(actor_id: u64, message: Bytes, tag: u64) -> Self {
+    pub fn send(actor_id: u64, message_id: u64, message: Bytes, tag: u64) -> Self {
         Self {
-            message: Some(ActorMessageType::Send(Send {
-                actor_id,
-                message,
-                tag,
-            })),
+            actor_id,
+            message_id,
+            message,
+            tag: Some(tag),
         }
     }
 
     #[inline]
-    pub fn do_send(actor_id: u64, message: Bytes) -> Self {
+    pub fn do_send(actor_id: u64, message_id: u64, message: Bytes) -> Self {
         Self {
-            message: Some(ActorMessageType::DoSend(DoSend { actor_id, message })),
+            actor_id,
+            message_id,
+            message,
+            tag: None,
         }
     }
+}
 
+impl ActorMessageResponse {
     #[inline]
-    pub fn reply<E>(tag: u64, result: Result<Bytes, E>) -> Self
-    where
-        E: Display,
-    {
+    pub fn new(tag: u64, response: Result<Bytes, String>) -> Self {
         Self {
-            message: Some(ActorMessageType::Reply(Reply {
-                tag,
-                result: Some(match result {
-                    Ok(message) => ReplyResultType::Ok(message),
-                    Err(e) => ReplyResultType::Err(e.to_string()),
-                }),
-            })),
+            tag,
+            response: Some(match response {
+                Ok(ok) => ResponseType::Ok(ok),
+                Err(err) => ResponseType::Err(err),
+            }),
         }
     }
 }

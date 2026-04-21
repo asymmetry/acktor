@@ -2,8 +2,9 @@ use std::fmt::Display;
 use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
+use prost::Message as _;
 
-use acktor_ipc_proto::utils::{OptionMessage, ResultMessage, ResultType};
+use acktor_ipc_proto::utils::{ProtoOption, ProtoResult, ProtoResultType};
 
 use super::errors::{DecodeError, EncodeError};
 use super::{Decode, DecodeContext, Encode, EncodeContext};
@@ -12,12 +13,12 @@ impl<T> Encode for Box<T>
 where
     T: Encode,
 {
-    #[inline]
+    const ID: u64 = T::ID;
+
     fn encoded_len(&self) -> usize {
         self.as_ref().encoded_len()
     }
 
-    #[inline]
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         self.as_ref().encode(buf, ctx)
     }
@@ -27,6 +28,8 @@ impl<T> Decode for Box<T>
 where
     T: Decode,
 {
+    const ID: u64 = T::ID;
+
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         T::decode(buf, ctx).map(Box::new)
     }
@@ -36,12 +39,12 @@ impl<T> Encode for Arc<T>
 where
     T: Encode,
 {
-    #[inline]
+    const ID: u64 = T::ID;
+
     fn encoded_len(&self) -> usize {
         self.as_ref().encoded_len()
     }
 
-    #[inline]
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         self.as_ref().encode(buf, ctx)
     }
@@ -51,6 +54,8 @@ impl<T> Decode for Arc<T>
 where
     T: Decode,
 {
+    const ID: u64 = T::ID;
+
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         T::decode(buf, ctx).map(Arc::new)
     }
@@ -61,7 +66,6 @@ where
     T: Encode,
     E: Display,
 {
-    #[inline]
     fn encoded_len(&self) -> usize {
         let inner_len = match self {
             Ok(ok) => ok.encoded_len(),
@@ -71,7 +75,6 @@ where
         1 + prost::length_delimiter_len(inner_len) + inner_len
     }
 
-    #[inline]
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         match self {
             Ok(ok) => {
@@ -125,10 +128,10 @@ where
 {
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-        let result = <ResultMessage as prost::Message>::decode(buf)?;
+        let result = ProtoResult::decode(buf)?;
         match result.result {
-            Some(ResultType::Ok(ok)) => Ok(Ok(T::decode(ok, ctx)?)),
-            Some(ResultType::Err(err)) => Ok(Err(E::from(err))),
+            Some(ProtoResultType::Ok(ok)) => Ok(Ok(T::decode(ok, ctx)?)),
+            Some(ProtoResultType::Err(err)) => Ok(Err(E::from(err))),
             _ => Err("missing field `result` in the `Result` message".into()),
         }
     }
@@ -138,7 +141,6 @@ impl<T> Encode for Option<T>
 where
     T: Encode,
 {
-    #[inline]
     fn encoded_len(&self) -> usize {
         match self {
             // bytes field: 1 byte tag + varint length + data
@@ -151,7 +153,6 @@ where
         }
     }
 
-    #[inline]
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         if let Some(some) = self {
             // field 1, wire type LengthDelimited (bytes)
@@ -184,9 +185,8 @@ impl<T> Decode for Option<T>
 where
     T: Decode,
 {
-    #[inline]
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-        let option = <OptionMessage as prost::Message>::decode(buf)?;
+        let option = ProtoOption::decode(buf)?;
         match option.option {
             Some(bytes) => Ok(Some(T::decode(bytes, ctx)?)),
             None => Ok(None),

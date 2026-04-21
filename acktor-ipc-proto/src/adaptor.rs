@@ -1,15 +1,16 @@
 use std::io;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ahash::HashMap;
 use bytes::{Bytes, BytesMut};
 use crossbeam_channel::Sender;
+use prost::Message as _;
 
 use crate::{actor_message, ipc_message};
 
-/// A parsed message which is the [`DoSend`][actor_message::DoSend] actor message type.
-pub struct ParsedActorDoSendMessage {
-    pub actor_id: usize,
+/// A parsed actor message.
+pub struct ParsedActorMessage {
+    pub actor_id: u64,
+    pub message_id: u64,
     pub message: Bytes,
 }
 
@@ -18,8 +19,8 @@ pub struct ParsedActorDoSendMessage {
 /// due to the limitation of the async support.
 #[derive(Debug)]
 pub struct ActorAdaptor {
-    tag: AtomicU64,
-    result_senders: HashMap<u64, Sender<Vec<u8>>>,
+    tag: u64,
+    result_senders: HashMap<u64, Sender<Bytes>>,
     buffer: BytesMut,
 }
 
@@ -27,7 +28,7 @@ impl Default for ActorAdaptor {
     #[inline]
     fn default() -> Self {
         Self {
-            tag: AtomicU64::new(0),
+            tag: 0,
             result_senders: HashMap::default(),
             buffer: BytesMut::with_capacity(8192),
         }
@@ -41,18 +42,25 @@ impl ActorAdaptor {
         Self::default()
     }
 
+    fn next_tag(&mut self) -> u64 {
+        let tag = self.tag;
+        self.tag += 1;
+        tag
+    }
+
     /// Sends a message to a remote actor identified by `actor_id` without expecting a response.
     pub fn do_send<'a, F, E>(
         &'a mut self,
         actor_id: usize,
-        msg: Bytes,
+        message_id: u64,
+        message: Bytes,
         send_func: F,
     ) -> Result<(), E>
     where
         F: FnOnce(&'a [u8]) -> Result<(), E>,
     {
         let ipc_message = ipc_message::IpcMessage::actor_message(
-            actor_message::ActorMessage::do_send(actor_id as u64, msg),
+            actor_message::ActorMessage::do_send(actor_id as u64, message_id, message),
         );
 
         let len = ipc_message.encoded_len();
@@ -68,18 +76,19 @@ impl ActorAdaptor {
     pub fn send<'a, F, E>(
         &'a mut self,
         actor_id: usize,
-        msg: Bytes,
-        result_tx: Sender<Vec<u8>>,
+        message_id: u64,
+        message: Bytes,
+        result_tx: Sender<Bytes>,
         send_func: F,
     ) -> Result<(), E>
     where
         F: FnOnce(&'a [u8]) -> Result<(), E>,
     {
-        let tag = self.tag.fetch_add(1, Ordering::Relaxed);
+        let tag = self.next_tag();
         self.result_senders.insert(tag, result_tx);
 
         let ipc_message = ipc_message::IpcMessage::actor_message(
-            actor_message::ActorMessage::send(actor_id as u64, msg, tag),
+            actor_message::ActorMessage::send(actor_id as u64, message_id, message, tag),
         );
 
         let len = ipc_message.encoded_len();
@@ -91,45 +100,42 @@ impl ActorAdaptor {
         send_func(&self.buffer[..len])
     }
 
-    pub fn parse(&mut self, msg: Bytes) -> Result<Option<ParsedActorDoSendMessage>, io::Error> {
+    pub fn parse(&mut self, msg: Bytes) -> Result<Option<ParsedActorMessage>, io::Error> {
         let ipc_msg = ipc_message::IpcMessage::decode(msg)?;
 
-        // in WebAssembly environments, we ignore the NodeMessage and the ControlMessage, and we
-        // also ignore the ActorMessage::Send variant
+        // in WebAssembly environments, we ignore the NodeMessage and the NodeMessageResponse, and
+        // we also ignore the ActorMessage that expects a response
 
-        if let Some(ipc_message::IpcMessageType::Actor(actor_msg)) = ipc_msg.message {
-            match actor_msg.message {
-                Some(actor_message::ActorMessageType::DoSend(actor_message::DoSend {
-                    actor_id,
-                    message,
-                })) => Ok(Some(ParsedActorDoSendMessage {
-                    actor_id: actor_id as usize,
-                    message,
-                })),
+        match ipc_msg.message {
+            Some(ipc_message::IpcMessageType::ActorMessage(actor_message::ActorMessage {
+                actor_id,
+                message_id,
+                message,
+                tag: None,
+            })) => Ok(Some(ParsedActorMessage {
+                actor_id,
+                message_id,
+                message,
+            })),
 
-                Some(actor_message::ActorMessageType::Reply(actor_message::Reply {
+            Some(ipc_message::IpcMessageType::ActorMessageResponse(
+                actor_message::ActorMessageResponse {
                     tag,
-                    reply,
-                })) => {
+                    response: Some(response),
+                },
+            )) => match response {
+                actor_message::ResponseType::Ok(ok) => {
                     if let Some(rx) = self.result_senders.remove(&tag) {
-                        let _ = rx.try_send(reply.to_vec());
+                        let _ = rx.try_send(ok);
                     }
 
                     Ok(None)
                 }
 
-                _ => {
-                    // NOTE: in WebAssembly environment, we do not support the
-                    // ActorMessage::Send variant
+                actor_message::ResponseType::Err(err) => Err(io::Error::other(err)),
+            },
 
-                    Err(io::Error::other("unsupported actor message type"))
-                }
-            }
-        } else {
-            // NOTE: in WebAssembly environment, we do not support the NodeMessage and
-            // the ControlMessage
-
-            Err(io::Error::other("unsupported ipc message type"))
+            _ => Err(io::Error::other("unsupported ipc message type")),
         }
     }
 }

@@ -54,11 +54,11 @@ message SupervisionEvent {
     string err = 2;
   }
 
-  // Terminated message, which is used to report an unrecoverable error.
+  // Terminated message, which is used to report the termination of an actor.
   message Terminated {
     // The index of the sender actor.
     uint64 actor_id = 1;
-    // The error message.
+    // The error message, which is used to report the reason for termination.
     optional string err = 2;
   }
 
@@ -82,7 +82,7 @@ message SupervisionEvent {
 
     // The index of the sender actor.
     uint64 actor_id = 1;
-    // The state of the actor.
+    // The state of the sender actor.
     ActorState state = 2;
   }
 
@@ -95,24 +95,5 @@ message SupervisionEvent {
     Panicked panicked = 3;
     // Reports a state message.
     State state = 4;
-  }
-}
-
-// A message which is used to control remote actors.
-message ControlMessage {
-  // A signature which is used to uniquely identify the control message.
-  fixed32 signature = 1;
-
-  oneof message {
-    // Stops/terminates a remote actor.
-    Signal signal = 2;
-    // Sets/Unsets a supervisor for a remote actor.
-    Supervisor supervisor = 3;
-    // Registers/Unregisters an observer for a remote actor.
-    Observer observer = 4;
-    // Pauses/Resumes a remote cron actor.
-    CronSignal cron_signal = 5;
-    // Reports the status of the current actor to a remote actor.
-    SupervisionEvent supervision_event = 6;
   }
 }

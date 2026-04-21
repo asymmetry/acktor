@@ -18,11 +18,10 @@ pub use errors::{DecodeError, EncodeError};
 mod control_message;
 mod ipc_message;
 
-#[cfg(any(feature = "default-codec", feature = "prost-codec"))]
 mod common_codec;
-#[cfg(feature = "default-codec")]
+#[cfg(not(feature = "prost-codec"))]
 mod default_codec;
-#[cfg(all(feature = "prost-codec", not(feature = "default-codec")))]
+#[cfg(feature = "prost-codec")]
 mod prost_codec;
 
 /// Context passed through every [`Encode::encode`] call.
@@ -124,6 +123,22 @@ impl DecodeContext {
 
 /// Describes how to encode a remote message.
 pub trait Encode {
+    /// Message identifier. A remote message should have an unique identifier so the
+    /// `Handler<RemoteMessage>` can dispatch the message to the proper handler.
+    ///
+    /// Here `unique` means that for one particular actor type, the messages that can be handled
+    /// by it must have unique identifiers, but two different actor can have messages share the
+    /// same identifier.
+    ///
+    /// The identifier in [`Encode`] and [`Decode`] must be the same for the same message type.
+    ///
+    /// The derived implementation of `Handler<RemoteMessage>` relies on this identifier to work
+    /// properly. If you do not use the derived implementation of `Handler<RemoteMessage>`, you
+    /// can ignore this requirement and just use the default value.
+    ///
+    /// (u64::MAX - 255) ~ u64::MAX is reserved for internal use.
+    const ID: u64 = 0;
+
     /// Returns the number of bytes this value will encode to.
     fn encoded_len(&self) -> usize;
 
@@ -141,6 +156,22 @@ pub trait Encode {
 
 /// Describes how to decode a remote message.
 pub trait Decode {
+    /// Message identifier. A remote message should have an unique identifier so the
+    /// `Handler<RemoteMessage>` can dispatch the message to the proper handler.
+    ///
+    /// Here `unique` means that for one particular actor type, the messages that can be handled
+    /// by it must have unique identifiers, but two different actor can have messages share the
+    /// same identifier.
+    ///
+    /// The identifier in [`Encode`] and [`Decode`] must be the same for the same message type.
+    ///
+    /// The derived implementation of `Handler<RemoteMessage>` relies on this identifier to work
+    /// properly. If you do not use the derived implementation of `Handler<RemoteMessage>`, you
+    /// can ignore this requirement and just use the default value.
+    ///
+    /// (u64::MAX - 255) ~ u64::MAX is reserved for internal use.
+    const ID: u64 = 0;
+
     /// Decodes the remote message from the provided buffer.
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError>
     where

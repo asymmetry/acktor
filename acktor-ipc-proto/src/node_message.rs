@@ -1,26 +1,20 @@
-use std::fmt::Display;
-
-pub use super::proto::node_message::create_actor_result::Result as CreateActorResultType;
-pub use super::proto::node_message::get_actor::ActorHandle;
-pub use super::proto::node_message::get_actor_result::Result as GetActorResultType;
-pub use super::proto::node_message::node_command::Command as NodeCommandType;
-pub use super::proto::node_message::node_message::Message as NodeMessageType;
-pub use super::proto::node_message::node_reply::Reply as NodeReplyType;
+pub use super::proto::node_message::node_message::Message as MessageType;
+pub use super::proto::node_message::node_message_response::Response as ResponseType;
+pub use super::proto::node_message::result_remote_address::Result as ResultType;
 pub use super::proto::node_message::{
-    CreateActor, CreateActorResult, GetActor, GetActorResult, NodeCommand, NodeMessage, NodeReply,
+    CreateActor, GetActor, NodeMessage, NodeMessageResponse, ResultRemoteAddress,
 };
+use crate::utils::ActorHandle;
 
 impl NodeMessage {
     #[inline]
     pub fn create_actor(label: String, r#type: String, config: String, tag: u64) -> Self {
         Self {
-            message: Some(NodeMessageType::Command(NodeCommand {
-                command: Some(NodeCommandType::CreateActor(CreateActor {
-                    label,
-                    r#type,
-                    config,
-                    tag,
-                })),
+            message: Some(MessageType::CreateActor(CreateActor {
+                label,
+                r#type,
+                config,
+                tag,
             })),
         }
     }
@@ -28,11 +22,9 @@ impl NodeMessage {
     #[inline]
     pub fn get_actor_with_index(actor_id: u64, tag: u64) -> Self {
         Self {
-            message: Some(NodeMessageType::Command(NodeCommand {
-                command: Some(NodeCommandType::GetActor(GetActor {
-                    actor_handle: Some(ActorHandle::ActorId(actor_id)),
-                    tag,
-                })),
+            message: Some(MessageType::GetActor(GetActor {
+                actor: Some(ActorHandle::index(actor_id)),
+                tag,
             })),
         }
     }
@@ -40,50 +32,36 @@ impl NodeMessage {
     #[inline]
     pub fn get_actor_with_label(label: String, tag: u64) -> Self {
         Self {
-            message: Some(NodeMessageType::Command(NodeCommand {
-                command: Some(NodeCommandType::GetActor(GetActor {
-                    actor_handle: Some(ActorHandle::Label(label)),
-                    tag,
-                })),
+            message: Some(MessageType::GetActor(GetActor {
+                actor: Some(ActorHandle::label(label)),
+                tag,
             })),
         }
     }
+}
 
-    pub fn create_actor_result<E>(tag: u64, result: Result<u64, E>) -> Self
-    where
-        E: Display,
-    {
+impl NodeMessageResponse {
+    #[inline]
+    pub fn create_actor(tag: u64, result: Result<u64, String>) -> Self {
         Self {
-            message: Some(NodeMessageType::Reply(NodeReply {
-                reply: Some(match result {
-                    Ok(actor_id) => NodeReplyType::CreateActor(CreateActorResult {
-                        tag,
-                        result: Some(CreateActorResultType::Ok(actor_id)),
-                    }),
-                    Err(e) => NodeReplyType::CreateActor(CreateActorResult {
-                        tag,
-                        result: Some(CreateActorResultType::Err(e.to_string())),
-                    }),
+            tag,
+            response: Some(ResponseType::CreateActor(ResultRemoteAddress {
+                result: Some(match result {
+                    Ok(ok) => ResultType::ActorId(ok),
+                    Err(err) => ResultType::Err(err),
                 }),
             })),
         }
     }
 
-    pub fn get_actor_result<E>(tag: u64, result: Result<u64, E>) -> Self
-    where
-        E: Display,
-    {
+    #[inline]
+    pub fn get_actor(tag: u64, result: Result<u64, String>) -> Self {
         Self {
-            message: Some(NodeMessageType::Reply(NodeReply {
-                reply: Some(match result {
-                    Ok(actor_id) => NodeReplyType::GetActor(GetActorResult {
-                        tag,
-                        result: Some(GetActorResultType::Ok(actor_id)),
-                    }),
-                    Err(e) => NodeReplyType::GetActor(GetActorResult {
-                        tag,
-                        result: Some(GetActorResultType::Err(e.to_string())),
-                    }),
+            tag,
+            response: Some(ResponseType::GetActor(ResultRemoteAddress {
+                result: Some(match result {
+                    Ok(ok) => ResultType::ActorId(ok),
+                    Err(err) => ResultType::Err(err),
                 }),
             })),
         }

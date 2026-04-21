@@ -123,13 +123,13 @@ pub mod supervision_event {
         #[prost(string, tag = "2")]
         pub err: ::prost::alloc::string::String,
     }
-    /// Terminated message, which is used to report an unrecoverable error.
+    /// Terminated message, which is used to report the termination of an actor.
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Terminated {
         /// The index of the sender actor.
         #[prost(uint64, tag = "1")]
         pub actor_id: u64,
-        /// The error message.
+        /// The error message, which is used to report the reason for termination.
         #[prost(string, optional, tag = "2")]
         pub err: ::core::option::Option<::prost::alloc::string::String>,
     }
@@ -149,7 +149,7 @@ pub mod supervision_event {
         /// The index of the sender actor.
         #[prost(uint64, tag = "1")]
         pub actor_id: u64,
-        /// The state of the actor.
+        /// The state of the sender actor.
         #[prost(enumeration = "state::ActorState", tag = "2")]
         pub state: i32,
     }
@@ -207,35 +207,5 @@ pub mod supervision_event {
         /// Reports a state message.
         #[prost(message, tag = "4")]
         State(State),
-    }
-}
-/// A message which is used to control remote actors.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ControlMessage {
-    /// A signature which is used to uniquely identify the control message.
-    #[prost(fixed32, tag = "1")]
-    pub signature: u32,
-    #[prost(oneof = "control_message::Message", tags = "2, 3, 4, 5, 6")]
-    pub message: ::core::option::Option<control_message::Message>,
-}
-/// Nested message and enum types in `ControlMessage`.
-pub mod control_message {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Message {
-        /// Stops/terminates a remote actor.
-        #[prost(message, tag = "2")]
-        Signal(super::Signal),
-        /// Sets/Unsets a supervisor for a remote actor.
-        #[prost(message, tag = "3")]
-        Supervisor(super::Supervisor),
-        /// Registers/Unregisters an observer for a remote actor.
-        #[prost(message, tag = "4")]
-        Observer(super::Observer),
-        /// Pauses/Resumes a remote cron actor.
-        #[prost(message, tag = "5")]
-        CronSignal(super::CronSignal),
-        /// Reports the status of the current actor to a remote actor.
-        #[prost(message, tag = "6")]
-        SupervisionEvent(super::SupervisionEvent),
     }
 }

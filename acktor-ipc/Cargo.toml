@@ -16,11 +16,10 @@ rustc-args = ["--cfg", "tokio_unstable"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["derive", "websocket", "default-codec"]
+default = ["derive"]
 derive = ["dep:acktor-derive"]
 # pre-implemented IPC methods
-# enable one of these features to select the IPC method to use or disable them all to
-# implement the IPC method manually
+# enable one of these features to select the IPC method to use
 pipe = [
     "dep:interprocess",
     "dep:tokio-util",
@@ -31,8 +30,7 @@ websocket = ["dep:tokio-tungstenite", "tokio/net"]
 # codec for primitive types
 # the default codec use zerocopy for some primitive types for efficiency, assuming a Rust-to-Rust
 # communication scenario
-default-codec = []
-prost-codec = []   # use prost for all types
+prost-codec = [] # use prost for all types
 
 [dependencies]
 ahash.workspace = true
@@ -41,11 +39,11 @@ dashmap.workspace = true
 futures-util.workspace = true
 prost.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
 tracing.workspace = true
 zerocopy.workspace = true
 
 interprocess = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
 tokio-util = { workspace = true, features = ["codec"], optional = true }
 
@@ -61,3 +59,7 @@ pretty_assertions.workspace = true
 rkyv.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "time"] }
 tracing-subscriber.workspace = true
+
+[[example]]
+name = "pingpong"
+required-features = ["websocket"]

@@ -50,6 +50,7 @@ macro_rules! impl_encode_decode_for {
         }
 
         impl Decode for $type {
+            #[inline]
             fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
                 let value = <$wire_type as prost::Message>::decode(buf)?;
                 <$type>::try_from(value).map_err(|e| e.to_string().into())
@@ -292,9 +293,51 @@ macro_rules! impl_encode_decode_for_tuple {
 impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12]);
 impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A]);
 impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22]);
-impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A]);
-impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A, T5 t5 5 0x32]);
-impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A, T5 t5 5 0x32, T6 t6 6 0x3A]);
-impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A, T5 t5 5 0x32, T6 t6 6 0x3A, T7 t7 7 0x42]);
-impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A, T5 t5 5 0x32, T6 t6 6 0x3A, T7 t7 7 0x42, T8 t8 8 0x4A]);
-impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A, T5 t5 5 0x32, T6 t6 6 0x3A, T7 t7 7 0x42, T8 t8 8 0x4A, T9 t9 9 0x52]);
+impl_encode_decode_for_tuple!([
+    T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A
+]);
+impl_encode_decode_for_tuple!([
+    T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A, T5 t5 5 0x32
+]);
+impl_encode_decode_for_tuple!([
+    T0 t0 0 0x0A,
+    T1 t1 1 0x12,
+    T2 t2 2 0x1A,
+    T3 t3 3 0x22,
+    T4 t4 4 0x2A,
+    T5 t5 5 0x32,
+    T6 t6 6 0x3A
+]);
+impl_encode_decode_for_tuple!([
+    T0 t0 0 0x0A,
+    T1 t1 1 0x12,
+    T2 t2 2 0x1A,
+    T3 t3 3 0x22,
+    T4 t4 4 0x2A,
+    T5 t5 5 0x32,
+    T6 t6 6 0x3A,
+    T7 t7 7 0x42
+]);
+impl_encode_decode_for_tuple!([
+    T0 t0 0 0x0A,
+    T1 t1 1 0x12,
+    T2 t2 2 0x1A,
+    T3 t3 3 0x22,
+    T4 t4 4 0x2A,
+    T5 t5 5 0x32,
+    T6 t6 6 0x3A,
+    T7 t7 7 0x42,
+    T8 t8 8 0x4A
+]);
+impl_encode_decode_for_tuple!([
+    T0 t0 0 0x0A,
+    T1 t1 1 0x12,
+    T2 t2 2 0x1A,
+    T3 t3 3 0x22,
+    T4 t4 4 0x2A,
+    T5 t5 5 0x32,
+    T6 t6 6 0x3A,
+    T7 t7 7 0x42,
+    T8 t8 8 0x4A,
+    T9 t9 9 0x52
+]);
