@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package control_message;
+
+// Stops/terminates a remote actor.
+message Signal {
+  enum Signal {
+    STOP      = 0;
+    TERMINATE = 1;
+  }
+
+  Signal signal = 1;
+}
+
+// Sets/Unsets a supervisor for a remote actor.
+message Supervisor {
+  oneof supervisor {
+    // Sets a supervisor for a remote actor.
+    uint64 set = 1;
+    // Unsets a supervisor for a remote actor.
+    google.protobuf.Empty unset = 2;
+  }
+}
+
+// Registers/Unregisters an observer for a remote actor.
+message Observer {
+  oneof observer {
+    // Registers an observer for a remote actor.
+    uint64 register = 1;
+    // Unregisters an observer for a remote actor.
+    uint64 unregister = 2;
+  }
+}
+
+// Pauses/Resumes a remote cron actor.
+message CronSignal {
+  enum CronSignal {
+    PAUSE  = 0;
+    RESUME = 1;
+  }
+
+  CronSignal signal = 1;
+}
+
+// Reports the status of the current actor to a remote actor.
+message SupervisionEvent {
+  // Warning message, which is used to report a recoverable error.
+  message Warn {
+    // The index of the sender actor.
+    uint64 actor_id = 1;
+    // The error message.
+    string err = 2;
+  }
+
+  // Terminated message, which is used to report the termination of an actor.
+  message Terminated {
+    // The index of the sender actor.
+    uint64 actor_id = 1;
+    // The error message, which is used to report the reason for termination.
+    optional string err = 2;
+  }
+
+  // Panicked message, which is used to report a panic.
+  message Panicked {
+    // The index of the sender actor.
+    uint64 actor_id = 1;
+    // The panic info.
+    string info = 2;
+  }
+
+  // State message, which is used to report the state of an actor.
+  message State {
+    enum ActorState {
+      UNSTARTED = 0;
+      STARTING  = 1;
+      RUNNING   = 2;
+      STOPPING  = 3;
+      STOPPED   = 4;
+    }
+
+    // The index of the sender actor.
+    uint64 actor_id = 1;
+    // The state of the sender actor.
+    ActorState state = 2;
+  }
+
+  oneof event {
+    // Reports a warning message.
+    Warn warn = 1;
+    // Reports a terminated message.
+    Terminated terminated = 2;
+    // Reports a panicked message.
+    Panicked panicked = 3;
+    // Reports a state message.
+    State state = 4;
+  }
+}

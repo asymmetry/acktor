@@ -23,7 +23,7 @@
 //! }
 //!
 //! #[derive(Debug, Message)]
-//! #[result_type = "i64"]
+//! #[result_type(i64)]
 //! enum CounterMsg {
 //!     Increment,
 //!     Get,
@@ -63,44 +63,45 @@
 //! | `derive` | Yes | Enables `#[derive(Message)]` and `#[derive(MessageResponse)]` macros. |
 //! | `tokio-tracing` | No | Names spawned actor tasks for [`tokio-console`](https://docs.rs/console-subscriber). Requires building with `RUSTFLAGS="--cfg tokio_unstable"`. |
 //! | `bottleneck-warning` | No | Emits `tracing::debug!` logs when an observer's mailbox is full during notification, useful for spotting slow consumers. |
+//!
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub mod errors {
-    //! Re-exports some error types from tokio.
+mod errors;
+pub use errors::{BoxError, ErrorReport, RecvError, SendError};
 
-    pub use tokio::sync::mpsc::error::{SendError, TryRecvError, TrySendError};
-}
+pub mod channel;
 
-mod utils;
+pub mod utils;
 
-mod actor;
-pub use actor::{Actor, ActorContext, ActorState, Stopping};
+#[doc(hidden)]
+pub mod actor;
+pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
 
 mod context;
 pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
 
 pub mod address;
-pub use address::{Address, Recipient, Sender, SenderIndex};
+pub use address::{Address, Recipient, Sender, SenderId};
 
 pub mod message;
-pub use message::{Handler, Message, MessageResponse, MessageResult};
+pub use message::{Handler, Message, MessageResponse};
 
 pub mod envelope;
-
-pub mod cron;
-pub mod observer;
-pub mod supervisor;
 
 mod signal;
 pub use signal::Signal;
 
+pub mod supervisor;
+
+#[cfg(feature = "observer")]
+#[cfg_attr(docsrs, doc(cfg(feature = "observer")))]
+pub mod observer;
+
+#[cfg(feature = "cron")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cron")))]
+pub mod cron;
+
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use acktor_derive::{Message, MessageResponse};
-
-pub mod macros {
-    //! Utility macros for error reporting and debug tracing.
-
-    pub use acktor_macros::{debug_trace, report};
-}

@@ -1,0 +1,18 @@
+[package]
+name = "acktor-ipc-proto"
+version = "1.0.0"
+description = "Interprocess communication protocol for the acktor actor framework"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[dependencies]
+bytes.workspace = true
+prost.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+ahash.workspace = true
+crossbeam-channel.workspace = true

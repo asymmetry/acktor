@@ -15,13 +15,13 @@ impl Actor for A {
 }
 
 #[derive(Debug, Message)]
-#[result_type = "()"]
-pub struct PingA;
+#[result_type(())]
+pub struct Notify;
 
-impl Handler<PingA> for A {
+impl Handler<Notify> for A {
     type Result = ();
 
-    async fn handle(&mut self, _msg: PingA, ctx: &mut Self::Context) -> Self::Result {
+    async fn handle(&mut self, _msg: Notify, ctx: &mut Self::Context) -> Self::Result {
         ctx.notify_supervisor(SupervisionEvent::Warn(ctx.address(), anyhow!("A")))
             .await;
         ctx.notify_supervisor(SupervisionEvent::Terminated(ctx.address(), None))
@@ -35,13 +35,13 @@ impl Handler<PingA> for A {
 }
 
 #[derive(Debug, Message)]
-#[result_type = "()"]
-pub struct TryPingA;
+#[result_type(())]
+pub struct TryNotify;
 
-impl Handler<TryPingA> for A {
+impl Handler<TryNotify> for A {
     type Result = ();
 
-    async fn handle(&mut self, _msg: TryPingA, ctx: &mut Self::Context) -> Self::Result {
+    async fn handle(&mut self, _msg: TryNotify, ctx: &mut Self::Context) -> Self::Result {
         ctx.try_notify_supervisor(SupervisionEvent::Warn(ctx.address(), anyhow!("A")));
         ctx.try_notify_supervisor(SupervisionEvent::Terminated(ctx.address(), None));
         ctx.try_notify_supervisor(SupervisionEvent::Terminated(
@@ -53,7 +53,7 @@ impl Handler<TryPingA> for A {
 
 #[derive(Debug)]
 pub struct B {
-    received: bool,
+    received: usize,
 }
 
 impl Actor for B {
@@ -64,25 +64,26 @@ impl Actor for B {
 impl Handler<SupervisionEvent<A>> for B {
     type Result = ();
 
-    async fn handle(
-        &mut self,
-        _message: SupervisionEvent<A>,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
-        self.received = true;
+    async fn handle(&mut self, msg: SupervisionEvent<A>, _ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            SupervisionEvent::Warn(_, _) => self.received += 1,
+            SupervisionEvent::Terminated(_, None) => self.received += 2,
+            SupervisionEvent::Terminated(_, Some(_)) => self.received += 4,
+            _ => {}
+        }
     }
 }
 
 #[derive(Debug, Message)]
-#[result_type = "bool"]
+#[result_type(usize)]
 pub struct CheckB;
 
 impl Handler<CheckB> for B {
-    type Result = bool;
+    type Result = usize;
 
     async fn handle(&mut self, _msg: CheckB, _ctx: &mut Self::Context) -> Self::Result {
         let result = self.received;
-        self.received = false;
+        self.received = 0;
         result
     }
 }
@@ -91,11 +92,13 @@ impl Handler<CheckB> for B {
 async fn test_supervisor() {
     let (a_address, _) = A.run("A").unwrap();
 
-    a_address.send(PingA).await.unwrap().await.unwrap();
-    a_address.send(TryPingA).await.unwrap().await.unwrap();
+    // no effect
+    a_address.send(Notify).await.unwrap().await.unwrap();
+    a_address.send(TryNotify).await.unwrap().await.unwrap();
 
-    let (b_address, _) = B { received: false }.run("B").unwrap();
+    let (b_address, _) = B { received: 0 }.run("B").unwrap();
 
+    // set B as the supervisor of A
     a_address
         .send(Supervisor::Set(b_address.clone().into()))
         .await
@@ -103,13 +106,17 @@ async fn test_supervisor() {
         .await
         .unwrap();
 
-    a_address.send(PingA).await.unwrap().await.unwrap();
+    // trigger A to notify supervisor
+    a_address.send(Notify).await.unwrap().await.unwrap();
 
+    // B should receive the supervision events
     let received = b_address.send(CheckB).await.unwrap().await.unwrap();
-    assert_eq!(received, true);
+    assert_eq!(received, 7);
 
-    a_address.send(TryPingA).await.unwrap().await.unwrap();
+    // trigger A to notify supervisor
+    a_address.send(TryNotify).await.unwrap().await.unwrap();
 
+    // B should receive the supervision events
     let received = b_address.send(CheckB).await.unwrap().await.unwrap();
-    assert_eq!(received, true);
+    assert_eq!(received, 7);
 }

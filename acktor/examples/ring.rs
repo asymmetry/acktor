@@ -24,11 +24,11 @@ pub struct Node {
 
 impl Actor for Node {
     type Context = Context<Self>;
-    type Error = String;
+    type Error = anyhow::Error;
 }
 
 #[derive(Debug, Message)]
-#[result_type = "()"]
+#[result_type(())]
 pub struct Payload(usize);
 
 impl Handler<Payload> for Node {

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["acktor", "acktor-derive", "acktor-macros"]
+members = ["acktor", "acktor-derive", "acktor-ipc", "acktor-ipc-proto"]
+exclude = ["ipc-proto-gen"]
 
 [workspace.package]
 edition = "2024"
@@ -12,6 +13,31 @@ categories = ["asynchronous"]
 keywords = ["actor", "async"]
 
 [workspace.dependencies]
+# dependencies
+ahash = "0.8"
+bytes = "1.10"
+chrono = "0.4"
+crossbeam-channel = "0.5"
+dashmap = "6.1"
+futures-util = "0.3"
+interprocess = { version = "2.2", features = ["tokio"] }
+prost = "0.14"
+thiserror = "2.0"
+tokio = "1.47"
+tokio-tungstenite = "0.29"
+tokio-util = "0.7"
+tracing = "0.1"
+zerocopy = { version = "0.8", features = ["derive"] }
+
+# dev-dependencies
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+pretty_assertions = "1.4"
+rkyv = "0.8"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# workspace
 acktor = { version = "1.0", path = "./acktor" }
 acktor-derive = { version = "1.0", path = "./acktor-derive" }
-acktor-macros = { version = "1.0", path = "./acktor-macros" }
+acktor-ipc = { version = "1.0", path = "./acktor-ipc" }
+acktor-ipc-proto = { version = "1.0", path = "./acktor-ipc-proto" }

@@ -1,6 +1,6 @@
 [package]
 name = "acktor-derive"
-version = "1.0.2"
+version = "1.0.3"
 description = "Derive macros for the acktor actor framework"
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,6 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-exclude = ["tests/*"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -18,13 +17,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1"
+proc-macro2 = "1.0"
 quote = "1.0"
-syn = "2.0"
-
-[dev-dependencies]
-anyhow = "1.0"
-pretty_assertions = "1.4"
-tokio = { version = "1.37", features = ["macros"] }
-
-acktor.workspace = true
+syn = { version = "2.0", features = ["full"] }

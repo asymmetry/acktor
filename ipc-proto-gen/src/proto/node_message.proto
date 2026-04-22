@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+import "utils.proto";
+
+package node_message;
+
+// A message which is used to communicate with the remote node directly.
+//
+// This message will not be forwarded to any actors in the remote node.
+message NodeMessage {
+  oneof message {
+    // Creates a new actor in the remote node.
+    CreateActor create_actor = 1;
+    // Gets the index of a remote actor by its label.
+    GetActor get_actor = 2;
+  }
+}
+
+// A message which is used to create a new actor in the remote node.
+message CreateActor {
+  // The label of the actor.
+  string label = 1;
+  // The type of the actor.
+  string type = 2;
+  // The config of the actor.
+  string config = 3;
+  // The tag to be used in the message response.
+  uint64 tag = 4;
+}
+
+// A message which is used to get the index of an actor in the remote node by its actor handle if
+// the actor exists.
+message GetActor {
+  // The actor handle of the actor.
+  utils.ActorHandle actor = 1;
+  // The tag to be used in the message response.
+  uint64 tag = 2;
+}
+
+// A message which is used as the response of a `NodeMessage`.
+message NodeMessageResponse {
+  // The tag of the message.
+  uint64 tag = 1;
+
+  oneof response {
+    // The response of the `CreateActor` message.
+    ResultRemoteAddress create_actor = 2;
+    // The response of the `GetActor` message.
+    ResultRemoteAddress get_actor = 3;
+  }
+}
+
+// A message which represents a `Result<RemoteAddress, E>`.
+message ResultRemoteAddress {
+  oneof result {
+    // The actor id of the actor in the remote node.
+    uint64 actor_id = 1;
+    // The error message.
+    string err = 2;
+  }
+}

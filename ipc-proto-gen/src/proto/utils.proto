@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package utils;
+
+// A message which represents a `Result<T, E>` in Rust.
+message Result {
+  oneof result {
+    // The ok message.
+    bytes ok = 1;
+    // The err message.
+    string err = 2;
+  }
+}
+
+// A message which represents an `Option<T>` in Rust.
+message Option {
+  optional bytes option = 1;
+}
+
+// A message which represents a `Vec<bool>`.
+message VecBool   { repeated bool   values = 1; }
+
+// A message which represents a `Vec<i32>`.
+message VecInt32  { repeated int32  values = 1; }
+
+// A message which represents a `Vec<i64>`.
+message VecInt64  { repeated int64  values = 1; }
+
+// A message which represents a `Vec<u32>`.
+message VecUint32 { repeated uint32 values = 1; }
+
+// A message which represents a `Vec<u64>`.
+message VecUint64 { repeated uint64 values = 1; }
+
+// A message which represents a `Vec<f32>`.
+message VecFloat  { repeated float  values = 1; }
+
+// A message which represents a `Vec<f64>`.
+message VecDouble { repeated double values = 1; }
+
+// A message which represents a `(t0, t1, ...)` up to 10 elements.
+message Tuple {
+  optional bytes t0 = 1;
+  optional bytes t1 = 2;
+  optional bytes t2 = 3;
+  optional bytes t3 = 4;
+  optional bytes t4 = 5;
+  optional bytes t5 = 6;
+  optional bytes t6 = 7;
+  optional bytes t7 = 8;
+  optional bytes t8 = 9;
+  optional bytes t9 = 10;
+}
+
+// A message which represents an `ActorHandle`.
+message ActorHandle {
+  oneof handle {
+    // The index of the actor.
+    uint64 index = 1;
+    // The label of the actor.
+    string label = 2;
+  }
+}

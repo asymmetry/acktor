@@ -1,52 +1,71 @@
-use tokio::sync::mpsc::{self, error::TryRecvError};
+use std::fmt::{self, Debug};
 
 use crate::actor::Actor;
+use crate::channel::mpsc;
 use crate::envelope::Envelope;
+use crate::errors::RecvError;
 
-/// A type which holds a queue of messages to be processed by an actor.
-///
-/// Mailbox is the receiver side of the communication channel of an actor.
-#[derive(Debug)]
-pub struct Mailbox<A>
+/// The mailbox of an actor, which holds a queue of messages to be processed by the actor.
+#[repr(transparent)]
+pub struct Mailbox<A>(mpsc::Receiver<Envelope<A>>)
+where
+    A: Actor;
+
+impl<A> Debug for Mailbox<A>
 where
     A: Actor,
 {
-    rx: mpsc::Receiver<Envelope<A>>,
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("Mailbox<{}>", crate::utils::type_name::<A>()))
+    }
 }
 
 impl<A> Mailbox<A>
 where
     A: Actor,
 {
-    /// Constructs a new mailbox with the given receiver.
+    /// Constructs a new [`Mailbox`] with the given receiver.
     pub fn new(rx: mpsc::Receiver<Envelope<A>>) -> Self {
-        Self { rx }
+        Self(rx)
     }
 
-    /// Receives the next message from this mailbox.
-    pub fn recv(&mut self) -> impl Future<Output = Option<Envelope<A>>> + Send + '_ {
-        self.rx.recv()
+    /// Receives a message from the mailbox.
+    pub fn recv(&mut self) -> impl Future<Output = Result<Envelope<A>, RecvError>> + Send {
+        self.0.recv()
     }
 
-    /// Attempts to receive the next message from this mailbox without blocking.
-    pub fn try_recv(&mut self) -> Result<Envelope<A>, TryRecvError> {
-        self.rx.try_recv()
+    /// Attempts to receive a message from the mailbox.
+    pub fn try_recv(&mut self) -> Result<Envelope<A>, RecvError> {
+        self.0.try_recv()
     }
 
-    /// Receives the next message from this mailbox.
-    ///
-    /// This method is intended for use cases where you are receiving from synchronous code.
-    pub fn blocking_recv(&mut self) -> Option<Envelope<A>> {
-        self.rx.blocking_recv()
+    /// Closes the mailbox, preventing any new messages from being sent to it.
+    pub fn close(&mut self) {
+        self.0.close();
+    }
+
+    /// Checks if the mailbox is closed.
+    pub fn is_closed(&self) -> bool {
+        self.0.is_closed()
     }
 
     /// Checks if the mailbox is empty.
     pub fn is_empty(&self) -> bool {
-        self.rx.is_empty()
+        self.0.is_empty()
     }
 
     /// Returns the number of messages in the mailbox.
     pub fn len(&self) -> usize {
-        self.rx.len()
+        self.0.len()
+    }
+
+    /// Returns the current capacity of the mailbox.
+    pub fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+
+    /// Returns the maximum buffer capacity of the mailbox.
+    pub fn max_capacity(&self) -> usize {
+        self.0.max_capacity()
     }
 }

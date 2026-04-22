@@ -6,11 +6,10 @@
 use std::fmt;
 use std::future::{self, Future};
 
-use acktor_macros::debug_trace;
-
 use crate::actor::{Actor, ActorContext, ActorState};
-use crate::address::{Address, Recipient};
+use crate::address::{Address, Recipient, SenderId};
 use crate::message::{Handler, Message};
+use crate::utils::debug_trace;
 
 /// A message which is used to report actor status to a supervisor.
 #[derive(Debug)]
@@ -22,6 +21,8 @@ where
     Warn(Address<A>, A::Error),
     /// Actor terminated with or without error.
     Terminated(Address<A>, Option<A::Error>),
+    /// Actor panicked with the given panic info.
+    Panicked(Address<A>, String),
     /// Actor state changed.
     State(Address<A>, ActorState),
 }
@@ -50,7 +51,14 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Supervisor::Set(recipient) => f.debug_tuple("Set").field(&recipient).finish(),
+            Supervisor::Set(recipient) => f
+                .debug_tuple("Set")
+                .field(&format_args!(
+                    "SupervisionEvent<{}>({})",
+                    crate::utils::type_name::<A>(),
+                    recipient.index()
+                ))
+                .finish(),
             Supervisor::Unset => f.debug_tuple("Unset").finish(),
         }
     }

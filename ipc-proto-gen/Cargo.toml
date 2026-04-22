@@ -1,0 +1,17 @@
+[package]
+name = "ipc-proto-gen"
+description = "Protobuf code generator for acktor-ipc-proto crate"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Chao Gu"]
+license = "MIT"
+repository = "https://github.com/asymmetry/acktor"
+categories = ["asynchronous"]
+keywords = ["actor", "async"]
+
+[dependencies]
+prost = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"

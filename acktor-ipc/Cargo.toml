@@ -1,0 +1,73 @@
+[package]
+name = "acktor-ipc"
+version = "1.0.0"
+description = "Interprocess communication support for the acktor actor framework"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+exclude = ["examples/*"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustc-args = ["--cfg", "tokio_unstable"]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["derive"]
+derive = ["dep:acktor-derive"]
+# pre-implemented IPC methods
+# enable one of these features to select the IPC method to use
+pipe = [
+    "dep:interprocess",
+    "dep:tokio-util",
+    "futures-util/sink",
+    "tokio/io-util",
+]
+websocket = ["dep:tokio-tungstenite", "tokio/net"]
+# codec for primitive types
+# the default codec use zerocopy for some primitive types for efficiency, assuming a Rust-to-Rust
+# communication scenario
+prost-codec = [] # use prost for all types
+
+[dependencies]
+ahash.workspace = true
+bytes.workspace = true
+dashmap.workspace = true
+futures-util.workspace = true
+prost.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
+tracing.workspace = true
+zerocopy.workspace = true
+
+interprocess = { workspace = true, optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
+tokio-util = { workspace = true, features = ["codec"], optional = true }
+
+acktor = { workspace = true, features = ["ipc"] }
+acktor-derive = { workspace = true, optional = true }
+acktor-ipc-proto = { workspace = true }
+
+[dev-dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+pretty_assertions.workspace = true
+rkyv.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "signal", "time"] }
+tracing-subscriber.workspace = true
+
+[[example]]
+name = "pingpong"
+required-features = ["websocket"]
+
+[[test]]
+name = "test_basic_ipc"
+required-features = ["websocket", "pipe"]
+
+[[test]]
+name = "test_send_recv"
+required-features = ["websocket"]
