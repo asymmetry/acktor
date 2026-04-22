@@ -529,7 +529,7 @@ impl Handler<command::CreateRemoteActor> for Session {
                 // we can not do much if sending the error back to the original sender fails, just
                 // log it
                 warn!(
-                    "Could not report the error in `Handler<CreateRemoteActor>` to original\
+                    "Could not report the error in `Handler<CreateRemoteActor>` to original \
                      sender: {}",
                     e.report()
                 );
@@ -581,7 +581,7 @@ impl Handler<command::GetRemoteActor> for Session {
                 // we can not do much if sending the error back to the original sender fails, just
                 // log it
                 warn!(
-                    "Could not report the error in `Handler<GetRemoteActor>` to original sender:\
+                    "Could not report the error in `Handler<GetRemoteActor>` to original sender: \
                      {}",
                     e.report()
                 );
@@ -638,7 +638,7 @@ impl Handler<RemoteMessage> for Session {
                         // we can not do much if sending the error back to the original sender
                         // fails, just log it
                         warn!(
-                            "Could not report the error in `Handler<RemoteMessage>` to original\
+                            "Could not report the error in `Handler<RemoteMessage>` to original \
                              sender: {}",
                             e.report()
                         );

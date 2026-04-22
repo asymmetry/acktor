@@ -1,14 +1,14 @@
 use proc_macro2::Span;
 use syn::parse::{Parse, ParseStream};
 
-pub enum Backend {
+pub enum CodecMethod {
     Prost,
     Zerocopy,
     Rkyv,
 }
 
 pub struct CodecConfig {
-    pub backend: Backend,
+    pub method: CodecMethod,
     /// Optional bridge type. When present, encode/decode goes through this
     /// intermediary type instead of operating on `Self` directly.
     pub bridge: Option<syn::Type>,
@@ -33,7 +33,7 @@ impl Parse for CodecArgs {
     }
 }
 
-pub fn detect_backend(ast: &syn::DeriveInput) -> syn::Result<CodecConfig> {
+pub fn detect_codec_config(ast: &syn::DeriveInput) -> syn::Result<CodecConfig> {
     let attr = ast
         .attrs
         .iter()
@@ -41,7 +41,9 @@ pub fn detect_backend(ast: &syn::DeriveInput) -> syn::Result<CodecConfig> {
         .ok_or_else(|| {
             syn::Error::new(
                 Span::call_site(),
-                "Expect an attribute `#[codec(..)]` with one of: `prost`, `zerocopy`, `rkyv`",
+                "missing required attribute `#[codec(method)]`, where `method` is one of \
+                 `prost`, `zerocopy`, `rkyv`, optionally followed by a bridge type: \
+                 `#[codec(method, Bridge)]`",
             )
         })?;
 
@@ -49,33 +51,33 @@ pub fn detect_backend(ast: &syn::DeriveInput) -> syn::Result<CodecConfig> {
         syn::Meta::List(list) => {
             let args = list.parse_args::<CodecArgs>()?;
             let backend = if args.ident == "prost" {
-                Backend::Prost
+                CodecMethod::Prost
             } else if args.ident == "zerocopy" {
-                Backend::Zerocopy
+                CodecMethod::Zerocopy
             } else if args.ident == "rkyv" {
-                Backend::Rkyv
+                CodecMethod::Rkyv
             } else {
                 return Err(syn::Error::new_spanned(
                     &args.ident,
-                    "Unknown codec backend, expected one of: `prost`, `zerocopy`, `rkyv`",
+                    "unknown codec method, expected one of: `prost`, `zerocopy`, `rkyv`",
                 ));
             };
             if let Some(bridge) = &args.bridge {
                 if is_self_type(bridge, &ast.ident) {
                     return Err(syn::Error::new_spanned(
                         bridge,
-                        "Bridge type must differ from the derived type",
+                        "bridge type must differ from the derived type",
                     ));
                 }
             }
             Ok(CodecConfig {
-                backend,
+                method: backend,
                 bridge: args.bridge,
             })
         }
         _ => Err(syn::Error::new_spanned(
             attr,
-            "The correct syntax is #[codec(..)]",
+            "the correct syntax is `#[codec(method)]` or `#[codec(method, Bridge)]`",
         )),
     }
 }
@@ -97,7 +99,7 @@ pub fn detect_index(ast: &syn::DeriveInput) -> syn::Result<u64> {
         .ok_or_else(|| {
             syn::Error::new(
                 Span::call_site(),
-                "Expect an attribute `#[index(N)]` with a `u64` literal",
+                "missing required attribute `#[index(N)]` where `N` is a `u64` literal",
             )
         })?;
 
@@ -108,7 +110,7 @@ pub fn detect_index(ast: &syn::DeriveInput) -> syn::Result<u64> {
         }
         _ => Err(syn::Error::new_spanned(
             attr,
-            "The correct syntax is #[index(N)]",
+            "the correct syntax is `#[index(N)]`",
         )),
     }
 }

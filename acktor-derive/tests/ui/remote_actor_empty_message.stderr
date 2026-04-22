@@ -1,0 +1,5 @@
+error: `#[message(..)]` requires at least one message type; omit the attribute to use the marker-only derive
+ --> tests/ui/remote_actor_empty_message.rs:4:1
+  |
+4 | #[message()]
+  | ^^^^^^^^^^^^

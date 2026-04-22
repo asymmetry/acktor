@@ -1,0 +1,7 @@
+error: missing required attribute `#[index(N)]` where `N` is a `u64` literal
+ --> tests/ui/encode_missing_index.rs:3:10
+  |
+3 | #[derive(Encode)]
+  |          ^^^^^^
+  |
+  = note: this error originates in the derive macro `Encode` (in Nightly builds, run with -Z macro-backtrace for more info)

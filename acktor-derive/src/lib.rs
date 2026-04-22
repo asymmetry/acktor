@@ -11,7 +11,7 @@ mod remote_actor;
 
 /// Derive the [`Message`] trait for a struct or enum.
 ///
-/// The `result_type` attribute is required and specifies the type returned when the message
+/// A `#[result_type(..)]` attribute must be present to specify the type returned when the message
 /// is handled by an actor.
 ///
 /// # Examples
@@ -37,8 +37,8 @@ pub fn message_derive(input: TokenStream) -> TokenStream {
 
 /// Derive the [`MessageResponse`] trait for a struct or enum.
 ///
-/// This implements the default response handling, which sends the value back through the oneshot
-/// channel to the caller.
+/// This implements the default response handling, which sends the value back through an oneshot
+/// channel to the sender of the message.
 ///
 /// # Examples
 ///
@@ -48,11 +48,9 @@ pub fn message_derive(input: TokenStream) -> TokenStream {
 /// #[derive(MessageResponse)]
 /// struct Sum(i64);
 ///
-/// #[derive(MessageResponse)]
-/// enum Status {
-///     Ok,
-///     Error(String),
-/// }
+/// #[derive(Message)]
+/// #[result_type(Sum)]
+/// struct Add(i64, i64);
 /// ```
 ///
 /// [`MessageResponse`]: https://docs.rs/acktor/latest/acktor/message/trait.MessageResponse.html
@@ -65,20 +63,25 @@ pub fn message_response_derive(input: TokenStream) -> TokenStream {
 
 /// Derive the [`Encode`] trait for a message.
 ///
-/// A `#[codec(..)]` attribute must be present to select the serialization backend. The same
-/// attribute is shared with [`Decode`] — encoding and decoding of the same type must use the
-/// same backend, so there is no need to distinguish them:
+/// A `#[codec(..)]` attribute must be present to select the serialization method and the same
+/// attribute is shared with [`Decode`]. Encoding and decoding of the same message type must use
+/// the same method. The attribute also supports an optional bridge type that serves as an
+/// intermediary for encoding and decoding, which is useful when the message type itself cannot
+/// directly implement the required traits. Currently there are three supported codec methods:
 ///
-/// - `#[codec(prost)]` — delegates to [`prost::Message::encode_to_vec`]. The target
-///   type must also implement [`prost::Message`].
-/// - `#[codec(zerocopy)]` — delegates to [`zerocopy::IntoBytes::as_bytes`]. The target
-///   type must also implement [`zerocopy::IntoBytes`].
-/// - `#[codec(rkyv)]` — delegates to [`rkyv::to_bytes`]. The target type must also
-///   implement [`rkyv::Serialize`].
+/// - `#[codec(prost)]` — delegates to [`prost::Message::encode_to_vec`]. The target type (or the
+///   bridge type) must implement [`prost::Message`].
+/// - `#[codec(zerocopy)]` — delegates to [`zerocopy::IntoBytes::as_bytes`]. The target type (or
+///   the bridge type) must implement [`zerocopy::IntoBytes`].
+/// - `#[codec(rkyv)]` — delegates to [`rkyv::to_bytes`]. The target type (or the bridge type)
+///   must implement [`rkyv::Serialize`].
 ///
-/// A `#[index(N)]` attribute must also be present and sets the `Encode::ID` constant
-/// to the given `u64` literal. The value in [`Encode`] and [`Decode`] must match for the
-/// same message type.
+/// If a bridge type `T` is specified, the bridge type must be convertible from the target type
+/// with `impl From<&Self> for T`.
+///
+/// A `#[index(N)]` attribute must also be present to set the `Encode::ID` constant with the given
+/// `u64` literal. The index in [`Encode`] and [`Decode`] must be the same for the same message
+/// type.
 ///
 /// # Example
 ///
@@ -108,20 +111,25 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 
 /// Derive the [`Decode`] trait for a message.
 ///
-/// A `#[codec(..)]` attribute must be present to select the deserialization backend. The same
-/// attribute is shared with [`Encode`] — encoding and decoding of the same type must use the
-/// same backend, so there is no need to distinguish them:
+/// A `#[codec(..)]` attribute must be present to select the deserialization method and the same
+/// attribute is shared with [`Decode`]. Encoding and decoding of the same message type must use
+/// the same method. The attribute also supports an optional bridge type that serves as an
+/// intermediary for encoding and decoding, which is useful when the message type itself cannot
+/// directly implement the required traits. Currently there are three supported codec methods:
 ///
-/// - `#[codec(prost)]` — delegates to [`prost::Message::decode`]. The target type
-///   must also implement [`prost::Message`].
-/// - `#[codec(zerocopy)]` — delegates to [`zerocopy::FromBytes::read_from_bytes`].
-///   The target type must also implement [`zerocopy::FromBytes`].
-/// - `#[codec(rkyv)]` — delegates to [`rkyv::from_bytes`]. The target type must also
-///   implement [`rkyv::Archive`] + [`rkyv::Deserialize`].
+/// - `#[codec(prost)]` — delegates to [`prost::Message::decode`]. The target type (or the bridge
+///   type) must implement [`prost::Message`].
+/// - `#[codec(zerocopy)]` — delegates to [`zerocopy::FromBytes::read_from_bytes`]. The target
+///   type (or the bridge type) must implement [`zerocopy::FromBytes`].
+/// - `#[codec(rkyv)]` — delegates to [`rkyv::from_bytes`]. The target type (or the bridge type)
+///   must implement [`rkyv::Archive`] and [`rkyv::Deserialize`].
 ///
-/// A `#[index(N)]` attribute must also be present and sets the `Decode::ID` constant
-/// to the given `u64` literal. The value in [`Encode`] and [`Decode`] must match for the
-/// same message type.
+/// If a bridge type `T` is specified, the target type must be convertible from the bridge type
+/// with `impl TryFrom<T> for Self` and use [`DecodeError`] as the error type.
+///
+/// A `#[index(N)]` attribute must also be present to set the `Decode::ID` constant with the given
+/// `u64` literal. The index in [`Encode`] and [`Decode`] must be the same for the same message
+/// type.
 ///
 /// # Example
 ///
@@ -143,6 +151,7 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 /// [`rkyv::from_bytes`]: https://docs.rs/rkyv/latest/rkyv/fn.from_bytes.html
 /// [`rkyv::Archive`]: https://docs.rs/rkyv/latest/rkyv/trait.Archive.html
 /// [`rkyv::Deserialize`]: https://docs.rs/rkyv/latest/rkyv/trait.Deserialize.html
+/// [`DecodeError`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/errors/enum.DecodeError.html
 #[proc_macro_derive(Decode, attributes(codec, index))]
 pub fn decode_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
@@ -155,12 +164,13 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
 /// Without any attribute, only the marker `impl RemoteActor for Self {}` is emitted.
 ///
 /// With an optional `#[message(M1, M2, ...)]` attribute, an additional
-/// `impl Handler<RemoteMessage> for Self` is emitted that dispatches inbound messages by matching
-/// on their `message_id` against `<Mi as Decode>::ID`, invoking `<Self as Handler<Mi>>::handle`,
-/// and sending the encoded result back through the `result_tx` oneshot.
+/// `impl Handler<RemoteMessage> for Self` is emitted which dispatches inbound messages by
+/// matching their `message_id` against `<Mi as Decode>::ID` and invoking the corresponding
+/// message handler `<Self as Handler<Mi>>::handle`. After handling the message, the response is
+/// encoded and sent back through an oneshot channel to the sender of the [`RemoteMessage`].
 ///
-/// For each `Mi`, the actor must implement [`Handler<Mi>`] trait and
-/// `<Self as Handler<Mi>>::Result` must implement [`Encode`] trait.
+/// For each `Mi`, the actor must implement [`Handler<Mi>`] trait and the result type of the
+/// trait must implement [`Encode`] trait.
 ///
 /// # Example
 ///
@@ -172,8 +182,9 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
 /// pub struct MyActor;
 /// ```
 ///
-/// [`RemoteActor`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/trait.RemoteActor.html
-/// [`Handler<Mi>`]: https://docs.rs/acktor/latest/acktor/trait.Handler.html
+/// [`RemoteActor`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/remote_actor/trait.RemoteActor.html
+/// [`RemoteMessage`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/remote_message/struct.RemoteMessage.html
+/// [`Handler<Mi>`]: https://docs.rs/acktor/latest/acktor/message/trait.Handler.html
 /// [`Encode`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/codec/trait.Encode.html
 #[proc_macro_derive(RemoteActor, attributes(message))]
 pub fn remote_actor_derive(input: TokenStream) -> TokenStream {
@@ -182,11 +193,11 @@ pub fn remote_actor_derive(input: TokenStream) -> TokenStream {
     remote_actor::expand(&ast).into()
 }
 
-/// Attribute macro applied to `impl Actor for MyActor { ... }` to install the `Address<Self>`
-/// to `Recipient<RemoteMessage>` conversion function used by `acktor-ipc`.
+/// Attribute macro applies to the `impl Actor for MyActor { ... }` block, which overrides the
+/// [`Actor::type_erased_recipient_fn`] used by `acktor-ipc` with a custom implementation that
+/// converts [`Address<Self>`] to `Recipient<RemoteMessage>` first and then erases the type.
 ///
-/// Injects an override of [`Actor::erased_recipient_fn`] so every `Address<Self>` carries an
-/// inline conversion to `Recipient<RemoteMessage>`.
+/// See the documentation of [`Actor::type_erased_recipient_fn`] for more details.
 ///
 /// # Example
 ///
@@ -200,7 +211,8 @@ pub fn remote_actor_derive(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// [`Actor::erased_recipient_fn`]: https://docs.rs/acktor/latest/acktor/trait.Actor.html#method.erased_recipient_fn
+/// [`Actor::type_erased_recipient_fn`]: https://docs.rs/acktor/latest/acktor/trait.Actor.html#method.type_erased_recipient_fn
+/// [`Address<Self>`]: https://docs.rs/acktor/latest/acktor/address/struct.Address.html
 #[proc_macro_attribute]
 pub fn remote(_attr: TokenStream, item: TokenStream) -> TokenStream {
     remote::expand(item.into()).into()
