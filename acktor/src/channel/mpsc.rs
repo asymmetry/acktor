@@ -135,3 +135,127 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = tokio::sync::mpsc::channel(capacity);
     (tx, Receiver(rx))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use pretty_assertions::assert_eq;
+
+    #[tokio::test]
+    async fn test_recv() {
+        // async `recv` delivers a value
+        let (tx, mut rx) = channel::<u32>(4);
+        tx.send(1).await.unwrap();
+        assert_eq!(rx.recv().await.unwrap(), 1);
+
+        // `try_recv` on an empty open channel is Empty
+        assert!(matches!(rx.try_recv(), Err(RecvError::Empty)));
+
+        // `try_recv` yields a value once present
+        tx.send(2).await.unwrap();
+        assert_eq!(rx.try_recv().unwrap(), 2);
+
+        // dropping all senders closes the channel
+        drop(tx);
+        assert!(matches!(rx.recv().await, Err(RecvError::Closed)));
+        assert!(matches!(rx.try_recv(), Err(RecvError::Closed)));
+
+        // `blocking_recv` must run off the async runtime
+        let (tx, mut rx) = channel::<u32>(4);
+        let rx_handle = tokio::task::spawn_blocking(move || {
+            let v = rx.blocking_recv().unwrap();
+            let closed = rx.blocking_recv();
+            (v, closed)
+        });
+        tx.send(42).await.unwrap();
+        drop(tx);
+        let (v, closed) = rx_handle.await.unwrap();
+        assert_eq!(v, 42);
+        assert!(matches!(closed, Err(RecvError::Closed)));
+    }
+
+    #[tokio::test]
+    async fn recv_timeout() {
+        let (tx, mut rx) = channel::<u32>(1);
+
+        // times out when nothing is sent
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_millis(10)).await,
+            Err(RecvError::Timeout),
+        ));
+
+        // the receiver is intact after a timeout — sending now succeeds
+        tx.send(7).await.unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).await.unwrap(), 7);
+
+        // closed channel returns Closed immediately, not Timeout
+        drop(tx);
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_secs(1)).await,
+            Err(RecvError::Closed),
+        ));
+    }
+
+    #[tokio::test]
+    async fn recv_many_behavior() {
+        let (tx, mut rx) = channel::<u32>(8);
+        for i in 0..5 {
+            tx.send(i).await.unwrap();
+        }
+
+        // `recv_many` drains up to `limit` messages already buffered
+        let mut buf = Vec::new();
+        let n = rx.recv_many(&mut buf, 3).await;
+        assert_eq!(n, 3);
+        assert_eq!(buf, vec![0, 1, 2]);
+
+        // `blocking_recv_many` pulls the rest off the async runtime
+        let rx_handle = tokio::task::spawn_blocking(move || {
+            let mut buf = Vec::new();
+            let n = rx.blocking_recv_many(&mut buf, 10);
+            (n, buf)
+        });
+        drop(tx);
+        let (n, buf) = rx_handle.await.unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(buf, vec![3, 4]);
+    }
+
+    #[tokio::test]
+    async fn channel_state_and_close() {
+        let (tx, mut rx) = channel::<u32>(4);
+
+        // fresh channel: empty, open, full capacity available
+        assert!(rx.is_empty());
+        assert!(!rx.is_closed());
+        assert_eq!(rx.len(), 0);
+        assert_eq!(rx.capacity(), 4);
+        assert_eq!(rx.max_capacity(), 4);
+
+        tx.send(1).await.unwrap();
+        tx.send(2).await.unwrap();
+        assert_eq!(rx.len(), 2);
+        assert!(!rx.is_empty());
+        assert_eq!(rx.capacity(), 2);
+        assert_eq!(rx.max_capacity(), 4);
+
+        // sender counts reflect strong and weak handles
+        let tx2 = tx.clone();
+        let weak = tx.downgrade();
+        assert_eq!(rx.sender_strong_count(), 2);
+        assert_eq!(rx.sender_weak_count(), 1);
+        drop(tx2);
+        drop(weak);
+        assert_eq!(rx.sender_strong_count(), 1);
+        assert_eq!(rx.sender_weak_count(), 0);
+
+        // `close()` closes the receiver without dropping it; pending messages remain drainable
+        rx.close();
+        assert!(rx.is_closed());
+        assert!(tx.send(3).await.is_err());
+        assert_eq!(rx.recv().await.unwrap(), 1);
+        assert_eq!(rx.recv().await.unwrap(), 2);
+        assert!(matches!(rx.recv().await, Err(RecvError::Closed)));
+    }
+}

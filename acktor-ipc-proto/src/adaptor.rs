@@ -1,13 +1,14 @@
 use std::io;
+use std::sync::mpsc::SyncSender as Sender;
 
 use ahash::HashMap;
 use bytes::{Bytes, BytesMut};
-use crossbeam_channel::Sender;
 use prost::Message as _;
 
 use crate::{actor_message, ipc_message};
 
 /// A parsed actor message.
+#[derive(Debug)]
 pub struct ParsedActorMessage {
     pub actor_id: u64,
     pub message_id: u64,

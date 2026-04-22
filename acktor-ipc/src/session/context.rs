@@ -68,7 +68,7 @@ impl ActorContext<Session> for SessionContext {
         mailbox: &mut Mailbox<Session>,
     ) -> Result<(), SessionError> {
         while self.state() == ActorState::Running {
-            if self.last_cleanup_time.elapsed() >= Duration::from_secs(60) {
+            if self.last_cleanup_time.elapsed() >= Duration::from_secs(30) {
                 actor.cleanup_expired_res_tx();
                 self.last_cleanup_time = Instant::now();
             }

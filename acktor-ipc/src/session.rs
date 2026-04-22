@@ -115,9 +115,9 @@ impl Session {
         let now = Instant::now();
 
         self.node_msg_res_tx_map
-            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < Duration::from_secs(60));
+            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < Duration::from_secs(30));
         self.actor_msg_res_tx_map
-            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < Duration::from_secs(60));
+            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < Duration::from_secs(30));
     }
 
     fn next_tag(&mut self) -> u64 {

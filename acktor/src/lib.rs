@@ -105,3 +105,31 @@ pub mod cron;
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use acktor_derive::{Message, MessageResponse};
+
+#[cfg(test)]
+mod test_utils {
+    use crate::actor::Actor;
+    use crate::context::Context;
+    use crate::message::{Handler, Message};
+
+    #[derive(Debug)]
+    pub struct Dummy;
+
+    impl Actor for Dummy {
+        type Context = Context<Self>;
+        type Error = anyhow::Error;
+    }
+
+    #[derive(Debug)]
+    pub struct Ping(pub u32);
+
+    impl Message for Ping {
+        type Result = ();
+    }
+
+    impl Handler<Ping> for Dummy {
+        type Result = ();
+
+        async fn handle(&mut self, _msg: Ping, _ctx: &mut Self::Context) {}
+    }
+}

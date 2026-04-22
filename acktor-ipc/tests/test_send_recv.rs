@@ -135,7 +135,7 @@ async fn test_send_recv() {
         .expect("echo response failed");
     assert_eq!(result, value * 2);
 
-    // blocking_send: must run off the async runtime; spawn_blocking provides a non-async thread.
+    // blocking_send
     let value = 4;
     let remote_clone = remote.clone();
     let result = tokio::task::spawn_blocking(move || {

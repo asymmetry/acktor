@@ -229,6 +229,9 @@ mod tests {
         ));
         // receiver remains usable after timeout
         tx.send(99).unwrap();
-        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).await.unwrap(), 99);
+        assert_eq!(
+            rx.recv_timeout(Duration::from_millis(10)).await.unwrap(),
+            99
+        );
     }
 }

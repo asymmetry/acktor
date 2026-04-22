@@ -9,15 +9,20 @@ acktor/                  # workspace root
 │   │   ├── lib.rs
 │   │   ├── actor.rs         # Actor + ActorContext traits, lifecycle
 │   │   ├── context.rs       # Context<A> — default ActorContext impl
-│   │   ├── message.rs       # Message, Handler, MessageResponse traits
+│   │   ├── message/         # Message, Handler, MessageResponse traits
 │   │   ├── address/         # Address<A>, Recipient<M>, Sender, Mailbox
 │   │   ├── envelope/        # Envelope + EnvelopeProxy (type erasure for messages)
-│   │   ├── cron.rs          # CronActor, CronContext, CronSignal
-│   │   ├── observer.rs      # SubjectActor, ObserverSet, Observer message
+│   │   ├── channel/         # mailbox channel implementation
+│   │   ├── errors/          # BoxError, ErrorReport, RecvError, SendError
+│   │   ├── cron.rs          # CronActor, CronContext, CronSignal (feature: cron)
+│   │   ├── observer.rs      # SubjectActor, ObserverSet, Observer message (feature: observer)
 │   │   ├── supervisor.rs    # SupervisionEvent, Supervisor message
-│   │   └── signal.rs        # Signal::Stop / Signal::Terminate
-├── acktor-derive/       # proc-macro crate: #[derive(Message, MessageResponse)]
-└── acktor-macros/       # proc-macro crate: report!, debug_trace!, notify_observers!
+│   │   ├── signal.rs        # Signal::Stop / Signal::Terminate
+│   │   └── utils.rs
+├── acktor-derive/       # proc-macro crate: #[derive(Message, MessageResponse, Encode, Decode, RemoteActor)] + #[remote] attribute
+├── acktor-ipc/          # interprocess communication: Node, Session, RemoteActor, RemoteAddress, RemoteMessage
+├── acktor-ipc-proto/    # prost-generated IPC wire protocol
+└── ipc-proto-gen/       # standalone build script that regenerates the prost code (excluded from workspace)
 ```
 
 ## Build & Test Commands
@@ -52,3 +57,5 @@ RUSTFLAGS="--cfg tokio_unstable" cargo build --workspace --all-features
 - Messages are sent through an `Envelope<A>` channel; `EnvelopeProxy` handles the type erasure.
 - Default mailbox capacity is 8 (`DEFAULT_MAILBOX_CAPACITY`).
 - Actor panics are caught with `catch_unwind` and logged without crashing the runtime.
+- `acktor` features: `derive`, `observer`, `cron` are on by default. `tokio-tracing`, `bottleneck-warning`, `type-erased-recipient-hook`, and `ipc` are opt-in. The `ipc` feature is a marker enabled by `acktor-ipc` and pulls in `type-erased-recipient-hook`.
+- `acktor-ipc` IPC transport is selected by feature: `pipe` (interprocess) or `websocket` (tokio-tungstenite). The `prost-codec` feature swaps the default zerocopy primitive codec for prost everywhere.

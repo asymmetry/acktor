@@ -15,4 +15,3 @@ prost.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 ahash.workspace = true
-crossbeam-channel.workspace = true

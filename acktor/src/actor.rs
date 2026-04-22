@@ -482,3 +482,20 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_actor_state() {
+        assert_eq!(ActorState::try_from(0), Ok(ActorState::Unstarted));
+        assert_eq!(ActorState::try_from(1), Ok(ActorState::Starting));
+        assert_eq!(ActorState::try_from(2), Ok(ActorState::Running));
+        assert_eq!(ActorState::try_from(3), Ok(ActorState::Stopping));
+        assert_eq!(ActorState::try_from(4), Ok(ActorState::Stopped));
+        assert_eq!(ActorState::try_from(5), Err(()));
+    }
+}
