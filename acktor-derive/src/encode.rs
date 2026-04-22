@@ -1,10 +1,10 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::common::{Backend, detect_backend, detect_index};
+use crate::common::{CodecMethod, detect_codec_config, detect_index};
 
 pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
-    let config = match detect_backend(ast) {
+    let config = match detect_codec_config(ast) {
         Ok(config) => config,
         Err(err) => return err.to_compile_error(),
     };
@@ -17,15 +17,15 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
-    let (encoded_len_body, encode_body) = match (config.backend, config.bridge) {
-        (Backend::Prost, None) => (
+    let (encoded_len_body, encode_body) = match (config.method, config.bridge) {
+        (CodecMethod::Prost, None) => (
             quote! { ::prost::Message::encoded_len(self) },
             quote! {
                 buf.extend_from_slice(&::prost::Message::encode_to_vec(self));
                 ::core::result::Result::Ok(())
             },
         ),
-        (Backend::Prost, Some(bridge)) => (
+        (CodecMethod::Prost, Some(bridge)) => (
             quote! {
                 let bridge = <#bridge as ::core::convert::From<&Self>>::from(self);
                 ::prost::Message::encoded_len(&bridge)
@@ -36,7 +36,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                 ::core::result::Result::Ok(())
             },
         ),
-        (Backend::Zerocopy, None) => (
+        (CodecMethod::Zerocopy, None) => (
             quote! { ::core::mem::size_of::<Self>() },
             quote! {
                 buf.extend_from_slice(
@@ -45,7 +45,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                 ::core::result::Result::Ok(())
             },
         ),
-        (Backend::Zerocopy, Some(bridge)) => (
+        (CodecMethod::Zerocopy, Some(bridge)) => (
             quote! {
                 ::core::mem::size_of::<#bridge>()
             },
@@ -57,7 +57,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                 ::core::result::Result::Ok(())
             },
         ),
-        (Backend::Rkyv, None) => (
+        (CodecMethod::Rkyv, None) => (
             quote! { 0 },
             quote! {
                 match ::rkyv::to_bytes::<::rkyv::rancor::Error>(self) {
@@ -71,7 +71,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                 }
             },
         ),
-        (Backend::Rkyv, Some(bridge)) => (
+        (CodecMethod::Rkyv, Some(bridge)) => (
             quote! { 0 },
             quote! {
                 let bridge = <#bridge as ::core::convert::From<&Self>>::from(self);

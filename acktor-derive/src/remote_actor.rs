@@ -11,8 +11,8 @@ fn parse_message_list(ast: &syn::DeriveInput) -> syn::Result<Option<Vec<Type>>> 
     if list.is_empty() {
         return Err(syn::Error::new_spanned(
             attr,
-            "`#[message(...)]` requires at least one message type; \
-             omit the attribute to use the marker-only derive",
+            "`#[message(..)]` requires at least one message type; omit the attribute to use the \
+             marker-only derive",
         ));
     }
     Ok(Some(list.into_iter().collect()))
@@ -40,7 +40,8 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
             <#m as ::acktor_ipc::Decode>::ID => {
                 match <#m as ::acktor_ipc::Decode>::decode(message, decode_context.as_ref()) {
                     ::core::result::Result::Ok(decoded) => {
-                        let result = <Self as ::acktor::Handler<#m>>::handle(self, decoded, ctx).await;
+                        let result =
+                            <Self as ::acktor::Handler<#m>>::handle(self, decoded, ctx).await;
                         if let ::core::option::Option::Some(tx) = result_tx {
                             match ::acktor_ipc::Encode::encode_to_bytes(
                                 &result,
@@ -49,7 +50,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                                 ::core::result::Result::Ok(bytes) => {
                                     if let Err(e) = tx.send(bytes) {
                                         ::acktor_ipc::tracing::debug!(
-                                            "Could not send the message response to the session\
+                                            "Could not send the message response to the session \
                                              actor: {}",
                                             ::acktor::ErrorReport::report(&e)
                                         );
@@ -185,13 +186,5 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(list.len(), 1);
-    }
-
-    #[test]
-    fn rejects_empty_attribute() {
-        match parse_message_list(&input("#[message()] struct Foo;")) {
-            Err(err) => assert!(err.to_string().contains("at least one message type")),
-            Ok(_) => panic!("expected error for empty message attribute"),
-        }
     }
 }

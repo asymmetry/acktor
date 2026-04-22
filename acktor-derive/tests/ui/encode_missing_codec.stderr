@@ -1,0 +1,7 @@
+error: missing required attribute `#[codec(method)]`, where `method` is one of `prost`, `zerocopy`, `rkyv`, optionally followed by a bridge type: `#[codec(method, Bridge)]`
+ --> tests/ui/encode_missing_codec.rs:3:10
+  |
+3 | #[derive(Encode)]
+  |          ^^^^^^
+  |
+  = note: this error originates in the derive macro `Encode` (in Nightly builds, run with -Z macro-backtrace for more info)

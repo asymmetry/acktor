@@ -1,0 +1,5 @@
+ignore:
+  # protocol buffer generated code and ctors
+  - "acktor-ipc-proto"
+  # protocol buffer code generator
+  - "ipc-proto-gen"

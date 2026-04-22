@@ -1,0 +1,5 @@
+error: bridge type must differ from the derived type
+ --> tests/ui/encode_bridge_type_is_self.rs:4:16
+  |
+4 | #[codec(prost, Ping)]
+  |                ^^^^
