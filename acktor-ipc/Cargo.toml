@@ -8,7 +8,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 categories.workspace = true
-exclude = ["examples/*"]
+exclude = ["examples/*", "tests/*"]
 
 [package.metadata.docs.rs]
 all-features = true
