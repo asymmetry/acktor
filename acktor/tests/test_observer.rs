@@ -1,7 +1,8 @@
 use pretty_assertions::assert_eq;
+use tokio::time::Duration;
 
 use acktor::{
-    Actor, Context, Handler, Message, Recipient,
+    Actor, Context, Handler, Message, Recipient, RecvError, SenderId,
     observer::{Observer, ObserverSet, SubjectActor},
 };
 
@@ -114,12 +115,13 @@ async fn test_observer() {
     let (recipient, mut rx) = Recipient::<M1>::create(8);
 
     // register B as an observer for M1
-    a_address
-        .send(Observer::<M1>::Register(b_address.clone().into()))
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    let command = Observer::<M1>::Register(b_address.clone().into());
+    let debug_str = format!("{command:?}");
+    assert_eq!(
+        debug_str,
+        format!("Register(Recipient<M1>({}))", b_address.index())
+    );
+    a_address.send(command).await.unwrap().await.unwrap();
 
     // register B as an observer for M2
     a_address
@@ -152,4 +154,22 @@ async fn test_observer() {
     // B should receive M2
     let received = b_address.send(CheckB).await.unwrap().await.unwrap();
     assert_eq!(received, true);
+
+    // unregister none-actor backed recipient
+    let command = Observer::<M1>::Unregister(recipient.clone());
+    let debug_str = format!("{command:?}");
+    assert_eq!(
+        debug_str,
+        format!("Unregister(Recipient<M1>({}))", recipient.index())
+    );
+    a_address.send(command).await.unwrap().await.unwrap();
+
+    // trigger A to notify M1 observers
+    a_address.send(NotifyM1).await.unwrap().await.unwrap();
+
+    // B should receive M1, but the recipient should not
+    let received = b_address.send(CheckB).await.unwrap().await.unwrap();
+    assert_eq!(received, true);
+    let received = rx.recv_timeout(Duration::from_millis(50)).await;
+    assert!(matches!(received, Err(RecvError::Timeout)));
 }

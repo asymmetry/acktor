@@ -109,3 +109,28 @@ where
         self.0.as_any_mut()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{Dummy, Ping};
+
+    #[test]
+    fn test_envelope() {
+        let default_proxy = DefaultEnvelopeProxy {
+            message: Some(Ping(42)),
+            tx: None,
+        };
+
+        let debug_str = format!("{default_proxy:?}");
+        assert_eq!(debug_str, "DefaultEnvelopeProxy<Ping>");
+
+        let envelope = Envelope::<Dummy>::with_proxy(Box::new(default_proxy));
+
+        let debug_str = format!("{envelope:?}");
+        assert_eq!(debug_str, "Envelope<Dummy>");
+
+        let trait_object = envelope.as_any();
+        assert!(trait_object.is::<DefaultEnvelopeProxy<Ping>>());
+    }
+}

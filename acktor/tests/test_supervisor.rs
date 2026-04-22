@@ -99,12 +99,13 @@ async fn test_supervisor() {
     let (b_address, _) = B { received: 0 }.run("B").unwrap();
 
     // set B as the supervisor of A
-    a_address
-        .send(Supervisor::Set(b_address.clone().into()))
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    let command = Supervisor::Set(b_address.clone().into());
+    let debug_str = format!("{command:?}");
+    assert_eq!(
+        debug_str,
+        format!("Set(Recipient<SupervisionEvent<A>>({}))", b_address.index())
+    );
+    a_address.send(command).await.unwrap().await.unwrap();
 
     // trigger A to notify supervisor
     a_address.send(Notify).await.unwrap().await.unwrap();
@@ -119,4 +120,17 @@ async fn test_supervisor() {
     // B should receive the supervision events
     let received = b_address.send(CheckB).await.unwrap().await.unwrap();
     assert_eq!(received, 7);
+
+    // unset supervisor
+    let command = Supervisor::Unset;
+    let debug_str = format!("{command:?}");
+    assert_eq!(debug_str, "Unset");
+    a_address.send(command).await.unwrap().await.unwrap();
+
+    // trigger A to notify supervisor
+    a_address.send(Notify).await.unwrap().await.unwrap();
+
+    // B should not receive any supervision events
+    let received = b_address.send(CheckB).await.unwrap().await.unwrap();
+    assert_eq!(received, 0);
 }

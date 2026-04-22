@@ -54,7 +54,7 @@ where
             Supervisor::Set(recipient) => f
                 .debug_tuple("Set")
                 .field(&format_args!(
-                    "SupervisionEvent<{}>({})",
+                    "Recipient<SupervisionEvent<{}>>({})",
                     crate::utils::type_name::<A>(),
                     recipient.index()
                 ))
