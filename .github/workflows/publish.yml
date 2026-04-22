@@ -16,14 +16,9 @@ jobs:
       - name: install rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      ##
       - name: dry run publish acktor-derive
         run: cargo publish -p acktor-derive --dry-run
-      - name: dry run publish acktor
-        run: cargo publish -p acktor --dry-run
-      - name: dry run publish acktor-ipc-proto
-        run: cargo publish -p acktor-ipc-proto --dry-run
-      - name: dry run publish acktor-ipc
-        run: cargo publish -p acktor-ipc --dry-run
       - name: publish acktor-derive
         run: |
           output=$(cargo publish -p acktor-derive 2>&1) || {
@@ -36,10 +31,9 @@ jobs:
           }
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-      - name: publish acktor
-        run: cargo publish -p acktor
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      ##
+      - name: dry run publish acktor-ipc-proto
+        run: cargo publish -p acktor-ipc-proto --dry-run
       - name: publish acktor-ipc-proto
         run: |
           output=$(cargo publish -p acktor-ipc-proto 2>&1) || {
@@ -52,6 +46,24 @@ jobs:
           }
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      ##
+      - name: dry run publish acktor
+        run: cargo publish -p acktor --dry-run
+      - name: publish acktor
+        run: |
+          output=$(cargo publish -p acktor 2>&1) || {
+            if echo "$output" | grep -q "already exists"; then
+              echo "acktor version already published, skipping"
+            else
+              echo "$output"
+              exit 1
+            fi
+          }
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      ##
+      - name: dry run publish acktor-ipc
+        run: cargo publish -p acktor-ipc --dry-run
       - name: publish acktor-ipc
         run: |
           output=$(cargo publish -p acktor-ipc 2>&1) || {
