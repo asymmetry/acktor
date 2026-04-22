@@ -78,17 +78,18 @@ impl Hash for RemoteAddress {
 }
 
 impl RemoteAddress {
-    /// High bit of the 64-bit id space, reserved to tag a [`SenderIndex::index`] value as
+    /// High bit of the 64-bit id space, reserved to tag a [`SenderId::index`] value as
     /// remote address.
-    const REMOTE_FLAG: u64 = 1 << 63;
+    pub const REMOTE_FLAG: u64 = 1 << 63;
 
     /// Constructs a new [`RemoteAddress`] with the specified remote actor index and the address
-    /// of the IPC connection session actor. The `registry` is used to construct the encode context for this address.
+    /// of the IPC connection session actor. The `registry` is used to construct the encode
+    /// context for this address.
     ///
-    /// The `index` is computed by reversing the bits of `session.index()` into bits
-    /// 0..62 (small session ids occupy the high bits, growing downward) and XORing with
-    /// `remote_actor_id` (small ids occupy the low bits, growing upward). Bit 63 is reserved
-    /// for [`REMOTE_FLAG`][Self::REMOTE_FLAG].
+    /// The `index` is computed by reversing the bits of `session.index()` into bits 0..62 (small
+    /// session ids occupy the high bits, growing downward) and XORing with `remote_actor_id`
+    /// (small ids occupy the low bits, growing upward). Bit 63 is reserved for
+    /// [`REMOTE_FLAG`][Self::REMOTE_FLAG].
     pub fn new(
         remote_actor_id: u64,
         session: Address<Session>,

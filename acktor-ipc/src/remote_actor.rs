@@ -1,4 +1,5 @@
 //! Traits for actors which can be reached over IPC and a registry of this kind of actors.
+//!
 
 use std::sync::Arc;
 

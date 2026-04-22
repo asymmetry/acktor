@@ -76,7 +76,7 @@ pub fn message_response_derive(input: TokenStream) -> TokenStream {
 /// - `#[codec(rkyv)]` — delegates to [`rkyv::to_bytes`]. The target type must also
 ///   implement [`rkyv::Serialize`].
 ///
-/// A `#[index(N)]` attribute must also be present and sets the [`Encode::ID`] constant
+/// A `#[index(N)]` attribute must also be present and sets the `Encode::ID` constant
 /// to the given `u64` literal. The value in [`Encode`] and [`Decode`] must match for the
 /// same message type.
 ///
@@ -119,7 +119,7 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 /// - `#[codec(rkyv)]` — delegates to [`rkyv::from_bytes`]. The target type must also
 ///   implement [`rkyv::Archive`] + [`rkyv::Deserialize`].
 ///
-/// A `#[index(N)]` attribute must also be present and sets the [`Decode::ID`] constant
+/// A `#[index(N)]` attribute must also be present and sets the `Decode::ID` constant
 /// to the given `u64` literal. The value in [`Encode`] and [`Decode`] must match for the
 /// same message type.
 ///
@@ -155,18 +155,12 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
 /// Without any attribute, only the marker `impl RemoteActor for Self {}` is emitted.
 ///
 /// With an optional `#[message(M1, M2, ...)]` attribute, an additional
-/// `impl Handler<RemoteMessage> for Self` is emitted that dispatches inbound messages
-/// by matching on their `message_id` against `<Mi as Decode>::ID`, invoking
-/// `<Self as Handler<Mi>>::handle`, and sending the encoded result back through the
-/// `result_tx` oneshot.
+/// `impl Handler<RemoteMessage> for Self` is emitted that dispatches inbound messages by matching
+/// on their `message_id` against `<Mi as Decode>::ID`, invoking `<Self as Handler<Mi>>::handle`,
+/// and sending the encoded result back through the `result_tx` oneshot.
 ///
-/// - Decode failures are reported back via `result_tx.send_err(DecodeError)`.
-/// - Unknown message ids are reported as
-///   `DecodeError::UnknownMessageId(id)`.
-/// - The message ids are checked for pairwise uniqueness at compile time.
-///
-/// For each `Mi`, the actor must implement [`Handler<Mi>`] and `<Self as Handler<Mi>>::Result`
-/// must implement [`Encode`].
+/// For each `Mi`, the actor must implement [`Handler<Mi>`] trait and
+/// `<Self as Handler<Mi>>::Result` must implement [`Encode`] trait.
 ///
 /// # Example
 ///

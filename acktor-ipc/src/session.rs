@@ -491,11 +491,10 @@ impl Actor for Session {
     }
 }
 
-/// See [`handle_node_message`][Session::handle_node_message] for what the remote peer actor will
-/// do when it receives the `NodeMessage` sent by this handler.
-/// See [`handle_node_message_response`][Session::handle_node_message_response] for how this actor
-/// forwards the result to the original sender when it receives the `NodeMessageResponse` from the
-/// remote peer actor.
+// See `handle_node_message` for what the remote peer actor will do when it receives the
+// `NodeMessage` sent by this handler.
+// See `handle_node_message_response` for how this actor forwards the result to the original
+// sender when it receives the `NodeMessageResponse` from the remote peer actor.
 impl Handler<command::CreateRemoteActor> for Session {
     type Result = FutureMessageResult<command::CreateRemoteActor>;
 
@@ -543,11 +542,10 @@ impl Handler<command::CreateRemoteActor> for Session {
     }
 }
 
-/// See [`handle_node_message`][Session::handle_node_message] for what the remote peer actor will
-/// do when it receives the `NodeMessage` sent by this handler.
-/// See [`handle_node_message_response`][Session::handle_node_message_response] for how this actor
-/// forwards the result to the original sender when it receives the `NodeMessageResponse` from the
-/// remote peer actor.
+// See `handle_node_message` for what the remote peer actor will do when it receives the
+// `NodeMessage` sent by this handler.
+// See `handle_node_message_response` for how this actor forwards the result to the original
+// sender when it receives the `NodeMessageResponse` from the remote peer actor.
 impl Handler<command::GetRemoteActor> for Session {
     type Result = FutureMessageResult<command::GetRemoteActor>;
 
@@ -596,11 +594,10 @@ impl Handler<command::GetRemoteActor> for Session {
     }
 }
 
-/// See [`handle_actor_message`][Session::handle_actor_message] for what the remote peer actor
-/// will do when it receives the `ActorMessage` sent by this handler.
-/// See [`handle_actor_message_response`][Session::handle_actor_message_response] for how this
-/// actor forwards the result to the original sender when it receives the `ActorMessageResponse`
-/// from the remote peer actor.
+// See `handle_actor_message` for what the remote peer actor will do when it receives the
+// `ActorMessage` sent by this handler.
+// See `handle_actor_message_response` for how this actor forwards the result to the original
+// sender when it receives the `ActorMessageResponse` from the remote peer actor.
 impl Handler<RemoteMessage> for Session {
     type Result = ();
 

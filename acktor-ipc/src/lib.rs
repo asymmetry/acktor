@@ -9,7 +9,7 @@ pub use ipc_method::{IpcConnection, IpcListener};
 mod codec;
 pub use codec::{Decode, DecodeContext, Encode, EncodeContext};
 
-mod remote_actor;
+pub mod remote_actor;
 pub use remote_actor::{RemoteActor, RemoteActorFactory};
 
 mod actor_handle;

@@ -24,7 +24,7 @@ use crate::utils::create_actor_id;
 /// [`Recipient`]s backed by different actor types can be put in the same collection as long as
 /// they can be used to send the same message type.
 ///
-/// A `Recipient` can be converted from an [`Address`] or created with the
+/// A `Recipient` can be converted from an [`Address`][super::Address] or created with the
 /// [`create`][Recipient::create] method. Note that the [`create`][Recipient::create] method is
 /// only available for messages with empty [`Message::Result`].
 pub struct Recipient<M, EP = DefaultEnvelopeProxy<M>>(pub Arc<dyn Sender<M, EP> + Send + Sync>)
