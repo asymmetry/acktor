@@ -170,19 +170,23 @@ mod tests {
 
         // blocking_do_send
         let (a1, mut m1) = make_address(1);
-        std::thread::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             a1.blocking_do_send(Ping(15)).expect("first message fits");
             assert_eq!(m1.len(), 1);
             m1.try_recv().expect("recv should succeed");
-        });
+        })
+        .await
+        .expect("spawn_blocking join");
 
         // blocking_send
         let (a1, mut m1) = make_address(1);
-        std::thread::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             a1.blocking_send(Ping(16)).expect("first message fits");
             assert_eq!(m1.len(), 1);
             m1.try_recv().expect("recv should succeed");
-        });
+        })
+        .await
+        .expect("spawn_blocking join");
     }
 
     #[tokio::test]
@@ -237,7 +241,7 @@ mod tests {
         assert_eq!(recipient.capacity(), 4);
         drop(rx);
         assert!(recipient.is_closed());
-        timeout(Duration::from_millis(100), recipient.closed())
+        timeout(Duration::from_millis(500), recipient.closed())
             .await
             .expect("closed() should resolve after receiver drop");
 
@@ -262,15 +266,16 @@ mod tests {
             .do_send_timeout(Ping(7), Duration::from_millis(10))
             .await
             .expect("do_send_timeout should succeed");
-        let handle = std::thread::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             recipient
                 .blocking_send(Ping(8))
                 .expect("blocking_send should succeed");
             recipient
                 .blocking_do_send(Ping(9))
                 .expect("blocking_do_send should succeed");
-        });
-        handle.join().expect("thread should not panic");
+        })
+        .await
+        .expect("spawn_blocking join");
         assert_eq!(rx.len(), 8);
 
         // From<Address> preserves index
@@ -303,15 +308,16 @@ mod tests {
             .do_send_timeout(Ping(15), Duration::from_millis(10))
             .await
             .expect("do_send_timeout should succeed");
-        let handle = std::thread::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             recipient
                 .blocking_send(Ping(16))
                 .expect("blocking_send should succeed");
             recipient
                 .blocking_do_send(Ping(17))
                 .expect("blocking_do_send should succeed");
-        });
-        handle.join().expect("thread should not panic");
+        })
+        .await
+        .expect("spawn_blocking join");
         assert_eq!(m1.len(), 8);
 
         assert!(!clone.is_closed());

@@ -119,8 +119,6 @@ async fn test_post_start_failed() {
 
     let states = watcher.send(Check).await.unwrap().await.unwrap();
 
-    println!("states: {states:?}");
-
     assert!(
         states.contains(&ActorState::Starting),
         "expected Starting in {states:?}",

@@ -214,3 +214,70 @@ impl_message_response_for!(f32);
 impl_message_response_for!(f64);
 impl_message_response_for!(char);
 impl_message_response_for!(String);
+
+#[cfg(test)]
+mod tests {
+    use std::marker::PhantomData;
+
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+    use crate::context::Context;
+
+    #[derive(Debug)]
+    struct A;
+
+    impl Actor for A {
+        type Context = Context<Self>;
+        type Error = anyhow::Error;
+    }
+
+    /// Synthetic message whose `Result` is `T`. Used to drive `MessageResponse` tests
+    /// without coupling to a concrete message type per scalar.
+    struct M<T>(PhantomData<T>);
+
+    impl<T> Message for M<T>
+    where
+        T: Send + 'static,
+    {
+        type Result = T;
+    }
+
+    async fn roundtrip<R>(value: R) -> R
+    where
+        R: MessageResponse<A, M<R>> + Send + 'static,
+    {
+        let mut ctx = Context::<A>::with_capacity("test".into(), 1);
+        let (tx, rx) = oneshot::channel::<R>();
+        value.handle(&mut ctx, Some(tx)).await;
+        rx.await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_message_response() {
+        assert_eq!(roundtrip(()).await, ());
+        assert_eq!(roundtrip(true).await, true);
+        assert_eq!(roundtrip(-1_i32).await, -1);
+        assert_eq!(roundtrip(42_u64).await, 42);
+        assert_eq!(roundtrip('x').await, 'x');
+        assert_eq!(roundtrip(String::from("hello")).await, "hello");
+
+        // result
+        assert_eq!(roundtrip::<Result<i32, String>>(Ok(10)).await, Ok(10));
+        assert_eq!(
+            roundtrip::<Result<i32, String>>(Err(String::from("err"))).await,
+            Err(String::from("err"))
+        );
+
+        // option
+        assert_eq!(roundtrip(Some(42_u32)).await, Some(42));
+        assert_eq!(roundtrip(None::<u32>).await, None);
+
+        // box and arc
+        assert_eq!(*roundtrip(Box::new(7_u64)).await, 7);
+        assert_eq!(*roundtrip(Arc::new(String::from("hi"))).await, "hi");
+
+        // vec
+        assert_eq!(roundtrip(vec![1_u8, 2, 3]).await, vec![1, 2, 3]);
+    }
+}

@@ -100,15 +100,6 @@ where
         self.error = Some(error);
     }
 
-    /// Terminates the actor and saves the error.
-    ///
-    /// The actor will enter the [`Stopped`][ActorState::Stopped] state after processing the
-    /// current message.
-    pub fn terminate_with_error(&mut self, error: A::Error) {
-        self.save_error(error);
-        self.terminate();
-    }
-
     /// Schedules a one-time discard of messages already queued in the mailbox.
     ///
     /// Sets a flag; the processing loop acts on it on its next iteration by snapshotting
@@ -351,5 +342,17 @@ where
                 ctx.resume_task();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cron_signal() {
+        assert_eq!(CronSignal::try_from(0), Ok(CronSignal::Pause));
+        assert_eq!(CronSignal::try_from(1), Ok(CronSignal::Resume));
+        assert_eq!(CronSignal::try_from(2), Err(()));
     }
 }

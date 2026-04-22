@@ -17,7 +17,6 @@ keywords = ["actor", "async"]
 ahash = "0.8"
 bytes = "1.10"
 chrono = "0.4"
-crossbeam-channel = "0.5"
 dashmap = "6.1"
 futures-util = "0.3"
 interprocess = { version = "2.2", features = ["tokio"] }

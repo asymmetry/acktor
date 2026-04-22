@@ -50,15 +50,6 @@ where
         self.error = Some(error);
     }
 
-    /// Terminates the actor and saves the error.
-    ///
-    /// The actor will enter the [`Stopped`][ActorState::Stopped] state after processing the
-    /// current message.
-    pub fn terminate_with_error(&mut self, error: A::Error) {
-        self.save_error(error);
-        self.terminate();
-    }
-
     /// Schedules a one-time discard of messages already queued in the mailbox.
     ///
     /// Sets a flag; the processing loop acts on it on its next iteration by snapshotting

@@ -93,7 +93,7 @@ async fn test_basic() {
 
     // test send_timeout
     let result = address
-        .send_timeout(Arithmetic::Multiply(2), Duration::from_secs(1))
+        .send_timeout(Arithmetic::Multiply(2), Duration::from_millis(10))
         .await
         .unwrap()
         .await
@@ -102,7 +102,7 @@ async fn test_basic() {
 
     // test do_send_timeout
     address
-        .do_send_timeout(Arithmetic::Divide(2), Duration::from_secs(1))
+        .do_send_timeout(Arithmetic::Divide(2), Duration::from_millis(10))
         .await
         .unwrap();
     let result = address.send(Command::Get).await.unwrap().await.unwrap();

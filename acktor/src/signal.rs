@@ -63,3 +63,15 @@ where
         future::ready(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_signal() {
+        assert_eq!(Signal::try_from(0), Ok(Signal::Stop));
+        assert_eq!(Signal::try_from(1), Ok(Signal::Terminate));
+        assert_eq!(Signal::try_from(2), Err(()));
+    }
+}

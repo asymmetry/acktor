@@ -4,8 +4,9 @@ use pretty_assertions::{assert_eq, assert_ne};
 use tokio::time::{self, Instant};
 
 use acktor::{
-    Actor, Handler, Message, Recipient, Sender,
+    Actor, ActorContext, Context, Handler, Message, Recipient, Sender,
     cron::{CronActor, CronActorContext, CronContext, CronSignal},
+    supervisor::{SupervisionEvent, Supervisor},
 };
 
 #[derive(Debug)]
@@ -58,6 +59,37 @@ impl Handler<CheckB> for B {
     async fn handle(&mut self, _msg: CheckB, ctx: &mut Self::Context) -> Self::Result {
         ctx.pause_task();
         self.count
+    }
+}
+
+#[derive(Debug, Message)]
+#[result_type(bool)]
+pub struct IsSupervised;
+
+impl Handler<IsSupervised> for B {
+    type Result = bool;
+
+    async fn handle(&mut self, _msg: IsSupervised, ctx: &mut Self::Context) -> Self::Result {
+        ctx.supervisor().is_some()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Watcher;
+
+impl Actor for Watcher {
+    type Context = Context<Self>;
+    type Error = anyhow::Error;
+}
+
+impl Handler<SupervisionEvent<B>> for Watcher {
+    type Result = ();
+
+    async fn handle(
+        &mut self,
+        _msg: SupervisionEvent<B>,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
     }
 }
 
@@ -143,4 +175,31 @@ async fn test_task_no_wait() {
     let count_2 = b_address.send(CheckB).await.unwrap().await.unwrap();
     assert_ne!(count_1, 0);
     assert_eq!(count_1, count_2);
+}
+
+#[tokio::test]
+async fn test_set_unset_supervisor() {
+    let (b_address, _) = B::default().run("B").unwrap();
+    let (watcher_address, _) = Watcher.run("watcher").unwrap();
+
+    // no supervisor by default
+    assert!(!b_address.send(IsSupervised).await.unwrap().await.unwrap());
+
+    // set supervisor
+    b_address
+        .send(Supervisor::Set(watcher_address.into()))
+        .await
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(b_address.send(IsSupervised).await.unwrap().await.unwrap());
+
+    // unset supervisor
+    b_address
+        .send(Supervisor::Unset)
+        .await
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(!b_address.send(IsSupervised).await.unwrap().await.unwrap());
 }
