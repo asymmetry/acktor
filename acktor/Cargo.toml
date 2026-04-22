@@ -54,3 +54,7 @@ required-features = ["observer"]
 [[test]]
 name = "test_cron"
 required-features = ["cron"]
+
+[[test]]
+name = "test_cron_context"
+required-features = ["cron"]
