@@ -299,6 +299,8 @@ where
 }
 
 /// A message which is used to pause/resume the repetitive task execution.
+///
+/// `Handler<CronSignal>` is implemented for all actors which implement `CronActor` automatically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CronSignal {

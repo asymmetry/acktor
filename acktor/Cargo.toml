@@ -33,6 +33,7 @@ bottleneck-warning = []
 ipc = ["type-erased-recipient-hook"]
 
 [dependencies]
+disqualified.workspace = true
 futures-util.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

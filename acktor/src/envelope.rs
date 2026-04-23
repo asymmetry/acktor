@@ -39,7 +39,7 @@ where
 }
 
 /// Helps to save a message in an envelope as a boxed trait object.
-pub trait EnvelopeProxy<A>: Send
+pub trait EnvelopeProxy<A>
 where
     A: Actor,
 {
@@ -72,7 +72,10 @@ where
     A: Actor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("Envelope<{}>", crate::utils::type_name::<A>()))
+        f.write_fmt(format_args!(
+            "Envelope<{}>",
+            crate::utils::ShortName::of::<A>()
+        ))
     }
 }
 

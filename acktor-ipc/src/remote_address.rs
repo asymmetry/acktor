@@ -394,6 +394,6 @@ where
     M::Result: Decode,
 {
     fn from(address: RemoteAddress) -> Self {
-        Recipient(Arc::new(address))
+        Recipient::new(Arc::new(address))
     }
 }

@@ -1,8 +1,5 @@
 use std::pin::Pin;
 
-#[cfg(feature = "type-erased-recipient-hook")]
-use std::any::Any;
-
 use tokio::time::Duration;
 
 use crate::actor::ActorId;
@@ -10,6 +7,9 @@ use crate::channel::oneshot::Receiver;
 use crate::envelope::DefaultEnvelopeProxy;
 use crate::errors::SendError;
 use crate::message::Message;
+
+#[cfg(feature = "type-erased-recipient-hook")]
+use crate::actor::TypeErasedRecipient;
 
 pub type SendResult<M> = Result<Receiver<<M as Message>::Result>, SendError<M>>;
 
@@ -114,7 +114,7 @@ where
     /// details.
     #[cfg(feature = "type-erased-recipient-hook")]
     #[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-    fn type_erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+    fn type_erased_recipient(&self) -> Option<TypeErasedRecipient> {
         None
     }
 }

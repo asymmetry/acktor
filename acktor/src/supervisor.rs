@@ -9,7 +9,7 @@ use std::future::{self, Future};
 use crate::actor::{Actor, ActorContext, ActorState};
 use crate::address::{Address, Recipient, SenderId};
 use crate::message::{Handler, Message};
-use crate::utils::debug_trace;
+use crate::utils::{ShortName, debug_trace};
 
 /// A message which is used to report actor status to a supervisor.
 pub enum SupervisionEvent<A>
@@ -70,6 +70,8 @@ where
 }
 
 /// A message which is used to set/unset a supervisor.
+///
+/// `Handler<Supervisor<A>>` is implemented for all actors automatically.
 pub enum Supervisor<A>
 where
     A: Actor,
@@ -85,14 +87,13 @@ where
     A: Actor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let actor_type = crate::utils::type_name::<A>();
         match self {
             Supervisor::Set(recipient) => f
-                .debug_tuple(&format!("Supervisor<{}>::Set", actor_type))
+                .debug_tuple(&format!("{}::Set", ShortName::of::<Self>()))
                 .field(&recipient.index())
                 .finish(),
             Supervisor::Unset => f
-                .debug_tuple(&format!("Supervisor<{}>::Unset", actor_type))
+                .debug_tuple(&format!("{}::Unset", ShortName::of::<Self>()))
                 .finish(),
         }
     }

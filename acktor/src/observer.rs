@@ -13,7 +13,7 @@ use tracing::{debug, warn};
 use crate::actor::{Actor, ActorContext};
 use crate::address::{Recipient, Sender, SenderId};
 use crate::message::{Handler, Message};
-use crate::utils::debug_trace;
+use crate::utils::{ShortName, debug_trace};
 
 /// Notifies all observers with the given event asynchronously, cleaning up closed observers.
 #[doc(hidden)]
@@ -155,6 +155,9 @@ where
 }
 
 /// A message which is used to register/unregister an observer.
+///
+/// `Handler<Observer<M>>` is implemented for all actors which implement `SubjectActor<M>`
+///  automatically.
 pub enum Observer<M>
 where
     M: Message,
@@ -170,14 +173,13 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message_type = crate::utils::type_name::<M>();
         match self {
             Observer::Register(recipient) => f
-                .debug_tuple(&format!("Observer<{}>::Register", message_type))
+                .debug_tuple(&format!("{}::Register", ShortName::of::<Self>()))
                 .field(&recipient.index())
                 .finish(),
             Observer::Unregister(recipient) => f
-                .debug_tuple(&format!("Observer<{}>::Unregister", message_type))
+                .debug_tuple(&format!("{}::Unregister", ShortName::of::<Self>()))
                 .field(&recipient.index())
                 .finish(),
         }

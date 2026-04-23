@@ -262,11 +262,7 @@ where
         msg: command::AddActor<A>,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        debug_trace!(
-            "Handle command AddActor<{}>({})",
-            acktor::utils::type_name::<A>(),
-            msg.0.index()
-        );
+        debug_trace!("Handle command {:?}", msg,);
 
         self.registry.insert(msg.0)
     }

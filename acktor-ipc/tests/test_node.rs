@@ -96,7 +96,7 @@ async fn test_add_remove_actor() -> anyhow::Result<()> {
     // add
     let command = command::AddActor(dummy.clone());
     let debug_str = format!("{command:?}");
-    assert_eq!(debug_str, format!("AddActor({:?})", dummy));
+    assert_eq!(debug_str, format!("AddActor<Dummy>({})", dummy.index()));
     let succeed = node.send(command).await?.await?;
     assert!(succeed);
 

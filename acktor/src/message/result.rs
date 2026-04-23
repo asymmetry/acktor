@@ -20,10 +20,7 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!(
-            "MessageResult<{}>",
-            crate::utils::type_name::<M>()
-        ))
+        f.write_fmt(format_args!("{}", crate::utils::ShortName::of::<Self>()))
     }
 }
 

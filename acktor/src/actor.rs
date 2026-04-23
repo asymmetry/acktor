@@ -15,13 +15,6 @@ pub type ActorId = u64;
 
 pub use tokio::task::JoinHandle;
 
-/// Function-pointer type returned by [`Actor::type_erased_recipient_fn`], which converts an
-/// [`Address<A>`] into a type-erased trait object that can be downcast into a concrete
-/// [`Recipient<M>`].
-#[cfg(feature = "type-erased-recipient-hook")]
-#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-pub type TypeErasedRecipientFn<A> = fn(&Address<A>) -> Box<dyn Any + Send + Sync>;
-
 /// State of an actor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -422,6 +415,23 @@ where
     /// [`stopping`][Actor::stopping] lifecycle hook. The default implementation handles the
     /// [`stopping`][Actor::stopping] in the [`process_loop`][Self::process_loop], but users can
     /// handle it here by overriding the default implementation.
+    ///
+    /// # Return value
+    ///
+    /// The nested `Result<Result<(), A::Error>, Box<dyn Any + Send>>` encodes three outcomes:
+    ///
+    /// - `Ok(Ok(()))` — the actor started, ran, and stopped cleanly.
+    /// - `Ok(Err(error))` — a lifecycle method returned an [`Actor::Error`] (from
+    ///   [`post_start`][Actor::post_start], [`process_loop`][Self::process_loop], or
+    ///   [`post_stop`][Actor::post_stop]).
+    /// - `Err(panic_payload)` — a lifecycle method panicked. The payload is the value caught by
+    ///   [`catch_unwind`][panic::catch_unwind]. When [`process_loop`][Self::process_loop] panics,
+    ///   [`post_stop`][Actor::post_stop] is skipped because the actor's state is not assumed to
+    ///   be safe to observe after a panic.
+    ///
+    /// If both [`process_loop`][Self::process_loop] and [`post_stop`][Actor::post_stop] return
+    /// errors (neither panics), the `process_loop` error is returned and the `post_stop` error
+    /// is discarded.
     fn process(
         &mut self,
         actor: &mut A,
@@ -456,12 +466,13 @@ where
                 self.set_state(ActorState::Stopped);
             }
 
-            // drop mailbox so any actor holds the address of this actor will not be able to send messages
-            // after it is stopped
+            // drop mailbox so any actor holds the address of this actor will not be able to send
+            // messages
             drop(mailbox);
 
-            // if the process_loop panicked, post_stop is skipped since the actor's state is
-            // not predictable after the panic
+            // if the process_loop panicked, post_stop is skipped since the actor's state is not
+            // predictable once a panic happens, and we don't want to make it worse by invoking
+            // user code in post_stop
             let result = result?;
 
             let result_post_stop = AssertUnwindSafe(actor.post_stop(self))
@@ -482,6 +493,60 @@ where
         }
     }
 }
+
+/// Return type of [`Sender::type_erased_recipient`] and [`TypeErasedRecipientFn`].
+///
+/// It wraps a type-erased trait object with its original type name for better error messages when
+/// downcasting fails.
+#[cfg(feature = "type-erased-recipient-hook")]
+#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
+pub struct TypeErasedRecipient {
+    inner: Box<dyn Any + Send + Sync>,
+    type_name: &'static str,
+}
+
+#[cfg(feature = "type-erased-recipient-hook")]
+#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
+impl TypeErasedRecipient {
+    /// Constructs a new [`TypeErasedRecipient`] from a concrete value.
+    pub fn new<T>(value: T) -> Self
+    where
+        T: Any + Send + Sync,
+    {
+        Self {
+            inner: Box::new(value),
+            type_name: std::any::type_name::<T>(),
+        }
+    }
+
+    /// Attempts to downcast the type-erased recipient to a concrete type.
+    pub fn downcast<T>(self) -> Result<Box<T>, (Self, String)>
+    where
+        T: Any + Send + Sync,
+    {
+        self.inner.downcast::<T>().map_err(|inner| {
+            let error_msg = format!(
+                "Could not downcast TypeErasedRecipient: expected type {}, actual type {}",
+                crate::utils::ShortName::of::<T>(),
+                crate::utils::ShortName(self.type_name),
+            );
+            (
+                Self {
+                    inner,
+                    type_name: self.type_name,
+                },
+                error_msg,
+            )
+        })
+    }
+}
+
+/// Function-pointer type returned by [`Actor::type_erased_recipient_fn`], which converts an
+/// [`Address<A>`] into a type-erased trait object that can be downcast into a concrete
+/// [`Recipient<M>`].
+#[cfg(feature = "type-erased-recipient-hook")]
+#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
+pub type TypeErasedRecipientFn<A> = fn(&Address<A>) -> TypeErasedRecipient;
 
 #[cfg(test)]
 mod tests {
