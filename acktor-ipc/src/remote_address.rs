@@ -108,6 +108,21 @@ impl RemoteAddress {
         self.encode_context
             .create_decode_context(self.session.clone())
     }
+
+    /// Completes when the session has been closed.
+    pub fn closed(&self) -> impl Future<Output = ()> + Send {
+        self.session.closed()
+    }
+
+    /// Checks if the session has been closed.
+    pub fn is_closed(&self) -> bool {
+        self.session.is_closed()
+    }
+
+    /// Returns the capacity of the session.
+    pub fn capacity(&self) -> usize {
+        self.session.capacity()
+    }
 }
 
 async fn decode_and_forward<M>(
@@ -149,15 +164,15 @@ where
     M::Result: Decode,
 {
     fn closed(&self) -> ClosedResultFuture<'_> {
-        self.session.closed().boxed()
+        self.closed().boxed()
     }
 
     fn is_closed(&self) -> bool {
-        self.session.is_closed()
+        self.is_closed()
     }
 
     fn capacity(&self) -> usize {
-        self.session.capacity()
+        self.capacity()
     }
 
     fn send(&self, msg: M) -> SendResultFuture<'_, M> {

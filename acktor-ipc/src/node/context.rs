@@ -1,6 +1,6 @@
 use std::io::Error as IoError;
 
-use futures_util::future::select_all;
+use futures_util::{FutureExt, future::select_all};
 use tracing::warn;
 
 use acktor::{
@@ -80,13 +80,15 @@ impl ActorContext<Node> for NodeContext {
                 if actor.listeners.is_empty() {
                     LoopEvent::Envelope(mailbox.recv().await)
                 } else {
-                    let accepts = actor.listeners.iter().map(|l| l.accept());
+                    let accepts = actor
+                        .listeners
+                        .iter()
+                        .map(|(k, v)| v.accept().map(|result| (result, k.to_string())));
 
                     tokio::select! {
                         envelope = mailbox.recv() => LoopEvent::Envelope(envelope),
-                        (result, index, _) = select_all(accepts) => {
-                            let endpoint = actor.listeners[index].local_endpoint();
-                            LoopEvent::Accept(result, endpoint.to_string())
+                        (result, _, _) = select_all(accepts) => {
+                            LoopEvent::Accept(result.0, result.1)
                         }
                     }
                 }

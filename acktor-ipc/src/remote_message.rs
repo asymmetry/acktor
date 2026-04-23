@@ -35,14 +35,10 @@ impl Debug for RemoteMessage {
             .field("message", &format_args!("Bytes({})", self.message.len()))
             .field(
                 "result_tx",
-                &format_args!(
-                    "{}",
-                    if self.result_tx.is_some() {
-                        "Some(..)"
-                    } else {
-                        "None"
-                    }
-                ),
+                &match self.result_tx {
+                    Some(_) => format_args!("Send"),
+                    None => format_args!("DoSend"),
+                },
             )
             .finish()
     }

@@ -63,23 +63,21 @@ where
 }
 
 #[tokio::test]
-async fn test_derived_handler() {
+async fn test_derived_remote_actor() {
     let (address, handle) = Calculator.run("calc").unwrap();
 
     assert_eq!(roundtrip(&address, Double { value: 5 }).await, 10);
     assert_eq!(roundtrip(&address, Triple { value: 5 }).await, 15);
 
-    acktor::utils::terminate_actor(address, handle).await;
-}
-
-#[tokio::test]
-async fn test_unknown_message_id() {
-    let (address, handle) = Calculator.run("calc").unwrap();
-
     let (tx, rx) = oneshot::channel::<Bytes>();
     // 99 is not Double::ID or Triple::ID
-    let rm = RemoteMessage::send(0, 99, Bytes::new(), tx);
-    address.do_send(rm).await.unwrap();
+    let remote_message = RemoteMessage::send(0, 99, Bytes::new(), tx);
+    let debug_str = format!("{remote_message:?}");
+    assert_eq!(
+        debug_str,
+        "RemoteMessage { actor_id: 0, message_id: 99, message: Bytes(0), result_tx: Send }"
+    );
+    address.do_send(remote_message).await.unwrap();
 
     let err = rx.await.unwrap_err();
     assert!(format!("{:?}", err).contains("UnknownMessageId"));

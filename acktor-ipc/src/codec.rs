@@ -98,14 +98,6 @@ impl DecodeContext {
         }
     }
 
-    /// Converts itself into a [`EncodeContext`].
-    #[inline]
-    pub fn into_encode_context(self) -> EncodeContext {
-        EncodeContext {
-            registry: self.registry,
-        }
-    }
-
     /// Creates a new [`RemoteAddress`] from the given actor ID.
     #[inline]
     pub fn create_remote_address(&self, actor_id: u64) -> Result<RemoteAddress, DecodeError> {
@@ -310,6 +302,22 @@ mod test {
 
     create_test!(test_result_ok, Result<u32, String>, Ok::<u32, String>(424242_u32));
     create_test!(test_result_err, Result<u32, String>, Err::<u32, String>("hello".into()));
+    create_test!(
+        test_result_nested_option,
+        Result<Option<u32>, String>,
+        Ok::<Option<u32>, String>(Some(424242_u32))
+    );
+
+    create_test!(
+        test_box_vec,
+        Box<Vec<u16>>,
+        Box::new(vec![4242_u16, 4242_u16, 4242_u16])
+    );
+    create_test!(
+        test_arc_string,
+        std::sync::Arc<String>,
+        std::sync::Arc::new("hello".to_string())
+    );
 
     create_test!(test_tuple2, (u32, String), (42_u32, "hello".to_string()));
     create_test!(
@@ -322,4 +330,24 @@ mod test {
         (u8, (i32, String)),
         (42_u8, (-424242_i32, "hello".to_string()))
     );
+
+    #[test]
+    fn test_result_string() {
+        for value in [
+            Ok::<String, String>("hello".to_string()),
+            Err::<String, String>("boom".to_string()),
+        ] {
+            let expected_len = value.encoded_len();
+            let mut buf = BytesMut::with_capacity(expected_len);
+            value.encode(&mut buf, None).unwrap();
+            assert_eq!(
+                buf.len(),
+                expected_len,
+                "encoded_len mismatch for {value:?}"
+            );
+
+            let decoded = <Result<String, String> as Decode>::decode(buf.freeze(), None).unwrap();
+            assert_eq!(value, decoded);
+        }
+    }
 }

@@ -103,7 +103,7 @@ async fn test_supervisor() {
     let debug_str = format!("{command:?}");
     assert_eq!(
         debug_str,
-        format!("Set(Recipient<SupervisionEvent<A>>({}))", b_address.index())
+        format!("Supervisor<A>::Set({})", b_address.index())
     );
     a_address.send(command).await.unwrap().await.unwrap();
 
@@ -124,7 +124,7 @@ async fn test_supervisor() {
     // unset supervisor
     let command = Supervisor::Unset;
     let debug_str = format!("{command:?}");
-    assert_eq!(debug_str, "Unset");
+    assert_eq!(debug_str, "Supervisor<A>::Unset");
     a_address.send(command).await.unwrap().await.unwrap();
 
     // trigger A to notify supervisor

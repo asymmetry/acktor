@@ -8,7 +8,7 @@
 //!
 
 use std::any::Any;
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::pin::Pin;
 
 use crate::actor::Actor;
@@ -67,7 +67,7 @@ pub struct Envelope<A>(Box<dyn EnvelopeProxy<A> + Send>)
 where
     A: Actor;
 
-impl<A> fmt::Debug for Envelope<A>
+impl<A> Debug for Envelope<A>
 where
     A: Actor,
 {
