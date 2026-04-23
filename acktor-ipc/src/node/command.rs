@@ -19,7 +19,7 @@ type Result<T> = std::result::Result<T, NodeError>;
 /// A node can hold multiple listeners at once so that it can accept inbound connections on
 /// several endpoints in parallel.
 #[derive(Message)]
-#[result_type(String)]
+#[result_type(bool)]
 pub struct AddListener<L>(pub L)
 where
     L: IpcListener;
@@ -30,7 +30,7 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple(&format!("AddListener<{}>", acktor::utils::type_name::<L>()))
-            .field(&self.0.local_endpoint())
+            .field(&format_args!("{}", self.0.local_endpoint()))
             .finish()
     }
 }
@@ -39,19 +39,19 @@ where
 ///
 /// The listener is identified by its local endpoint.
 #[derive(Debug, Message)]
-#[result_type(())]
+#[result_type(bool)]
 pub struct RemoveListener(pub String);
 
 /// A command which is used to add an actor to a node.
 #[derive(Debug, Message)]
-#[result_type(())]
+#[result_type(bool)]
 pub struct AddActor<A>(pub Address<A>)
 where
     A: RemoteActor;
 
 /// A command which is used to remove an actor from a node.
 #[derive(Debug, Message)]
-#[result_type(())]
+#[result_type(bool)]
 pub struct RemoveActor(pub ActorId);
 
 /// A command which is used by a node to actively connect to another node like a client.
@@ -81,9 +81,9 @@ where
     C: IpcConnection,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct(&format!("Connect<{}>", acktor::utils::type_name::<C>()))
-            .field("endpoint", &self.endpoint)
-            .field("session_label", &self.session_label)
+        f.debug_tuple(&format!("Connect<{}>", acktor::utils::type_name::<C>()))
+            .field(&self.endpoint)
+            .field(&self.session_label)
             .finish()
     }
 }

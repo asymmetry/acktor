@@ -3,7 +3,7 @@
 //! This module provides a way to implement the observer pattern for actors.
 //!
 
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::future::{self, Future};
 use std::ops::{Deref, DerefMut};
 
@@ -165,16 +165,21 @@ where
     Unregister(Recipient<M>),
 }
 
-impl<M> fmt::Debug for Observer<M>
+impl<M> Debug for Observer<M>
 where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message_type = crate::utils::type_name::<M>();
         match self {
-            Observer::Register(recipient) => f.debug_tuple("Register").field(&recipient).finish(),
-            Observer::Unregister(recipient) => {
-                f.debug_tuple("Unregister").field(&recipient).finish()
-            }
+            Observer::Register(recipient) => f
+                .debug_tuple(&format!("Observer<{}>::Register", message_type))
+                .field(&recipient.index())
+                .finish(),
+            Observer::Unregister(recipient) => f
+                .debug_tuple(&format!("Observer<{}>::Unregister", message_type))
+                .field(&recipient.index())
+                .finish(),
         }
     }
 }

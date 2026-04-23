@@ -1,6 +1,6 @@
 [package]
 name = "acktor-ipc"
-version = "1.0.0"
+version = "1.0.1"
 description = "Interprocess communication support for the acktor actor framework"
 edition.workspace = true
 rust-version.workspace = true
@@ -16,7 +16,7 @@ rustc-args = ["--cfg", "tokio_unstable"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["derive"]
+default = ["derive", "websocket"]
 derive = ["dep:acktor-derive"]
 # pre-implemented IPC methods
 # enable one of these features to select the IPC method to use
@@ -65,9 +65,21 @@ name = "pingpong"
 required-features = ["websocket"]
 
 [[test]]
-name = "test_basic_ipc"
+name = "test_basic"
 required-features = ["websocket", "pipe"]
 
 [[test]]
-name = "test_send_recv"
+name = "test_codec_with_session"
+required-features = ["websocket"]
+
+[[test]]
+name = "test_node"
+required-features = ["websocket"]
+
+[[test]]
+name = "test_remote_address"
+required-features = ["websocket"]
+
+[[test]]
+name = "test_create_actor"
 required-features = ["websocket"]

@@ -24,7 +24,11 @@ jobs:
       - name: install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: generate code coverage
-        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+        run: |
+          cargo llvm-cov clean --workspace
+          cargo llvm-cov --no-report --workspace
+          cargo llvm-cov --no-report --all-features --workspace
+          cargo llvm-cov report --lcov --output-path lcov.info
         env:
           RUSTFLAGS: --cfg tokio_unstable
       - name: upload coverage to Codecov

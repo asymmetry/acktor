@@ -69,7 +69,7 @@ impl ActorContext<Session> for SessionContext {
     ) -> Result<(), SessionError> {
         while self.state() == ActorState::Running {
             if self.last_cleanup_time.elapsed() >= Duration::from_secs(30) {
-                actor.cleanup_expired_res_tx();
+                actor.cleanup_expired_response_tx();
                 self.last_cleanup_time = Instant::now();
             }
 

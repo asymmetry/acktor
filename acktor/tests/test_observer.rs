@@ -139,7 +139,7 @@ async fn test_observer() {
     let debug_str = format!("{command:?}");
     assert_eq!(
         debug_str,
-        format!("Register(Recipient<M1>({}))", b_address.index())
+        format!("Observer<M1>::Register({})", b_address.index())
     );
     a_address.send(command).await.unwrap().await.unwrap();
 
@@ -172,7 +172,7 @@ async fn test_observer() {
     let debug_str = format!("{command:?}");
     assert_eq!(
         debug_str,
-        format!("Unregister(Recipient<M1>({}))", recipient.index())
+        format!("Observer<M1>::Unregister({})", recipient.index())
     );
     a_address.send(command).await.unwrap().await.unwrap();
 

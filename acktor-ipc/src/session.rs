@@ -44,27 +44,25 @@ struct ActorMessageResponse {
 
 impl Debug for ActorMessageResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ActorMessageResponse")
-            .field("tag", &self.tag)
-            .field(
-                "result",
-                &format_args!(
-                    "{}",
-                    match &self.result {
-                        Ok(bytes) => format!("Ok(Bytes({}))", bytes.len()),
-                        Err(e) => format!("Err({})", e),
-                    }
-                ),
-            )
+        f.debug_tuple("ActorMessageResponse")
+            .field(&self.tag)
             .finish()
     }
 }
 
-#[derive(Debug, Message)]
+#[derive(Message)]
 #[result_type(())]
 struct CreateActorResponse {
     tag: u64,
     result: StdResult<ActorId, String>,
+}
+
+impl Debug for CreateActorResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CreateActorResponse")
+            .field(&self.tag)
+            .finish()
+    }
 }
 
 /// An actor which manages the IPC connection to a remote endpoint.
@@ -77,18 +75,6 @@ pub struct Session {
     decode_context: Option<DecodeContext>,
     node_msg_res_tx_map: HashMap<u64, (oneshot::Sender<Result<RemoteAddress>>, Instant)>,
     actor_msg_res_tx_map: HashMap<u64, (oneshot::Sender<Bytes>, Instant)>,
-}
-
-impl Debug for Session {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Session")
-            .field("connection", &self.connection.peer_endpoint())
-            .field("factory", &self.factory)
-            .field("registry", &self.registry)
-            .field("label_map", &self.label_map)
-            .field("tag", &self.tag)
-            .finish()
-    }
 }
 
 impl Session {
@@ -111,7 +97,7 @@ impl Session {
         }
     }
 
-    fn cleanup_expired_res_tx(&mut self) {
+    fn cleanup_expired_response_tx(&mut self) {
         let now = Instant::now();
 
         self.node_msg_res_tx_map
@@ -715,5 +701,37 @@ impl Handler<ActorMessageResponse> for Session {
                 e.report()
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_debug_str() {
+        let ok = ActorMessageResponse {
+            tag: 42,
+            result: Ok(Bytes::from_static(b"payload")),
+        };
+        assert_eq!(format!("{ok:?}"), "ActorMessageResponse(42)");
+
+        let err = ActorMessageResponse {
+            tag: 7,
+            result: Err("boom".to_string()),
+        };
+        assert_eq!(format!("{err:?}"), "ActorMessageResponse(7)");
+
+        let ok = CreateActorResponse {
+            tag: 42,
+            result: Ok(1234),
+        };
+        assert_eq!(format!("{ok:?}"), "CreateActorResponse(42)");
+
+        let err = CreateActorResponse {
+            tag: 7,
+            result: Err("boom".to_string()),
+        };
+        assert_eq!(format!("{err:?}"), "CreateActorResponse(7)");
     }
 }

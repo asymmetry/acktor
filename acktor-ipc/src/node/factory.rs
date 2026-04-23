@@ -1,4 +1,3 @@
-use std::fmt::{self, Debug};
 use std::result::Result;
 use std::time::Duration;
 
@@ -28,17 +27,6 @@ pub struct Factory {
     factory_registry: RemoteActorFactoryRegistry,
     registry: RemoteActorRegistry,
     label_map: LabelMap,
-}
-
-impl Debug for Factory {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let factory_registry: Vec<&str> =
-            self.factory_registry.keys().map(|s| s.as_str()).collect();
-        f.debug_struct("Factory")
-            .field("factory_registry", &factory_registry)
-            // registry and label_map are not included since they are shared with the node
-            .finish()
-    }
 }
 
 impl Factory {
