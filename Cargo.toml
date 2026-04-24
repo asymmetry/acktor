@@ -18,6 +18,7 @@ ahash = "0.8"
 bytes = "1.10"
 chrono = "0.4"
 dashmap = "6.1"
+disqualified = "1.0"
 futures-util = "0.3"
 interprocess = { version = "2.2", features = ["tokio"] }
 prost = "0.14"

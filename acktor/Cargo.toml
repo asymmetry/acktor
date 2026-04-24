@@ -1,6 +1,6 @@
 [package]
 name = "acktor"
-version = "1.0.8"
+version = "1.0.9"
 description = "Pure-Rust actor framework built on top of the Tokio async runtime"
 edition.workspace = true
 rust-version.workspace = true
@@ -33,6 +33,7 @@ bottleneck-warning = []
 ipc = ["type-erased-recipient-hook"]
 
 [dependencies]
+disqualified.workspace = true
 futures-util.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

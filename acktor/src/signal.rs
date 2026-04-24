@@ -5,6 +5,8 @@ use crate::message::{Handler, Message};
 use crate::utils::debug_trace;
 
 /// A message which is used to stop/terminate an actor.
+///
+/// `Handler<Signal>` is implemented for all actors automatically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Signal {

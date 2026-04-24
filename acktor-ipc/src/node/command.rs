@@ -1,4 +1,5 @@
 //! Commands which can be used to interact with a node.
+//!
 
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
@@ -29,7 +30,7 @@ where
     L: IpcListener,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(&format!("AddListener<{}>", acktor::utils::type_name::<L>()))
+        f.debug_tuple(&format!("{}", acktor::utils::ShortName::of::<Self>()))
             .field(&format_args!("{}", self.0.local_endpoint()))
             .finish()
     }
@@ -43,11 +44,22 @@ where
 pub struct RemoveListener(pub String);
 
 /// A command which is used to add an actor to a node.
-#[derive(Debug, Message)]
+#[derive(Message)]
 #[result_type(bool)]
 pub struct AddActor<A>(pub Address<A>)
 where
     A: RemoteActor;
+
+impl<A> Debug for AddActor<A>
+where
+    A: RemoteActor,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple(&format!("{}", acktor::utils::ShortName::of::<Self>()))
+            .field(&format_args!("{}", self.0.index()))
+            .finish()
+    }
+}
 
 /// A command which is used to remove an actor from a node.
 #[derive(Debug, Message)]
@@ -81,7 +93,7 @@ where
     C: IpcConnection,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(&format!("Connect<{}>", acktor::utils::type_name::<C>()))
+        f.debug_tuple(&format!("{}", acktor::utils::ShortName::of::<Self>()))
             .field(&self.endpoint)
             .field(&self.session_label)
             .finish()

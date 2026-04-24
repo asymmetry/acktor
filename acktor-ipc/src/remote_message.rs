@@ -87,8 +87,8 @@ pub enum ToRemoteMessageRecipientError {
     )]
     MissingHook,
 
-    #[error("could not downcast the type-erased recipient to Recipient<RemoteMessage>")]
-    DowncastFailed,
+    #[error("{0}")]
+    DowncastFailed(String),
 }
 
 pub trait ToRemoteMessageRecipient {
@@ -108,7 +108,7 @@ where
             .type_erased_recipient()
             .ok_or(ToRemoteMessageRecipientError::MissingHook)?
             .downcast::<Recipient<RemoteMessage>>()
-            .map_err(|_| ToRemoteMessageRecipientError::DowncastFailed)?)
+            .map_err(|(_, e)| ToRemoteMessageRecipientError::DowncastFailed(e))?)
     }
 }
 
@@ -123,7 +123,7 @@ where
             .type_erased_recipient()
             .ok_or(ToRemoteMessageRecipientError::MissingHook)?
             .downcast::<Recipient<RemoteMessage>>()
-            .map_err(|_| ToRemoteMessageRecipientError::DowncastFailed)?)
+            .map_err(|(_, e)| ToRemoteMessageRecipientError::DowncastFailed(e))?)
     }
 }
 

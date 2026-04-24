@@ -1,15 +1,13 @@
 #![allow(dead_code)]
 
-use tokio::{
-    net::TcpListener,
-    time::{Duration, sleep, timeout},
-};
+use tokio::time::{Duration, sleep, timeout};
 
 use acktor::{Actor, Address, JoinHandle};
 use acktor_ipc::{Node, Session, ipc_method::IpcConnection, node::command};
 
+#[cfg(feature = "websocket")]
 pub async fn pick_free_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     listener.local_addr().unwrap().port()
 }
 

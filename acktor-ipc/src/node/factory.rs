@@ -15,15 +15,15 @@ use crate::remote_actor::RemoteActorRegistry;
 /// current process on behalf of a remote peer.
 #[derive(Debug, Message)]
 #[result_type(Result<ActorId, SessionError>)]
-pub struct CreateActor {
-    pub label: String,
-    pub r#type: String,
-    pub config: String,
+pub(crate) struct CreateActor {
+    pub(crate) label: String,
+    pub(crate) r#type: String,
+    pub(crate) config: String,
 }
 
 /// An actor which is responsible for creating actors in the current process on behalf of remote
 /// peers. It also keeps track of the actors in the registy and removes the stale ones.
-pub struct Factory {
+pub(crate) struct Factory {
     factory_registry: RemoteActorFactoryRegistry,
     registry: RemoteActorRegistry,
     label_map: LabelMap,
@@ -52,7 +52,7 @@ impl CronActor for Factory {
     async fn task(&mut self, _ctx: &mut Self::Context) -> Result<Duration, NodeError> {
         self.registry.retain(|_, recipient| !recipient.is_closed());
         self.label_map
-            .retain(|_, actor_id| self.registry.contains(*actor_id));
+            .retain(|_, actor_id| self.registry.contains_index(*actor_id));
 
         Ok(Duration::from_secs(30))
     }

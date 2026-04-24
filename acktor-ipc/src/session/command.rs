@@ -1,3 +1,6 @@
+//! Commands which can be used to interact with a session.
+//!
+
 use acktor::Message;
 
 use crate::actor_handle::ActorHandle;

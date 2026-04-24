@@ -2,9 +2,6 @@ use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-#[cfg(feature = "type-erased-recipient-hook")]
-use std::any::Any;
-
 use futures_util::future::{FutureExt, TryFutureExt};
 use tokio::time::Duration;
 
@@ -16,7 +13,10 @@ use crate::actor::ActorId;
 use crate::channel::{mpsc, oneshot};
 use crate::envelope::DefaultEnvelopeProxy;
 use crate::message::Message;
-use crate::utils::create_actor_id;
+use crate::utils::{ShortName, create_actor_id};
+
+#[cfg(feature = "type-erased-recipient-hook")]
+use crate::actor::TypeErasedRecipient;
 
 /// A type which is used to send a specific message type to an actor.
 ///
@@ -27,7 +27,7 @@ use crate::utils::create_actor_id;
 /// A `Recipient` can be converted from an [`Address`][super::Address] or created with the
 /// [`create`][Recipient::create] method. Note that the [`create`][Recipient::create] method is
 /// only available for messages with empty [`Message::Result`].
-pub struct Recipient<M, EP = DefaultEnvelopeProxy<M>>(pub Arc<dyn Sender<M, EP> + Send + Sync>)
+pub struct Recipient<M, EP = DefaultEnvelopeProxy<M>>(Arc<dyn Sender<M, EP> + Send + Sync>)
 where
     M: Message;
 
@@ -36,7 +36,7 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(&format!("Recipient<{}>", crate::utils::type_name::<M>()))
+        f.debug_tuple(&format!("Recipient<{}>", ShortName::of::<M>()))
             .field(&self.0.index())
             .finish()
     }
@@ -162,7 +162,7 @@ where
     }
 
     #[cfg(feature = "type-erased-recipient-hook")]
-    fn type_erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+    fn type_erased_recipient(&self) -> Option<TypeErasedRecipient> {
         self.0.type_erased_recipient()
     }
 }

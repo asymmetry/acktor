@@ -7,6 +7,7 @@ use prost::Message as _;
 use acktor_ipc_proto::utils::{ProtoOption, ProtoResult, ProtoResultType};
 
 use super::errors::{DecodeError, EncodeError};
+use super::protobuf_helper::LENGTH_DELIMITED_TAGS;
 use super::{Decode, DecodeContext, Encode, EncodeContext};
 
 impl<T> Encode for Box<T>
@@ -61,6 +62,11 @@ where
     }
 }
 
+// Encode a `Result<T, E>`.
+//
+// The `Err` variant is lossy: the error is serialized as its `Display` string and decoded back
+// via `E::from(String)` (see the `Decode` impl below). Any structured data on the error type —
+// enum discriminants, numeric codes, nested fields — is collapsed to the rendered message.
 impl<T, E> Encode for Result<T, E>
 where
     T: Encode,
@@ -79,14 +85,14 @@ where
         match self {
             Ok(ok) => {
                 // field 1, wire type LengthDelimited (bytes)
-                buf.extend_from_slice(&[0x0A]);
+                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
                 prost::encoding::encode_varint(ok.encoded_len() as u64, buf);
                 ok.encode(buf, ctx)?;
             }
             Err(err) => {
                 // field 2, wire type LengthDelimited (string)
                 let err_str = err.to_string();
-                buf.extend_from_slice(&[0x12]);
+                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[2]]);
                 prost::encoding::encode_varint(err_str.len() as u64, buf);
                 buf.extend_from_slice(err_str.as_bytes());
             }
@@ -111,7 +117,7 @@ where
                 let err_string = err.to_string();
                 let total = 1 + prost::length_delimiter_len(err_string.len()) + err_string.len();
                 let mut buf = BytesMut::with_capacity(total);
-                buf.extend_from_slice(&[0x12]);
+                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[2]]);
                 prost::encoding::encode_varint(err_string.len() as u64, &mut buf);
                 buf.extend_from_slice(err_string.as_bytes());
 

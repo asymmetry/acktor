@@ -5,6 +5,7 @@ use acktor_ipc_proto::utils::{
 };
 
 use super::errors::{DecodeError, EncodeError};
+use super::protobuf_helper::LENGTH_DELIMITED_TAGS;
 use super::{Decode, DecodeContext, Encode, EncodeContext};
 
 macro_rules! impl_encode_decode_for {
@@ -106,7 +107,7 @@ macro_rules! impl_encode_decode_for_vec {
                     .map(|&v| prost::encoding::encoded_len_varint(v as u64))
                     .sum();
                 buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
-                buf.extend_from_slice(&[0x0A]);
+                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
                 prost::encoding::encode_varint(data_len as u64, buf);
                 for value in self.iter() {
                     prost::encoding::encode_varint(*value as u64, buf);
@@ -154,7 +155,7 @@ macro_rules! impl_encode_decode_for_vec {
                     .map(|&v| prost::encoding::encoded_len_varint(v as $wire_type as u64))
                     .sum();
                 buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
-                buf.extend_from_slice(&[0x0A]);
+                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
                 prost::encoding::encode_varint(data_len as u64, buf);
                 for value in self.iter() {
                     prost::encoding::encode_varint(*value as $wire_type as u64, buf);
@@ -199,7 +200,7 @@ macro_rules! impl_encode_decode_for_vec {
 
                 let data_len = self.len() * std::mem::size_of::<$type>();
                 buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
-                buf.extend_from_slice(&[0x0A]);
+                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
                 prost::encoding::encode_varint(data_len as u64, buf);
                 for value in self.iter() {
                     buf.extend_from_slice(&value.to_le_bytes());
@@ -235,8 +236,7 @@ impl_encode_decode_for_vec!(varint, isize, i64, VecInt64);
 impl_encode_decode_for_vec!(varint, usize, u64, VecUint64);
 
 macro_rules! impl_encode_decode_for_tuple {
-    // $tag = precomputed tag byte: (field_number << 3) | 2
-    ([$($type:ident $field:ident $index:tt $tag:expr),+]) => {
+    ($($type:ident<$index:tt>($field:ident)),+) => {
         impl<$($type,)+> Encode for ($($type,)+)
         where
             $($type: Encode,)+
@@ -260,7 +260,7 @@ macro_rules! impl_encode_decode_for_tuple {
             ) -> Result<(), EncodeError> {
                 buf.reserve(self.encoded_len());
                 $({
-                    buf.extend_from_slice(&[$tag]);
+                    buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[$index + 1]]);
                     prost::encoding::encode_varint(self.$index.encoded_len() as u64, buf);
                     self.$index.encode(buf, ctx)?;
                 })+
@@ -290,54 +290,24 @@ macro_rules! impl_encode_decode_for_tuple {
     };
 }
 
-impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12]);
-impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A]);
-impl_encode_decode_for_tuple!([T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22]);
-impl_encode_decode_for_tuple!([
-    T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A
-]);
-impl_encode_decode_for_tuple!([
-    T0 t0 0 0x0A, T1 t1 1 0x12, T2 t2 2 0x1A, T3 t3 3 0x22, T4 t4 4 0x2A, T5 t5 5 0x32
-]);
-impl_encode_decode_for_tuple!([
-    T0 t0 0 0x0A,
-    T1 t1 1 0x12,
-    T2 t2 2 0x1A,
-    T3 t3 3 0x22,
-    T4 t4 4 0x2A,
-    T5 t5 5 0x32,
-    T6 t6 6 0x3A
-]);
-impl_encode_decode_for_tuple!([
-    T0 t0 0 0x0A,
-    T1 t1 1 0x12,
-    T2 t2 2 0x1A,
-    T3 t3 3 0x22,
-    T4 t4 4 0x2A,
-    T5 t5 5 0x32,
-    T6 t6 6 0x3A,
-    T7 t7 7 0x42
-]);
-impl_encode_decode_for_tuple!([
-    T0 t0 0 0x0A,
-    T1 t1 1 0x12,
-    T2 t2 2 0x1A,
-    T3 t3 3 0x22,
-    T4 t4 4 0x2A,
-    T5 t5 5 0x32,
-    T6 t6 6 0x3A,
-    T7 t7 7 0x42,
-    T8 t8 8 0x4A
-]);
-impl_encode_decode_for_tuple!([
-    T0 t0 0 0x0A,
-    T1 t1 1 0x12,
-    T2 t2 2 0x1A,
-    T3 t3 3 0x22,
-    T4 t4 4 0x2A,
-    T5 t5 5 0x32,
-    T6 t6 6 0x3A,
-    T7 t7 7 0x42,
-    T8 t8 8 0x4A,
-    T9 t9 9 0x52
-]);
+impl_encode_decode_for_tuple!(T0<0>(t0), T1<1>(t1));
+impl_encode_decode_for_tuple!(T0<0>(t0), T1<1>(t1), T2<2>(t2));
+impl_encode_decode_for_tuple!(T0<0>(t0), T1<1>(t1), T2<2>(t2), T3<3>(t3));
+impl_encode_decode_for_tuple!(T0<0>(t0), T1<1>(t1), T2<2>(t2), T3<3>(t3), T4<4>(t4));
+impl_encode_decode_for_tuple!(
+    T0<0>(t0), T1<1>(t1), T2<2>(t2), T3<3>(t3), T4<4>(t4), T5<5>(t5)
+);
+impl_encode_decode_for_tuple!(
+    T0<0>(t0), T1<1>(t1), T2<2>(t2), T3<3>(t3), T4<4>(t4), T5<5>(t5), T6<6>(t6)
+);
+impl_encode_decode_for_tuple!(
+    T0<0>(t0), T1<1>(t1), T2<2>(t2), T3<3>(t3), T4<4>(t4), T5<5>(t5), T6<6>(t6), T7<7>(t7)
+);
+impl_encode_decode_for_tuple!(
+    T0<0>(t0), T1<1>(t1), T2<2>(t2), T3<3>(t3), T4<4>(t4), T5<5>(t5), T6<6>(t6), T7<7>(t7),
+    T8<8>(t8)
+);
+impl_encode_decode_for_tuple!(
+    T0<0>(t0), T1<1>(t1), T2<2>(t2), T3<3>(t3), T4<4>(t4), T5<5>(t5), T6<6>(t6), T7<7>(t7),
+    T8<8>(t8), T9<9>(t9)
+);

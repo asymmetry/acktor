@@ -49,70 +49,102 @@ impl RemoteActorRegistry {
         }
     }
 
-    /// Inserts an actor keyed by its index. Returns `true` if a new entry was inserted,
-    /// or `false` if the registry already contained an actor with the same index.
+    /// Returns the number of actors the registry can hold without reallocating.
     ///
-    /// Re-registering the same address is a cheap lookup-no-op.
-    pub fn insert<A>(&self, actor: A) -> bool
-    where
-        A: Into<Recipient<RemoteMessage>>,
-    {
-        let recipient = actor.into();
-        let index = recipient.index();
-        match self.inner.entry(index) {
-            Entry::Vacant(e) => {
-                e.insert(recipient);
-                true
-            }
-            Entry::Occupied(_) => false,
-        }
-    }
-
-    /// Removes and returns the actor with the given index or address, if any.
-    pub fn remove(&self, index: u64) -> Option<Recipient<RemoteMessage>> {
-        self.inner.remove(&index).map(|(_, recipient)| recipient)
-    }
-
-    /// Looks up an actor by index.
-    ///
-    /// If the stored actor's mailbox is closed, this method removes
-    /// the stale entry and returns `None`.
-    pub fn get(&self, index: u64) -> Option<Recipient<RemoteMessage>> {
-        let recipient = self.inner.get(&index)?;
-        if !recipient.is_closed() {
-            return Some(recipient.clone());
-        }
-        drop(recipient);
-        self.inner.remove_if(&index, |_, r| r.is_closed());
-        None
-    }
-
-    /// Returns `true` if the registry contains an entry for the given index.
-    pub fn contains(&self, index: u64) -> bool {
-        self.inner.contains_key(&index)
-    }
-
-    /// Returns the number of entries currently in the registry.
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    /// Returns the number of entries the registry can hold without reallocating.
+    /// **Locking behavior:** May deadlock if called when holding a mutable reference into the
+    /// registry.
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
     }
 
-    /// Returns `true` if the registry is empty.
+    /// Returns the number of actors currently in the registry.
+    ///
+    /// **Locking behavior:** May deadlock if called when holding a mutable reference into the
+    /// registry.
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Returns `true` if the registry contains no actors.
+    ///
+    /// **Locking behavior:** May deadlock if called when holding a mutable reference into the
+    /// registry.
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
-    /// Retains only the entries for which `predicate` returns `true`.
+    /// Retains only the actors for which the `predicate` returns `true`.
+    ///
+    /// **Locking behavior:** May deadlock if called when holding any sort of reference into the
+    /// registry.
     pub fn retain<F>(&self, mut predicate: F)
     where
         F: FnMut(u64, &Recipient<RemoteMessage>) -> bool,
     {
         self.inner
             .retain(|index, recipient| predicate(*index, recipient));
+    }
+
+    /// Returns an actor as a `Recipient<RemoteMessage>` corresponding to the given index.
+    ///
+    /// If the actor's mailbox is closed, this method removes it and returns `None`. This is
+    /// different from the behavior of `get` on a normal `HashMap`.
+    ///
+    /// **Locking behavior:** May deadlock if called when holding any sort of reference into the
+    /// registry.
+    pub fn get(&self, index: u64) -> Option<Recipient<RemoteMessage>> {
+        match self.inner.entry(index) {
+            Entry::Occupied(entry) => {
+                let recipient = entry.get();
+                if recipient.is_closed() {
+                    entry.remove();
+                    None
+                } else {
+                    Some(recipient.clone())
+                }
+            }
+            Entry::Vacant(_) => None,
+        }
+    }
+
+    /// Returns `true` if the registry contains an actor for the given index.
+    ///
+    /// **Locking behavior:** May deadlock if called when holding a mutable reference into the
+    /// registry.
+    pub fn contains_index(&self, index: u64) -> bool {
+        self.inner.contains_key(&index)
+    }
+
+    /// Removes an actor by its index, returning the actor as a `Recipient<RemoteMessage>` if it
+    /// was present in the registry.
+    ///
+    /// **Locking behavior:** May deadlock if called when holding any sort of reference into the
+    /// registry.
+    pub fn remove(&self, index: u64) -> Option<Recipient<RemoteMessage>> {
+        self.inner.remove(&index).map(|(_, recipient)| recipient)
+    }
+
+    /// Inserts a new actor keyed by its index.
+    ///
+    /// If the registry did not have this actor present, `true` is returned. If the registry did
+    /// have this actor present, `false` is returned and the registry is not modified. This is
+    /// different from the behavior of `insert` on a normal `HashMap`.
+    ///
+    /// Re-registering the same address is a cheap lookup-no-op.
+    ///
+    /// **Locking behavior:** May deadlock if called when holding any sort of reference into the
+    /// registry.
+    pub fn insert<A>(&self, actor: A) -> bool
+    where
+        A: Into<Recipient<RemoteMessage>> + SenderId,
+    {
+        let index = actor.index();
+        match self.inner.entry(index) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                entry.insert(actor.into());
+                true
+            }
+        }
     }
 }

@@ -35,7 +35,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
                     ::core::convert::From::from(
                         <::acktor::Address<Self> as ::core::clone::Clone>::clone(addr),
                     );
-                ::std::boxed::Box::new(recipient)
+                ::acktor::actor::TypeErasedRecipient::new(recipient)
             })
         }
     };

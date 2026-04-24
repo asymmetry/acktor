@@ -1,3 +1,11 @@
+//! Per-connection session actor.
+//!
+//! A [`Session`] wraps a single [`IpcConnection`] and mediates all traffic over it: routing
+//! inbound frames to local actors, forwarding outbound messages from [`RemoteAddress`]es, and
+//! tracking pending request tags for response correlation. Sessions are owned by a
+//! [`Node`][crate::node::Node] and are created through it rather than directly.
+//!
+
 use std::fmt::{self, Debug};
 use std::result::Result as StdResult;
 
@@ -78,8 +86,9 @@ pub struct Session {
 }
 
 impl Session {
-    /// Constructs a new [`Session`].
-    pub fn new(
+    /// Constructs a new [`Session`]. Called internally by [`Node`][crate::node::Node] when it
+    /// accepts or initiates an IPC connection; not intended for direct use.
+    pub(crate) fn new(
         connection: Box<dyn IpcConnection>,
         factory: Address<Factory>,
         registry: RemoteActorRegistry,
@@ -145,9 +154,12 @@ impl Session {
                 .get(label)
                 .ok_or_else(|| SessionError::ActorNotFound(label.clone()))
                 .and_then(|actor_id| {
+                    // the registry may have reaped the entry out from under the label_map
+                    // (the factory sweep lags by up to 30s); report the original label so the
+                    // caller gets a stable diagnostic
                     self.registry
                         .get(*actor_id)
-                        .ok_or_else(|| SessionError::ActorNotFound(actor_id.to_string()))
+                        .ok_or_else(|| SessionError::ActorNotFound(label.clone()))
                 }),
         }
     }

@@ -2,9 +2,6 @@ use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-#[cfg(feature = "type-erased-recipient-hook")]
-use std::any::Any;
-
 use futures_util::{FutureExt, TryFutureExt};
 use tokio::time::Duration;
 
@@ -19,10 +16,10 @@ use crate::channel::{mpsc, oneshot};
 use crate::envelope::{Envelope, FromEnvelope, ToEnvelope};
 use crate::errors::SendError;
 use crate::message::{Handler, Message};
-use crate::utils::create_actor_id;
+use crate::utils::{ShortName, create_actor_id};
 
 #[cfg(feature = "type-erased-recipient-hook")]
-use crate::actor::TypeErasedRecipientFn;
+use crate::actor::{TypeErasedRecipient, TypeErasedRecipientFn};
 
 /// The address of an actor.
 ///
@@ -44,7 +41,7 @@ where
     A: Actor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(&format!("Address<{}>", crate::utils::type_name::<A>()))
+        f.debug_tuple(&format!("{}", ShortName::of::<Self>()))
             .field(&self.index)
             .finish()
     }
@@ -329,7 +326,7 @@ where
     /// This method triggers the conversion function baked in this address at construction, and
     /// returns the resulting type-erased trait object.
     #[cfg(feature = "type-erased-recipient-hook")]
-    pub fn type_erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+    pub fn type_erased_recipient(&self) -> Option<TypeErasedRecipient> {
         self.type_erased_recipient_fn.map(|f| f(self))
     }
 }
@@ -393,7 +390,7 @@ where
     }
 
     #[cfg(feature = "type-erased-recipient-hook")]
-    fn type_erased_recipient(&self) -> Option<Box<dyn Any + Send + Sync>> {
+    fn type_erased_recipient(&self) -> Option<TypeErasedRecipient> {
         self.type_erased_recipient()
     }
 }

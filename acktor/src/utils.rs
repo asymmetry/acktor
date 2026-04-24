@@ -7,6 +7,8 @@ use crate::actor::{ActorId, JoinHandle};
 use crate::address::{Recipient, Sender, SenderId};
 use crate::signal::Signal;
 
+pub use disqualified::ShortName;
+
 /// Logs at info level only in debug mode.
 #[doc(hidden)]
 #[macro_export]
@@ -50,24 +52,6 @@ pub(crate) fn create_actor_id() -> ActorId {
     id
 }
 
-#[inline]
-pub(crate) fn panic_info_to_string(info: &(dyn Any + Send)) -> String {
-    if let Some(s) = info.downcast_ref::<&str>() {
-        s.to_string()
-    } else if let Some(s) = info.downcast_ref::<String>() {
-        s.clone()
-    } else {
-        "could not capture the panic info".to_string()
-    }
-}
-
-#[doc(hidden)]
-#[inline]
-pub fn type_name<T>() -> &'static str {
-    let type_name = std::any::type_name::<T>().split("<").next().unwrap();
-    type_name.rsplit("::").next().unwrap()
-}
-
 /// Terminates an actor by sending it a [`Signal::Terminate`] message and awaiting its
 /// [`JoinHandle`].
 pub async fn terminate_actor<A>(address: A, join_handle: JoinHandle<()>)
@@ -81,4 +65,15 @@ where
     }
     debug!("Waiting for actor {} to stop", address.index());
     let _ = join_handle.await;
+}
+
+#[inline]
+pub(crate) fn panic_info_to_string(info: &(dyn Any + Send)) -> String {
+    if let Some(s) = info.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = info.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "could not capture the panic info".to_string()
+    }
 }

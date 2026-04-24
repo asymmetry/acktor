@@ -27,10 +27,7 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!(
-            "DefaultEnvelopeProxy<{}>",
-            crate::utils::type_name::<M>()
-        ))
+        f.write_fmt(format_args!("{}", crate::utils::ShortName::of::<Self>()))
     }
 }
 
@@ -105,8 +102,21 @@ where
         envelope
             .as_any_mut()
             .downcast_mut::<DefaultEnvelopeProxy<M>>()
-            .expect("envelope type mismatch during downcast")
+            .unwrap_or_else(|| {
+                panic!(
+                    "envelope type mismatch during downcast: expected DefaultEnvelopeProxy<{}> \
+                     for actor {}",
+                    crate::utils::ShortName::of::<M>(),
+                    crate::utils::ShortName::of::<A>(),
+                )
+            })
             .message()
-            .expect("message already taken from envelope")
+            .unwrap_or_else(|| {
+                panic!(
+                    "message already taken from DefaultEnvelopeProxy<{}> for actor {}",
+                    crate::utils::ShortName::of::<M>(),
+                    crate::utils::ShortName::of::<A>(),
+                )
+            })
     }
 }

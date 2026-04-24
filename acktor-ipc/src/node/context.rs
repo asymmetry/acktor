@@ -1,6 +1,7 @@
 use std::io::Error as IoError;
 
-use futures_util::{FutureExt, future::select_all};
+use futures_util::future::select_all;
+use tokio::task::JoinHandle;
 use tracing::warn;
 
 use acktor::{
@@ -12,11 +13,21 @@ use acktor::{
 
 use super::Node;
 use crate::errors::NodeError;
-use crate::ipc_method::IpcConnection;
+use crate::ipc_method::{IpcConnection, IpcListener};
 
 enum LoopEvent {
     Envelope(Result<Envelope<Node>, RecvError>),
     Accept(Result<Box<dyn IpcConnection>, IoError>, String),
+}
+
+type AcceptTaskJoinHandle = JoinHandle<(
+    Result<Box<dyn IpcConnection>, IoError>,
+    Box<dyn IpcListener>,
+)>;
+
+struct AcceptTask {
+    pub label: String,
+    pub join_handle: AcceptTaskJoinHandle,
 }
 
 pub struct NodeContext {
@@ -24,6 +35,7 @@ pub struct NodeContext {
     state: ActorState,
     doorplate: Address<Node>,
     mailbox: Option<Mailbox<Node>>,
+    accept_tasks: Vec<AcceptTask>,
 }
 
 impl NodeContext {
@@ -35,6 +47,62 @@ impl NodeContext {
             state: ActorState::Unstarted,
             doorplate: Address::new(tx),
             mailbox: Some(Mailbox::new(rx)),
+            accept_tasks: Vec::new(),
+        }
+    }
+
+    async fn recv_or_accept(&mut self, actor: &mut Node, mailbox: &mut Mailbox<Node>) -> LoopEvent {
+        // remove non-existed listeners
+        self.accept_tasks.retain(|task| {
+            if actor.listener_labels.contains(&task.label) {
+                true
+            } else {
+                task.join_handle.abort();
+                false
+            }
+        });
+        // spawn new accept tasks if there are new listeners
+        let listeners = std::mem::take(&mut actor.listeners);
+        for listener in listeners.into_iter() {
+            let label = listener.local_endpoint().to_string();
+            let join_handle = tokio::task::spawn(async move {
+                let result = listener.accept().await;
+                (result, listener)
+            });
+            self.accept_tasks.push(AcceptTask { label, join_handle });
+        }
+
+        if self.accept_tasks.is_empty() {
+            LoopEvent::Envelope(mailbox.recv().await)
+        } else {
+            let accept_futs = self
+                .accept_tasks
+                .iter_mut()
+                .map(|task| &mut task.join_handle);
+
+            // task is join_handle, which is cancel safe
+            tokio::select! {
+                envelope = mailbox.recv() => LoopEvent::Envelope(envelope),
+                (result, index, _) = select_all(accept_futs) => match result {
+                    Ok((result, listener)) => {
+                        let task = self.accept_tasks.remove(index);
+                        let AcceptTask { label, join_handle: _ } = task;
+
+                        // re-spawn new task to replace the completed one
+                        let join_handle = tokio::task::spawn(async move {
+                            let result = listener.accept().await;
+                            (result, listener)
+                        });
+                        self.accept_tasks.push(AcceptTask { label: label.clone(), join_handle });
+
+                        LoopEvent::Accept(result, label)
+                    }
+                    Err(e) => {
+                        let label = self.accept_tasks.remove(index).label;
+                        LoopEvent::Accept(Err(IoError::other(e)), label)
+                    }
+                }
+            }
         }
     }
 }
@@ -74,26 +142,7 @@ impl ActorContext<Node> for NodeContext {
         mailbox: &mut Mailbox<Node>,
     ) -> Result<(), NodeError> {
         while self.state() == ActorState::Running {
-            // compute the next event in a scoped block so the `select_all` future (which borrows
-            // `actor.listeners()`) is dropped before we reborrow `actor` mutably
-            let event = {
-                if actor.listeners.is_empty() {
-                    LoopEvent::Envelope(mailbox.recv().await)
-                } else {
-                    let accepts = actor
-                        .listeners
-                        .iter()
-                        .map(|(k, v)| v.accept().map(|result| (result, k.to_string())));
-
-                    tokio::select! {
-                        envelope = mailbox.recv() => LoopEvent::Envelope(envelope),
-                        (result, _, _) = select_all(accepts) => {
-                            LoopEvent::Accept(result.0, result.1)
-                        }
-                    }
-                }
-            };
-
+            let event = self.recv_or_accept(actor, mailbox).await;
             match event {
                 LoopEvent::Envelope(envelope) => match envelope {
                     Ok(mut envelope) => {
