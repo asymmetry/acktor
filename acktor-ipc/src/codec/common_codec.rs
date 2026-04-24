@@ -107,7 +107,7 @@ where
                 let inner_len = ok.encoded_len();
                 let total = 1 + prost::length_delimiter_len(inner_len) + inner_len;
                 let mut buf = BytesMut::with_capacity(total);
-                buf.extend_from_slice(&[0x0A]);
+                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
                 prost::encoding::encode_varint(inner_len as u64, &mut buf);
                 ok.encode(&mut buf, ctx)?;
 
@@ -162,7 +162,7 @@ where
     fn encode(&self, buf: &mut BytesMut, ctx: Option<&EncodeContext>) -> Result<(), EncodeError> {
         if let Some(some) = self {
             // field 1, wire type LengthDelimited (bytes)
-            buf.extend_from_slice(&[0x0A]);
+            buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
             prost::encoding::encode_varint(some.encoded_len() as u64, buf);
             some.encode(buf, ctx)?;
         }
@@ -176,7 +176,7 @@ where
                 let inner_len = some.encoded_len();
                 let total = 1 + prost::length_delimiter_len(inner_len) + inner_len;
                 let mut buf = BytesMut::with_capacity(total);
-                buf.extend_from_slice(&[0x0A]);
+                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
                 prost::encoding::encode_varint(inner_len as u64, &mut buf);
                 some.encode(&mut buf, ctx)?;
 

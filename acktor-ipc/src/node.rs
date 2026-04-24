@@ -252,12 +252,17 @@ impl Handler<command::RemoveListener> for Node {
     async fn handle(
         &mut self,
         msg: command::RemoveListener,
-        _ctx: &mut Self::Context,
+        ctx: &mut Self::Context,
     ) -> Self::Result {
         debug_trace!("Handle command {:?}", msg);
 
         let label = msg.0;
-        self.listener_labels.remove(&label)
+        if self.listener_labels.remove(&label) {
+            ctx.abort_accept_task(&label);
+            true
+        } else {
+            false
+        }
     }
 }
 
