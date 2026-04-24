@@ -54,7 +54,7 @@ impl CronActor for Factory {
         self.label_map
             .retain(|_, actor_id| self.registry.contains_index(*actor_id));
 
-        Ok(Duration::from_secs(30))
+        Ok(Duration::from_secs(60))
     }
 }
 

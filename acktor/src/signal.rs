@@ -20,9 +20,7 @@ pub enum Signal {
     ///
     /// Set the actor's state to [`Stopped`][crate::actor::ActorState::Stopped] and trigger
     /// the [`post_stop`][Actor::post_stop] method. Any messages still queued in the mailbox
-    /// behind this signal are dropped without being handled — the actor stops on the current
-    /// loop iteration. Use [`Signal::Stop`] instead if you need the actor to finish processing
-    /// its outstanding messages before shutting down.
+    /// behind this signal are dropped without being handled.
     Terminate,
 }
 

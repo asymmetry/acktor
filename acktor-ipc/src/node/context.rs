@@ -56,9 +56,9 @@ impl NodeContext {
         self.accept_tasks.retain(|task| {
             if task.label == label {
                 task.join_handle.abort();
-                true
-            } else {
                 false
+            } else {
+                true
             }
         });
     }

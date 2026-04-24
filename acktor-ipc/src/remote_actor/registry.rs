@@ -109,10 +109,22 @@ impl RemoteActorRegistry {
 
     /// Returns `true` if the registry contains an actor for the given index.
     ///
+    /// If the actor's mailbox is closed, this method removes it and returns `false`.
+    ///
     /// **Locking behavior:** May deadlock if called when holding a mutable reference into the
     /// registry.
     pub fn contains_index(&self, index: u64) -> bool {
-        self.inner.contains_key(&index)
+        match self.inner.entry(index) {
+            Entry::Occupied(entry) => {
+                if entry.get().is_closed() {
+                    entry.remove();
+                    false
+                } else {
+                    true
+                }
+            }
+            Entry::Vacant(_) => false,
+        }
     }
 
     /// Removes an actor by its index, returning the actor as a `Recipient<RemoteMessage>` if it
