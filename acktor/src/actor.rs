@@ -483,12 +483,20 @@ where
                     error!("Actor {} panicked in post_stop: {}", self.index(), msg);
                 })?;
 
-            if result.is_err() {
-                Ok(result)
-            } else if result_post_stop.is_err() {
-                Ok(result_post_stop)
-            } else {
-                Ok(Ok(()))
+            match (result, result_post_stop) {
+                (Err(e), Err(post_stop_err)) => {
+                    // Both process_loop and post_stop errored; we only surface the
+                    // process_loop error to the caller, but log post_stop's so it is
+                    // not silently discarded.
+                    debug!(
+                        "Actor {} post_stop error discarded: {}",
+                        self.index(),
+                        post_stop_err,
+                    );
+                    Ok(Err(e))
+                }
+                (Err(e), Ok(())) => Ok(Err(e)),
+                (Ok(()), result_post_stop) => Ok(result_post_stop),
             }
         }
     }
