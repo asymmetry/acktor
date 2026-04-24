@@ -80,6 +80,12 @@ pub enum SessionError {
     #[error("could not handle inbound remote message")]
     HandleInboundMessageFailed(#[source] BoxError),
 
+    #[error(
+        "no response received from the remote peer after {} seconds",
+        crate::session::RESPONSE_TIMEOUT.as_secs()
+    )]
+    ResponseTimeout,
+
     #[error("remote actor returned an error:{0}")]
     RemotePeerError(String),
 
