@@ -130,18 +130,22 @@ impl RemoteAddress {
 
 async fn decode_and_forward<M>(
     raw_rx: oneshot::Receiver<Bytes>,
-    tx: oneshot::Sender<M::Result>,
+    mut tx: oneshot::Sender<M::Result>,
     decode_context: DecodeContext,
 ) where
     M: Message + Encode,
     M::Result: Decode,
 {
-    let decode_result = match raw_rx.await {
-        Ok(bytes) => M::Result::decode(bytes, Some(&decode_context)),
-        Err(e) => {
-            let _ = tx.send_err(e);
-            return;
-        }
+    let decode_result = tokio::select! {
+        result = raw_rx => match result {
+            Ok(bytes) => M::Result::decode(bytes, Some(&decode_context)),
+            Err(e) => {
+                let _ = tx.send_err(e);
+                return;
+            }
+        },
+        // if the sender dropped the response rx, we can stop this task early
+        _ = tx.closed() => return,
     };
 
     match decode_result {
