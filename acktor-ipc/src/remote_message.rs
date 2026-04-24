@@ -6,7 +6,9 @@ use std::fmt::{self, Debug};
 use bytes::Bytes;
 use thiserror::Error;
 
-use acktor::{Actor, ActorState, Address, Message, Recipient, Sender, channel::oneshot};
+use acktor::{
+    Actor, ActorState, Address, Message, Recipient, Sender, channel::oneshot, utils::ShortName,
+};
 
 use crate::codec::DecodeContext;
 use crate::remote_address::RemoteAddress;
@@ -82,10 +84,10 @@ impl RemoteMessage {
 #[derive(Debug, Error)]
 pub enum ToRemoteMessageRecipientError {
     #[error(
-        "actor does not opt-in the `type-erased-recipient-hook` feature, see the docs of \
+        "`{0}` does not opt-in the `type-erased-recipient-hook` feature, see the docs of \
          `RemoteActor` for details"
     )]
-    MissingHook,
+    MissingHook(String),
 
     #[error("{0}")]
     DowncastFailed(String),
@@ -106,7 +108,9 @@ where
     ) -> Result<Recipient<RemoteMessage>, ToRemoteMessageRecipientError> {
         Ok(*self
             .type_erased_recipient()
-            .ok_or(ToRemoteMessageRecipientError::MissingHook)?
+            .ok_or_else(|| {
+                ToRemoteMessageRecipientError::MissingHook(ShortName::of::<A>().to_string())
+            })?
             .downcast::<Recipient<RemoteMessage>>()
             .map_err(|(_, e)| ToRemoteMessageRecipientError::DowncastFailed(e))?)
     }
@@ -121,7 +125,11 @@ where
     ) -> Result<Recipient<RemoteMessage>, ToRemoteMessageRecipientError> {
         Ok(*self
             .type_erased_recipient()
-            .ok_or(ToRemoteMessageRecipientError::MissingHook)?
+            .ok_or_else(|| {
+                ToRemoteMessageRecipientError::MissingHook(
+                    ShortName::of::<Recipient<M>>().to_string(),
+                )
+            })?
             .downcast::<Recipient<RemoteMessage>>()
             .map_err(|(_, e)| ToRemoteMessageRecipientError::DowncastFailed(e))?)
     }
