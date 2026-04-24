@@ -2,6 +2,7 @@
 //!
 //! This module provides the [`Encode`] and [`Decode`] traits along with implementations for
 //! primitive types, standard library containers, and acktor types.
+//!
 
 use bytes::{Bytes, BytesMut};
 
@@ -17,6 +18,8 @@ pub use errors::{DecodeError, EncodeError};
 
 mod control_message;
 mod ipc_message;
+
+mod protobuf_helper;
 
 mod common_codec;
 #[cfg(not(feature = "prost-codec"))]
@@ -57,7 +60,7 @@ impl EncodeContext {
     {
         let index = address.index();
 
-        if self.registry.contains(index) {
+        if self.registry.contains_index(index) {
             return Ok(());
         }
 

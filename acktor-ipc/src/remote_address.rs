@@ -90,6 +90,9 @@ impl RemoteAddress {
     /// session ids occupy the high bits, growing downward) and XORing with `remote_actor_id`
     /// (small ids occupy the low bits, growing upward). Bit 63 is reserved for
     /// [`REMOTE_FLAG`][Self::REMOTE_FLAG].
+    ///
+    /// The collision of the `index` is structurally possible but extremely unlikely in practice
+    /// since it requires `remote_actor_id * session.index() > 2^63`.
     pub fn new(
         remote_actor_id: u64,
         session: Address<Session>,

@@ -1,9 +1,10 @@
 //! Node actor for managing IPC connections and sessions.
+//!
 
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
 use dashmap::DashMap;
 use futures_util::future::join_all;
 use tracing::{error, info, warn};
@@ -47,7 +48,8 @@ pub(crate) type LabelMap = Arc<DashMap<String, ActorId, ahash::RandomState>>;
 /// [`Connect<C>`][command::Connect] command.
 #[derive(Default)]
 pub struct Node {
-    listeners: HashMap<String, Box<dyn IpcListener>>,
+    listener_labels: HashSet<String>,
+    listeners: Vec<Box<dyn IpcListener>>,
     // registered factories for peer-initiated actor creation, keyed by the type name.
     factory_registry: Option<RemoteActorFactoryRegistry>,
     factory: Option<Address<Factory>>,
@@ -76,8 +78,14 @@ impl Node {
     where
         L: IpcListener,
     {
-        self.listeners
-            .insert(listener.local_endpoint().to_string(), Box::new(listener));
+        if self.listener_labels.contains(listener.local_endpoint()) {
+            self.listeners
+                .retain(|l| l.local_endpoint() != listener.local_endpoint());
+        } else {
+            self.listener_labels
+                .insert(listener.local_endpoint().to_string());
+        }
+        self.listeners.push(Box::new(listener));
         self
     }
 
@@ -122,8 +130,9 @@ impl Node {
         let (address, join_handle) = Session::create(endpoint.clone(), |child_ctx| {
             child_ctx.set_supervisor(Some(ctx.address().into()));
 
-            // SAFETY: `self.factory` is `Some` from `post_start` until `post_stop`; no new
-            // session can be created outside that window, so the unwrap is infallible.
+            // SAFETY: `self.factory` is assigned at the end of `post_start`, and `create_session`
+            // is only reachable from message handlers, which the actor runtime does not dispatch
+            // until `post_start` has returned `Ok`. The unwrap is therefore infallible.
             Ok(Session::new(
                 connection,
                 self.factory.clone().unwrap(),
@@ -227,10 +236,11 @@ where
         debug_trace!("Handle command {:?}", msg,);
 
         let label = msg.0.local_endpoint();
-        if self.listeners.contains_key(label) {
+        if self.listener_labels.contains(label) {
             false
         } else {
-            self.listeners.insert(label.to_string(), Box::new(msg.0));
+            self.listener_labels.insert(label.to_string());
+            self.listeners.push(Box::new(msg.0));
             true
         }
     }
@@ -247,7 +257,7 @@ impl Handler<command::RemoveListener> for Node {
         debug_trace!("Handle command {:?}", msg);
 
         let label = msg.0;
-        self.listeners.remove(&label).is_some()
+        self.listener_labels.remove(&label)
     }
 }
 

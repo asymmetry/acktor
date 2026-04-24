@@ -165,3 +165,137 @@ impl IpcConnection for WebSocketConnection {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_listener() {
+        // bind success + local_endpoint reflects the string passed to `bind`
+        let listener = WebSocketListener::bind("127.0.0.1:0").await.unwrap();
+        assert_eq!(listener.local_endpoint(), "127.0.0.1:0");
+        drop(listener);
+
+        // bind to an invalid address fails
+        WebSocketListener::bind("not-a-valid-address")
+            .await
+            .expect_err("bind to an invalid address must fail");
+
+        // connect with no server on the port fails
+        let probe = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = probe.local_addr().unwrap();
+        drop(probe);
+        WebSocketConnection::connect(&format!("ws://{addr}"))
+            .await
+            .expect_err("connect with no server must fail");
+    }
+
+    #[tokio::test]
+    async fn test_connection() {
+        let listener = WebSocketListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.listener.local_addr().unwrap();
+        let url = format!("ws://{addr}");
+
+        let server = tokio::spawn(async move {
+            // 1st client: echo roundtrip
+            let mut conn = listener.accept().await.expect("accept first");
+            assert!(!conn.peer_endpoint().is_empty());
+            let msg = conn.recv().await.expect("recv");
+            conn.send(msg).await.expect("send");
+
+            // 2nd client: server closes the connection
+            let mut conn = listener.accept().await.expect("accept second");
+            conn.close().await.expect("close");
+        });
+
+        // client 1: full roundtrip, then IpcConnection::close
+        let mut client = WebSocketConnection::connect(&url).await.expect("connect");
+        assert_eq!(client.peer_endpoint(), url);
+        let payload = Bytes::from_static(b"hello");
+        <WebSocketConnection as IpcConnection>::send(&mut client, payload.clone())
+            .await
+            .expect("send");
+        let received = <WebSocketConnection as IpcConnection>::recv(&mut client)
+            .await
+            .expect("recv");
+        assert_eq!(received, payload);
+        <WebSocketConnection as IpcConnection>::close(&mut client)
+            .await
+            .expect("close");
+
+        // client 2: server closes, recv returns ConnectionAborted
+        let mut client = WebSocketConnection::connect(&url).await.expect("connect");
+        let err = <WebSocketConnection as IpcConnection>::recv(&mut client)
+            .await
+            .expect_err("recv after server close must fail");
+        assert_eq!(err.kind(), ErrorKind::ConnectionAborted);
+
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_websocket_control_frames() {
+        let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = tcp.local_addr().unwrap();
+        let url = format!("ws://{addr}");
+
+        let server = tokio::spawn(async move {
+            // session 1: Ping -> client should reply with Pong, then consume the Binary
+            let (socket, peer) = tcp.accept().await.unwrap();
+            let ws = accept_async(MaybeTlsStream::Plain(socket)).await.unwrap();
+            let mut conn = WebSocketConnection::new(ws, peer.to_string());
+            conn.send(WebSocketMessage::Ping(Bytes::from_static(b"p")))
+                .await
+                .unwrap();
+            conn.send(WebSocketMessage::Binary(Bytes::from_static(b"hi")))
+                .await
+                .unwrap();
+            let reply = conn.recv().await.unwrap();
+            assert!(matches!(&reply, WebSocketMessage::Pong(p) if p.as_ref() == b"p"));
+
+            // session 2: Pong is ignored, next Binary returned
+            let (socket, peer) = tcp.accept().await.unwrap();
+            let ws = accept_async(MaybeTlsStream::Plain(socket)).await.unwrap();
+            let mut conn = WebSocketConnection::new(ws, peer.to_string());
+            conn.send(WebSocketMessage::Pong(Bytes::from_static(b"p")))
+                .await
+                .unwrap();
+            conn.send(WebSocketMessage::Binary(Bytes::from_static(b"ok")))
+                .await
+                .unwrap();
+
+            // session 3: Text frame is rejected (not ConnectionAborted)
+            let (socket, peer) = tcp.accept().await.unwrap();
+            let ws = accept_async(MaybeTlsStream::Plain(socket)).await.unwrap();
+            let mut conn = WebSocketConnection::new(ws, peer.to_string());
+            conn.send(WebSocketMessage::Text("unexpected".into()))
+                .await
+                .unwrap();
+        });
+
+        // session 1
+        let mut client = WebSocketConnection::connect(&url).await.unwrap();
+        // pong is automatically handled
+        let bytes = <WebSocketConnection as IpcConnection>::recv(&mut client)
+            .await
+            .unwrap();
+        assert_eq!(bytes.as_ref(), b"hi");
+
+        // session 2
+        let mut client = WebSocketConnection::connect(&url).await.unwrap();
+        let bytes = <WebSocketConnection as IpcConnection>::recv(&mut client)
+            .await
+            .unwrap();
+        assert_eq!(bytes.as_ref(), b"ok");
+
+        // session 3
+        let mut client = WebSocketConnection::connect(&url).await.unwrap();
+        let err = <WebSocketConnection as IpcConnection>::recv(&mut client)
+            .await
+            .expect_err("text message should be rejected");
+        assert_ne!(err.kind(), ErrorKind::ConnectionAborted);
+
+        server.await.unwrap();
+    }
+}

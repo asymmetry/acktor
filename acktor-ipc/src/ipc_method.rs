@@ -1,4 +1,5 @@
 //! Traits for Inter-Process Communication (IPC) and some pre-implemented IPC methods.
+//!
 
 use std::io::Error;
 use std::pin::Pin;
@@ -31,9 +32,9 @@ pub trait IpcListener: Send + Sync + 'static {
     ///
     /// # Cancel safety
     ///
-    /// The implementation should be cancel safe. If the method is used as the event in a
-    /// [`tokio::select!`](tokio::select) statement and some other branch completes first, then
-    /// it is guaranteed that no new connections were accepted by this method.
+    /// This method is **not** guaranteed to be cancel safe. If the returned future is dropped
+    /// before it completes, it may leave a peer-side connection in a partially-initialized state
+    /// (e.g. mid-handshake).
     fn accept(&self) -> IoFuture<'_, Box<dyn IpcConnection>>;
 }
 

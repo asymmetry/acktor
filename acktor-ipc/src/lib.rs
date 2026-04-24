@@ -27,7 +27,7 @@ pub use remote_address::RemoteAddress;
 pub mod remote_message;
 pub use remote_message::RemoteMessage;
 
-// Re-export the ipc protocol.
+/// Re-export of the generated IPC protocol crate.
 pub use acktor_ipc_proto as proto;
 
 #[cfg(feature = "derive")]

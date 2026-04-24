@@ -75,7 +75,7 @@ async fn test_codec_with_session() {
             "expected one auto-registered entry after encode"
         );
         assert!(
-            registry.contains(address.index()),
+            registry.contains_index(address.index()),
             "expected address.index() to be registered"
         );
         registry.retain(|_, _| false);

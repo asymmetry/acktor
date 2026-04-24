@@ -1,4 +1,5 @@
 //! Commands which can be used to interact with a node.
+//!
 
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;

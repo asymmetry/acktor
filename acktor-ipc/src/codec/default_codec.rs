@@ -295,7 +295,7 @@ fn decode_element(buf: &mut Bytes) -> Result<Bytes, DecodeError> {
 }
 
 macro_rules! impl_encode_decode_for_tuple {
-    ($($type:ident $index:tt),+) => {
+    ($($type:ident<$index:tt>),+) => {
         impl<$($type),+> Encode for ($($type,)+)
         where
             $($type: Encode,)+
@@ -335,12 +335,16 @@ macro_rules! impl_encode_decode_for_tuple {
     };
 }
 
-impl_encode_decode_for_tuple!(T0 0, T1 1);
-impl_encode_decode_for_tuple!(T0 0, T1 1, T2 2);
-impl_encode_decode_for_tuple!(T0 0, T1 1, T2 2, T3 3);
-impl_encode_decode_for_tuple!(T0 0, T1 1, T2 2, T3 3, T4 4);
-impl_encode_decode_for_tuple!(T0 0, T1 1, T2 2, T3 3, T4 4, T5 5);
-impl_encode_decode_for_tuple!(T0 0, T1 1, T2 2, T3 3, T4 4, T5 5, T6 6);
-impl_encode_decode_for_tuple!(T0 0, T1 1, T2 2, T3 3, T4 4, T5 5, T6 6, T7 7);
-impl_encode_decode_for_tuple!(T0 0, T1 1, T2 2, T3 3, T4 4, T5 5, T6 6, T7 7, T8 8);
-impl_encode_decode_for_tuple!(T0 0, T1 1, T2 2, T3 3, T4 4, T5 5, T6 6, T7 7, T8 8, T9 9);
+impl_encode_decode_for_tuple!(T0<0>, T1<1>);
+impl_encode_decode_for_tuple!(T0<0>, T1<1>, T2<2>);
+impl_encode_decode_for_tuple!(T0<0>, T1<1>, T2<2>, T3<3>);
+impl_encode_decode_for_tuple!(T0<0>, T1<1>, T2<2>, T3<3>, T4<4>);
+impl_encode_decode_for_tuple!(T0<0>, T1<1>, T2<2>, T3<3>, T4<4>, T5<5>);
+impl_encode_decode_for_tuple!(T0<0>, T1<1>, T2<2>, T3<3>, T4<4>, T5<5>, T6<6>);
+impl_encode_decode_for_tuple!(T0<0>, T1<1>, T2<2>, T3<3>, T4<4>, T5<5>, T6<6>, T7<7>);
+impl_encode_decode_for_tuple!(
+    T0<0>, T1<1>, T2<2>, T3<3>, T4<4>, T5<5>, T6<6>, T7<7>, T8<8>
+);
+impl_encode_decode_for_tuple!(
+    T0<0>, T1<1>, T2<2>, T3<3>, T4<4>, T5<5>, T6<6>, T7<7>, T8<8>, T9<9>
+);
