@@ -22,7 +22,7 @@ pub(crate) struct CreateActor {
 }
 
 /// An actor which is responsible for creating actors in the current process on behalf of remote
-/// peers. It also keeps track of the actors in the registy and removes the stale ones.
+/// peers. It also keeps track of the actors in the registry and removes the stale ones.
 pub(crate) struct Factory {
     factory_registry: RemoteActorFactoryRegistry,
     registry: RemoteActorRegistry,

@@ -276,7 +276,7 @@ impl Session {
             .node_msg_res_tx_map
             .remove(&tag)
             // if the tag is not found in the map, we do not know who to send the result to, and
-            // we do not kown who to report the error to either, so just return an error and the
+            // we do not know who to report the error to either, so just return an error and the
             // session's context will log it
             .ok_or(SessionError::InvalidNodeMsgResTxTag(tag))?;
 
@@ -414,7 +414,7 @@ impl Session {
             .actor_msg_res_tx_map
             .remove(&tag)
             // if the tag is not found in the map, we do not know who to send the result
-            // to, and we do not kown who to report the error to either, so just return
+            // to, and we do not know who to report the error to either, so just return
             // an error and the session's context will log it
             .ok_or(SessionError::InvalidActorMsgResTxTag(tag))?;
 

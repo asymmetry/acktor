@@ -28,7 +28,7 @@ pub(crate) type RemoteActorFactoryRegistry = HashMap<String, Arc<dyn DynRemoteAc
 /// It is highly recommended to use the [`#[acktor_ipc::remote]`][crate::remote] attribute macro
 /// to annotate the `impl Actor for MyActor { ... }` block of a remote actor. The macro overrides
 /// the [`Actor::type_erased_recipient_fn`] hook, which will opt-in the
-/// `type-erased-recipient-hook` feature, and allow conversion from any `Reciepient` type of this
+/// `type-erased-recipient-hook` feature, and allow conversion from any `Recipient` type of this
 /// actor to a `Recipient<RemoteMessage>`. With the help of this hook, the actor's address can be
 /// registered in the [`Node`][crate::Node]'s [`RemoteActorRegistry`] automatically. This is more
 /// convenient than registering the actor manually.
