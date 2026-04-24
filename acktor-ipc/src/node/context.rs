@@ -1,8 +1,8 @@
 use std::io::Error as IoError;
 
 use futures_util::future::select_all;
-use tokio::task::JoinHandle;
-use tracing::warn;
+use tokio::task::{JoinError, JoinHandle};
+use tracing::{debug, warn};
 
 use acktor::{
     ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, RecvError,
@@ -18,6 +18,7 @@ use crate::ipc_method::{IpcConnection, IpcListener};
 enum LoopEvent {
     Envelope(Result<Envelope<Node>, RecvError>),
     Accept(Result<Box<dyn IpcConnection>, IoError>, String),
+    ListenerPanicked(JoinError, String),
 }
 
 type AcceptTaskJoinHandle = JoinHandle<(
@@ -51,6 +52,17 @@ impl NodeContext {
         }
     }
 
+    pub(crate) fn abort_accept_task(&mut self, label: &str) {
+        self.accept_tasks.retain(|task| {
+            if task.label == label {
+                task.join_handle.abort();
+                false
+            } else {
+                true
+            }
+        });
+    }
+
     async fn recv_or_accept(&mut self, actor: &mut Node, mailbox: &mut Mailbox<Node>) -> LoopEvent {
         // remove non-existed listeners
         self.accept_tasks.retain(|task| {
@@ -82,7 +94,9 @@ impl NodeContext {
 
             // task is join_handle, which is cancel safe
             tokio::select! {
-                envelope = mailbox.recv() => LoopEvent::Envelope(envelope),
+                envelope = mailbox.recv() => {
+                    LoopEvent::Envelope(envelope)
+                }
                 (result, index, _) = select_all(accept_futs) => match result {
                     Ok((result, listener)) => {
                         let task = self.accept_tasks.remove(index);
@@ -99,7 +113,9 @@ impl NodeContext {
                     }
                     Err(e) => {
                         let label = self.accept_tasks.remove(index).label;
-                        LoopEvent::Accept(Err(IoError::other(e)), label)
+                        actor.listener_labels.remove(&label);
+
+                        LoopEvent::ListenerPanicked(e, label)
                     }
                 }
             }
@@ -153,19 +169,26 @@ impl ActorContext<Node> for NodeContext {
                         self.set_state(ActorState::Stopped);
                     }
                 },
-                LoopEvent::Accept(Ok(connection), _) => {
+                LoopEvent::Accept(Ok(connection), label) => {
+                    debug!("Accepted a new connection from {}", label);
                     if let Err(e) = actor.create_session(connection, None, self).await {
                         warn!("Could not create new session: {}", e.report());
                     }
                 }
-                LoopEvent::Accept(Err(e), endpoint) => {
-                    warn!(
-                        "Could not accept connection from {}: {}",
-                        endpoint,
-                        e.report(),
-                    );
+                LoopEvent::Accept(Err(e), label) => {
+                    // IO error is normal when accepting connections, so we just log it and
+                    // continue accepting new connections.
+                    warn!("Could not accept connection from {}: {}", label, e.report(),);
+                }
+                LoopEvent::ListenerPanicked(e, label) => {
+                    warn!("Listener {} panicked, terminate the actor: {}", label, e);
+                    self.set_state(ActorState::Stopped);
                 }
             }
+        }
+
+        for task in self.accept_tasks.drain(..) {
+            task.join_handle.abort();
         }
 
         Ok(())

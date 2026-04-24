@@ -7,7 +7,7 @@ pub mod ipc_method;
 pub use ipc_method::{IpcConnection, IpcListener};
 
 mod codec;
-pub use codec::{Decode, DecodeContext, Encode, EncodeContext};
+pub use codec::{Decode, DecodeContext, DecodeError, Encode, EncodeContext, EncodeError};
 
 pub mod remote_actor;
 pub use remote_actor::{RemoteActor, RemoteActorFactory};
@@ -19,7 +19,7 @@ pub mod node;
 pub use node::{Node, NodeEvent};
 
 pub mod session;
-pub use session::Session;
+pub use session::{Session, SessionHandle};
 
 mod remote_address;
 pub use remote_address::RemoteAddress;
@@ -38,7 +38,7 @@ pub mod double_map;
 
 // Re-export some dependencies for use in derived code.
 
-#[doc(hidden)]
 pub use bytes;
+
 #[doc(hidden)]
 pub use tracing;

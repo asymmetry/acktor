@@ -36,6 +36,11 @@ pub trait CronActor: Actor {
     /// A [`Duration`] is returned to specify the interval of the next execution.
     ///
     /// Notice the actor will not response to any messages during the execution of this function.
+    ///
+    /// Returning [`Duration::ZERO`] means "run as frequently as possible", the actor does a
+    /// non-blocking `try_recv` on the mailbox and re-invokes `task` immediately. If this
+    /// function does little real work and the mailbox stays empty, this will keep a core busy;
+    /// return a small positive duration in that case.
     #[allow(unused_variables)]
     fn task(
         &mut self,
@@ -165,7 +170,7 @@ where
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
                 }
-                _ => tokio::task::yield_now().await,
+                _ => tokio::task::consume_budget().await,
             };
         }
 

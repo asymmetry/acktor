@@ -19,7 +19,8 @@ pub enum Signal {
     /// Terminate the actor.
     ///
     /// Set the actor's state to [`Stopped`][crate::actor::ActorState::Stopped] and trigger
-    /// the [`post_stop`][Actor::post_stop] method.
+    /// the [`post_stop`][Actor::post_stop] method. Any messages still queued in the mailbox
+    /// behind this signal are dropped without being handled.
     Terminate,
 }
 

@@ -1,13 +1,26 @@
-use tokio::time::{Duration, Instant};
+use tokio::time;
 use tracing::{debug, warn};
 
 use acktor::{
-    ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, Recipient, SenderId,
-    address::Mailbox, channel::mpsc, envelope::EnvelopeProxy, supervisor::SupervisionEvent,
+    ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, Handler, Message,
+    Recipient, SenderId, address::Mailbox, channel::mpsc, envelope::EnvelopeProxy,
+    supervisor::SupervisionEvent,
 };
 
-use super::Session;
+use super::{CLEANUP_INTERVAL, Session};
 use crate::errors::SessionError;
+
+#[derive(Debug, Message)]
+#[result_type(())]
+struct RequireCleanup;
+
+impl Handler<RequireCleanup> for Session {
+    type Result = ();
+
+    async fn handle(&mut self, _msg: RequireCleanup, ctx: &mut SessionContext) -> Self::Result {
+        ctx.require_cleanup();
+    }
+}
 
 pub struct SessionContext {
     label: String,
@@ -15,7 +28,7 @@ pub struct SessionContext {
     doorplate: Address<Session>,
     mailbox: Option<Mailbox<Session>>,
     supervisor: Option<Recipient<SupervisionEvent<Session>>>,
-    last_cleanup_time: Instant,
+    require_cleanup: bool,
 }
 
 impl SessionContext {
@@ -28,8 +41,12 @@ impl SessionContext {
             doorplate: Address::new(tx),
             mailbox: Some(Mailbox::new(rx)),
             supervisor: None,
-            last_cleanup_time: Instant::now(),
+            require_cleanup: true,
         }
+    }
+
+    pub(crate) fn require_cleanup(&mut self) {
+        self.require_cleanup = true;
     }
 }
 
@@ -68,9 +85,17 @@ impl ActorContext<Session> for SessionContext {
         mailbox: &mut Mailbox<Session>,
     ) -> Result<(), SessionError> {
         while self.state() == ActorState::Running {
-            if self.last_cleanup_time.elapsed() >= Duration::from_secs(30) {
-                actor.cleanup_expired_response_tx();
-                self.last_cleanup_time = Instant::now();
+            if self.require_cleanup {
+                actor.cleanup_msg_res_tx();
+                self.require_cleanup = false;
+                // schedule the next cleanup
+                let address = self.address();
+                tokio::spawn(async move {
+                    time::sleep(CLEANUP_INTERVAL).await;
+                    if let Err(e) = address.do_send(RequireCleanup).await {
+                        debug!("Could not send RequireCleanup: {}", e);
+                    }
+                });
             }
 
             tokio::select! {

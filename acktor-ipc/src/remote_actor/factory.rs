@@ -8,7 +8,7 @@ use crate::remote_message::RemoteMessage;
 /// Extends [`RemoteActor`] with the ability to be spawned on demand by peers.
 ///
 /// Implementing this trait opts an actor into peer-initiated creation. [`TYPE_NAME`]
-/// is the type identifier the peer sends in the `CreateActor` messsage.
+/// is the type identifier the peer sends in the `CreateActor` message.
 ///
 /// [`TYPE_NAME`]: RemoteActorFactory::TYPE_NAME
 pub trait RemoteActorFactory: RemoteActor {

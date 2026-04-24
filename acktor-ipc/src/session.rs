@@ -13,7 +13,7 @@ use ahash::HashMap;
 use bytes::Bytes;
 use futures_util::{FutureExt, TryFutureExt};
 use tokio::time::{Duration, Instant};
-use tracing::{Instrument, info, warn};
+use tracing::{Instrument, debug, info, warn};
 
 use acktor::{
     Actor, ActorContext, ActorId, Address, ErrorReport, Handler, Message, Recipient, Sender,
@@ -42,6 +42,14 @@ mod context;
 use context::SessionContext;
 
 type Result<T> = StdResult<T, SessionError>;
+
+/// How long a pending request may sit in the response maps before the cleanup sweep resolves
+/// it with [`SessionError::ResponseTimeout`]. The observable timeout is up to
+/// `RESPONSE_TIMEOUT + CLEANUP_INTERVAL` because the sweep is periodic.
+pub(crate) const RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How often the session runs the response-map cleanup sweep.
+pub(crate) const CLEANUP_INTERVAL: Duration = Duration::from_secs(15);
 
 #[derive(Message)]
 #[result_type(())]
@@ -101,18 +109,65 @@ impl Session {
             label_map,
             tag: 0,
             decode_context: None,
-            actor_msg_res_tx_map: HashMap::default(),
             node_msg_res_tx_map: HashMap::default(),
+            actor_msg_res_tx_map: HashMap::default(),
         }
     }
 
-    fn cleanup_expired_response_tx(&mut self) {
+    fn cleanup_msg_res_tx(&mut self) {
         let now = Instant::now();
 
-        self.node_msg_res_tx_map
-            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < Duration::from_secs(30));
-        self.actor_msg_res_tx_map
-            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < Duration::from_secs(30));
+        let tags_to_remove = self
+            .node_msg_res_tx_map
+            .iter()
+            .filter_map(|(tag, (tx, timestamp))| {
+                if tx.is_closed() || now.duration_since(*timestamp) >= RESPONSE_TIMEOUT {
+                    Some(*tag)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for tag in tags_to_remove {
+            if let Some((tx, _)) = self.node_msg_res_tx_map.remove(&tag) {
+                if tx.is_closed() {
+                    debug!(
+                        "The sender of NodeMessage with tag {} has closed the response rx, \
+                         remove the corresponding response tx",
+                        tag
+                    );
+                } else {
+                    let _ = tx.send(Err(SessionError::ResponseTimeout));
+                }
+            }
+        }
+
+        let tags_to_remove = self
+            .actor_msg_res_tx_map
+            .iter()
+            .filter_map(|(tag, (tx, timestamp))| {
+                if tx.is_closed() || now.duration_since(*timestamp) >= RESPONSE_TIMEOUT {
+                    Some(*tag)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for tag in tags_to_remove {
+            if let Some((tx, _)) = self.actor_msg_res_tx_map.remove(&tag) {
+                if tx.is_closed() {
+                    debug!(
+                        "The sender of ActorMessage with tag {} has closed the response rx, \
+                         remove the corresponding response tx",
+                        tag
+                    );
+                } else {
+                    let _ = tx.send_err(SessionError::ResponseTimeout);
+                }
+            }
+        }
     }
 
     fn next_tag(&mut self) -> u64 {
@@ -276,7 +331,7 @@ impl Session {
             .node_msg_res_tx_map
             .remove(&tag)
             // if the tag is not found in the map, we do not know who to send the result to, and
-            // we do not kown who to report the error to either, so just return an error and the
+            // we do not know who to report the error to either, so just return an error and the
             // session's context will log it
             .ok_or(SessionError::InvalidNodeMsgResTxTag(tag))?;
 
@@ -414,7 +469,7 @@ impl Session {
             .actor_msg_res_tx_map
             .remove(&tag)
             // if the tag is not found in the map, we do not know who to send the result
-            // to, and we do not kown who to report the error to either, so just return
+            // to, and we do not know who to report the error to either, so just return
             // an error and the session's context will log it
             .ok_or(SessionError::InvalidActorMsgResTxTag(tag))?;
 
