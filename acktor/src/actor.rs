@@ -1,3 +1,9 @@
+//! Traits and type definitions for actors.
+//!
+//! This module defines the [`Actor`] trait and its [`ActorContext`] companion, which together
+//! describe how an actor is started, processes messages, and shuts down.
+//!
+
 use std::any::Any;
 use std::fmt::Display;
 use std::panic::{self, AssertUnwindSafe};

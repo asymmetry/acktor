@@ -193,12 +193,7 @@ where
 
         let decode_context = self.decode_context();
 
-        tokio::spawn(
-            async move {
-                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
-            }
-            .in_current_span(),
-        );
+        tokio::spawn(decode_and_forward::<M>(raw_rx, tx, decode_context).in_current_span());
 
         // this future will be resolved to Ok once the message is in the session actor's mailbox,
         // it does not guarantee the message arrives at the remote peer actor, the IPC
@@ -251,12 +246,7 @@ where
 
         let decode_context = self.decode_context();
 
-        tokio::spawn(
-            async move {
-                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
-            }
-            .in_current_span(),
-        );
+        tokio::spawn(decode_and_forward::<M>(raw_rx, tx, decode_context).in_current_span());
 
         match self.session.try_do_send(RemoteMessage::send(
             self.remote_actor_id,
@@ -301,12 +291,7 @@ where
 
         let decode_context = self.decode_context();
 
-        tokio::spawn(
-            async move {
-                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
-            }
-            .in_current_span(),
-        );
+        tokio::spawn(decode_and_forward::<M>(raw_rx, tx, decode_context).in_current_span());
 
         // this future will be resolved to Ok once the message is in the session actor's mailbox,
         // it does not guarantee the message arrives at the remote peer actor, the IPC
@@ -361,12 +346,7 @@ where
 
         let decode_context = self.decode_context();
 
-        tokio::spawn(
-            async move {
-                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
-            }
-            .in_current_span(),
-        );
+        tokio::spawn(decode_and_forward::<M>(raw_rx, tx, decode_context).in_current_span());
 
         match self.session.blocking_do_send(RemoteMessage::send(
             self.remote_actor_id,

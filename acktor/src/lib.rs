@@ -74,7 +74,6 @@ pub mod channel;
 
 pub mod utils;
 
-#[doc(hidden)]
 pub mod actor;
 pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
 

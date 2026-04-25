@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use tokio::time;
-use tracing::{debug, warn};
+use tracing::{Instrument, debug, warn};
 
 use crate::actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
 use crate::address::{Address, Mailbox, Recipient, SenderId};
@@ -138,12 +138,15 @@ where
                     // actor should asynchronously wait for this message (or other messages)
                     self.cron_state = CronState::Paused;
                     let address = self.address();
-                    let join_handle = tokio::spawn(async move {
-                        time::sleep(duration).await;
-                        if let Err(e) = address.do_send(CronSignal::Resume).await {
-                            debug!("Could not send Resume signal: {}", e);
+                    let join_handle = tokio::spawn(
+                        async move {
+                            time::sleep(duration).await;
+                            if let Err(e) = address.do_send(CronSignal::Resume).await {
+                                debug!("Could not send Resume signal: {}", e);
+                            }
                         }
-                    });
+                        .in_current_span(),
+                    );
                     self.cron_join_handle = Some(join_handle);
 
                     true

@@ -114,6 +114,8 @@ impl Session {
         }
     }
 
+    // TODO: once MSRV is bumped to 1.88, rewrite the two collect-then-remove loops with
+    // `HashMap::extract_if`.
     fn cleanup_msg_res_tx(&mut self) {
         let now = Instant::now();
 

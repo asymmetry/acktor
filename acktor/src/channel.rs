@@ -1,5 +1,7 @@
-//! Channel primitives used by this crate, wrapping tokio's channels so receive operations yield
-//! this crate's [`RecvError`][crate::errors::RecvError].
+//! Channel primitives used by this crate.
+//!
+//! This module wraps some of tokio's channels and extends them with some features.
+//!
 
 pub mod mpsc;
 pub mod oneshot;

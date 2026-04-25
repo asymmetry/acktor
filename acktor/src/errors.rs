@@ -1,4 +1,5 @@
 //! Error types used by this crate.
+//!
 
 use std::error::Error as StdError;
 use std::fmt::{self, Debug, Display};

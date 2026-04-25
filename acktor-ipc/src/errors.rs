@@ -86,7 +86,7 @@ pub enum SessionError {
     )]
     ResponseTimeout,
 
-    #[error("remote actor returned an error:{0}")]
+    #[error("remote actor returned an error: {0}")]
     RemotePeerError(String),
 
     #[error(transparent)]
