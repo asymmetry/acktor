@@ -148,3 +148,28 @@ pub enum RemoteSupervisionEvent {
     /// Actor state changed.
     State(RemoteAddress, ActorState),
 }
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_debug_fmt() {
+        // do_send variant: result_tx is None, debug shows "DoSend"
+        let msg = RemoteMessage::do_send(7, 99, Bytes::from_static(b"hello"));
+        assert_eq!(
+            format!("{msg:?}"),
+            "RemoteMessage { actor_id: 7, message_id: 99, message: Bytes(5), result_tx: DoSend }"
+        );
+
+        // send variant: result_tx is Some, debug shows "Send"
+        let (tx, _rx) = oneshot::channel::<Bytes>();
+        let msg = RemoteMessage::send(7, 99, Bytes::from_static(b"hi"), tx);
+        assert_eq!(
+            format!("{msg:?}"),
+            "RemoteMessage { actor_id: 7, message_id: 99, message: Bytes(2), result_tx: Send }"
+        );
+    }
+}

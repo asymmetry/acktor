@@ -1,6 +1,6 @@
 use std::fmt::{self, Debug};
 use std::future;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -72,8 +72,12 @@ impl Eq for RemoteAddress {}
 
 impl Hash for RemoteAddress {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.index.hash(state)
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.remote_actor_id.hash(state);
+        self.session.index().hash(state);
     }
 }
 
@@ -382,5 +386,31 @@ where
 {
     fn from(address: RemoteAddress) -> Self {
         Recipient::new(Arc::new(address))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use acktor::{channel::mpsc, envelope::Envelope};
+
+    use super::*;
+    use crate::remote_actor::RemoteActorRegistry;
+
+    #[test]
+    fn test_debug_fmt() {
+        let (tx, _rx) = mpsc::channel::<Envelope<Session>>(1);
+        let session: Address<Session> = Address::new(tx);
+        let session_index = session.index();
+        let registry = RemoteActorRegistry::with_capacity(1);
+
+        let remote_actor_id = 42_u64;
+        let remote = RemoteAddress::new(remote_actor_id, session, registry);
+
+        assert_eq!(
+            format!("{remote:?}"),
+            format!("RemoteAddress({session_index}, {remote_actor_id})")
+        );
     }
 }

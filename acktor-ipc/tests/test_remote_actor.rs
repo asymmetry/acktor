@@ -1,3 +1,4 @@
+use anyhow::Result;
 use bytes::Bytes;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -49,38 +50,35 @@ impl Handler<Triple> for Calculator {
     }
 }
 
-async fn roundtrip<M>(address: &Address<Calculator>, msg: M) -> i64
+async fn roundtrip<M>(address: &Address<Calculator>, msg: M) -> Result<i64>
 where
     M: Message + Encode,
     M::Result: Decode,
 {
-    let bytes = msg.encode_to_bytes(None).unwrap();
+    let bytes = msg.encode_to_bytes(None)?;
     let (tx, rx) = oneshot::channel::<Bytes>();
     let rm = RemoteMessage::send(0, <M as acktor_ipc::Encode>::ID, bytes, tx);
-    address.do_send(rm).await.unwrap();
-    let bytes = rx.await.unwrap();
-    <i64 as Decode>::decode(bytes, None).unwrap()
+    address.do_send(rm).await?;
+    let bytes = rx.await?;
+    Ok(<i64 as Decode>::decode(bytes, None)?)
 }
 
 #[tokio::test]
-async fn test_derived_remote_actor() {
-    let (address, handle) = Calculator.run("calc").unwrap();
+async fn test_derived_remote_actor() -> Result<()> {
+    let (address, handle) = Calculator.run("calc")?;
 
-    assert_eq!(roundtrip(&address, Double { value: 5 }).await, 10);
-    assert_eq!(roundtrip(&address, Triple { value: 5 }).await, 15);
+    assert_eq!(roundtrip(&address, Double { value: 5 }).await?, 10);
+    assert_eq!(roundtrip(&address, Triple { value: 5 }).await?, 15);
 
     let (tx, rx) = oneshot::channel::<Bytes>();
-    // 99 is not Double::ID or Triple::ID
-    let remote_message = RemoteMessage::send(0, 99, Bytes::new(), tx);
-    let debug_str = format!("{remote_message:?}");
-    assert_eq!(
-        debug_str,
-        "RemoteMessage { actor_id: 0, message_id: 99, message: Bytes(0), result_tx: Send }"
-    );
-    address.do_send(remote_message).await.unwrap();
+    address
+        .do_send(RemoteMessage::send(0, 99, Bytes::new(), tx))
+        .await?;
 
     let err = rx.await.unwrap_err();
     assert!(format!("{:?}", err).contains("UnknownMessageId"));
 
     acktor::utils::terminate_actor(address, handle).await;
+
+    Ok(())
 }

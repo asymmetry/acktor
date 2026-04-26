@@ -59,7 +59,7 @@ impl RemoteActorFactory for Counter {
 
 #[tokio::test]
 async fn test_create_actor() -> anyhow::Result<()> {
-    let port = pick_free_port().await;
+    let port = pick_free_port().await?;
     let bind_addr = format!("127.0.0.1:{port}");
     let endpoint = format!("ws://{bind_addr}");
 
@@ -69,8 +69,8 @@ async fn test_create_actor() -> anyhow::Result<()> {
         .with_actor_factory::<Counter>()
         .run("server")?;
 
-    let (client, client_join_handle) = start_client();
-    let session = connect::<WebSocketConnection>(&client, endpoint).await;
+    let (client, client_join_handle) = start_client()?;
+    let session = connect::<WebSocketConnection>(&client, endpoint).await?;
 
     // test CreateRemoteActor
     let remote = client

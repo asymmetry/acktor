@@ -60,7 +60,7 @@ where
 /// [`EnvelopeProxy`] for [`Timed<M>`] that bounds the actor's handling of `M` by a time budget.
 ///
 /// If `actor.handle(msg)` does not finish within `budget`, the handler future is dropped and the
-/// timeout error is forwarded to the result sender as a [`oneshot::Sender::send_err`]; otherwise
+/// timeout error is forwarded to the result sender with [`oneshot::Sender::send_err`]; otherwise
 /// the result is delivered normally.
 pub struct TimedEnvelopeProxy<M>
 where

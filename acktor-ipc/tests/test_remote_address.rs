@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use tokio::time::{Duration, timeout};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -43,21 +45,24 @@ impl Handler<Echo> for EchoServer {
 
 #[tokio::test]
 async fn test_remote_address() -> anyhow::Result<()> {
-    let port = pick_free_port().await;
+    let port = pick_free_port().await?;
     let bind_addr = format!("127.0.0.1:{port}");
     let endpoint = format!("ws://{bind_addr}");
 
     // spawn the echo actor and register it on the server node (clone the address so we can
     // terminate it explicitly at the end of the test)
     let (address, join_handle) = EchoServer.run("echo")?;
-    let (server, server_join_handle) = start_websocket_server(&bind_addr).await;
+    let (server, server_join_handle) = start_websocket_server(&bind_addr).await?;
     server
-        .send(command::AddActor(address.clone()))
+        .send(command::AddActor {
+            label: "echo".to_string(),
+            address: address.clone(),
+        })
         .await?
         .await?;
 
-    let (client, client_join_handle) = start_client();
-    let client_session = connect::<WebSocketConnection>(&client, endpoint).await;
+    let (client, client_join_handle) = start_client()?;
+    let client_session = connect::<WebSocketConnection>(&client, endpoint).await?;
 
     // resolve the remote echo actor by its known index
     let remote = client_session
@@ -72,17 +77,6 @@ async fn test_remote_address() -> anyhow::Result<()> {
             | ((client_session.index().reverse_bits() >> 1) ^ address.index())
     );
 
-    // debug
-    let debug_str = format!("{remote:?}");
-    assert_eq!(
-        debug_str,
-        format!(
-            "RemoteAddress({}, {})",
-            client_session.index(),
-            address.index()
-        )
-    );
-
     // two remote addresses created with GetRemoteActor should be equal
     let duplicate = client_session
         .send(session_command::GetRemoteActor {
@@ -92,6 +86,16 @@ async fn test_remote_address() -> anyhow::Result<()> {
         .await??;
     assert_eq!(remote, duplicate);
     assert_eq!(remote.index(), duplicate.index());
+
+    #[allow(clippy::mutable_key_type)]
+    let mut map = HashSet::new();
+    map.insert(remote.clone());
+    map.insert(duplicate.clone());
+    assert_eq!(
+        map.len(),
+        1,
+        "two remote addresses created with GetRemoteActor should have the same hash"
+    );
 
     // properties
     assert!(remote.is_remote());
@@ -153,14 +157,17 @@ async fn test_remote_address() -> anyhow::Result<()> {
 
     let recipient: Recipient<Echo> = remote.clone().into();
 
-    // confirm the remote actor is still responsive after the fire-and-forget barrage
+    assert!(!recipient.is_closed());
+    assert_eq!(recipient.capacity(), acktor::DEFAULT_MAILBOX_CAPACITY);
+
+    // send via Recipient
     let value = 99;
     let mut rx = recipient.send(Echo { value }).await?;
     let result = rx.recv_timeout(Duration::from_millis(100)).await?;
     assert_eq!(result, value * 2);
 
     // closed
-    let closed = remote.closed();
+    let closed = recipient.closed();
 
     acktor::utils::terminate_actor(address, join_handle).await;
     acktor::utils::terminate_actor(client, client_join_handle).await;

@@ -89,12 +89,18 @@ impl Node {
         self
     }
 
-    /// Adds an actor which implements [`RemoteActor`] trait to the node.
-    pub fn with_actor<A>(self, actor: Address<A>) -> Self
+    /// Adds an actor which implements [`RemoteActor`] trait to the node, registering it under
+    /// `label` so that remote peers can look it up by name.
+    ///
+    /// Duplicate labels and duplicate actor ids are silently skipped.
+    pub fn with_actor<A>(self, label: String, actor: Address<A>) -> Self
     where
         A: RemoteActor,
     {
-        self.registry.insert(actor);
+        let actor_id = actor.index();
+        if !self.label_map.contains_key(&label) && self.registry.insert(actor) {
+            self.label_map.insert(label, actor_id);
+        }
         self
     }
 
@@ -277,9 +283,21 @@ where
         msg: command::AddActor<A>,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        debug_trace!("Handle command {:?}", msg,);
+        debug_trace!("Handle command {:?}", msg);
 
-        self.registry.insert(msg.0)
+        let command::AddActor { label, address } = msg;
+
+        if self.label_map.contains_key(&label) {
+            return false;
+        }
+
+        let actor_id = address.index();
+        if !self.registry.insert(address) {
+            return false;
+        }
+        self.label_map.insert(label, actor_id);
+
+        true
     }
 }
 

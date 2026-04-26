@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bytes::Bytes;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{FutureExt, SinkExt, StreamExt};
 use interprocess::local_socket::{
     GenericNamespaced, ListenerOptions,
     tokio::{RecvHalf, SendHalf, prelude::*},
@@ -45,7 +45,7 @@ impl IpcListener for PipeListener {
     }
 
     fn accept(&self) -> IoFuture<'_, Box<dyn IpcConnection>> {
-        Box::pin(async move {
+        async move {
             let stream = self.listener.accept().await?;
 
             let id = self.accept_counter.fetch_add(1, Ordering::Relaxed);
@@ -54,7 +54,8 @@ impl IpcListener for PipeListener {
             info!("Accepted a new pipe connection: {}", name);
 
             Ok(Box::new(PipeConnection::new(stream, name)) as Box<dyn IpcConnection>)
-        })
+        }
+        .boxed()
     }
 }
 
@@ -93,15 +94,15 @@ impl IpcConnection for PipeConnection {
     }
 
     fn close(&mut self) -> IoFuture<'_, ()> {
-        Box::pin(async move { Ok(()) })
+        self.tx.close().boxed()
     }
 
     fn send(&mut self, buf: Bytes) -> IoFuture<'_, ()> {
-        Box::pin(self.tx.send(buf))
+        self.tx.send(buf).boxed()
     }
 
     fn recv(&mut self) -> IoFuture<'_, Bytes> {
-        Box::pin(async move {
+        async move {
             let frame = self
                 .rx
                 .next()
@@ -109,7 +110,8 @@ impl IpcConnection for PipeConnection {
                 .ok_or_else(|| Error::from(ErrorKind::ConnectionAborted))??;
 
             Ok(frame.freeze())
-        })
+        }
+        .boxed()
     }
 }
 
@@ -127,10 +129,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_listener() {
+    async fn test_listener() -> anyhow::Result<()> {
         // new + local_endpoint
         let name = unique_pipe_name();
-        let listener = PipeListener::new(&name).unwrap();
+        let listener = PipeListener::new(&name)?;
         assert_eq!(listener.local_endpoint(), name);
 
         // duplicate bind to the same name fails
@@ -141,44 +143,50 @@ mod tests {
         PipeConnection::connect(&missing)
             .await
             .expect_err("connect to non-existent pipe must fail");
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_connection() {
+    async fn test_connection() -> anyhow::Result<()> {
         let name = unique_pipe_name();
-        let listener = PipeListener::new(&name).unwrap();
+        let listener = PipeListener::new(&name)?;
         let server_name = name.clone();
 
         let server = tokio::spawn(async move {
             // 1st client: echo roundtrip; peer_endpoint uses the `#0` suffix
-            let mut c1 = listener.accept().await.expect("accept c1");
+            let mut c1 = listener.accept().await?;
             assert_eq!(c1.peer_endpoint(), format!("{server_name}#0"));
-            let msg = c1.recv().await.expect("recv c1");
-            c1.send(msg).await.expect("send c1");
-            c1.close().await.expect("close c1");
+            let msg = c1.recv().await?;
+            c1.send(msg).await?;
+            c1.close().await?;
 
             // 2nd client: accept counter increments to `#1`; drop without writing to exercise
             // the client-side ConnectionAborted path
-            let c2 = listener.accept().await.expect("accept c2");
+            let c2 = listener.accept().await?;
             assert_eq!(c2.peer_endpoint(), format!("{server_name}#1"));
             drop(c2);
+
+            Ok::<_, anyhow::Error>(())
         });
 
         // client 1: full roundtrip
-        let mut client1 = PipeConnection::connect(&name).await.expect("connect c1");
+        let mut client1 = PipeConnection::connect(&name).await?;
         assert_eq!(client1.peer_endpoint(), name);
         let payload = Bytes::from_static(b"hello");
-        client1.send(payload.clone()).await.expect("send");
-        assert_eq!(client1.recv().await.expect("recv"), payload);
-        client1.close().await.expect("close");
+        client1.send(payload.clone()).await?;
+        assert_eq!(client1.recv().await?, payload);
+        client1.close().await?;
 
         // client 2: server drops its connection, recv returns ConnectionAborted
-        let mut client2 = PipeConnection::connect(&name).await.expect("connect c2");
-        server.await.unwrap();
+        let mut client2 = PipeConnection::connect(&name).await?;
+        server.await??;
         let err = client2
             .recv()
             .await
             .expect_err("recv should fail after peer drop");
         assert_eq!(err.kind(), ErrorKind::ConnectionAborted);
+
+        Ok(())
     }
 }

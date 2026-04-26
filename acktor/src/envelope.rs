@@ -132,10 +132,7 @@ mod tests {
             message: Some(Ping(42)),
             tx: None,
         };
-        assert_eq!(
-            format!("{default_proxy:?}"),
-            "DefaultEnvelopeProxy<Ping>"
-        );
+        assert_eq!(format!("{default_proxy:?}"), "DefaultEnvelopeProxy<Ping>");
 
         // TimedEnvelopeProxy
         let timed_proxy = TimedEnvelopeProxy {

@@ -1,3 +1,4 @@
+use anyhow::Result;
 use pretty_assertions::assert_eq;
 use rkyv::{Archive, Deserialize, Serialize};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -122,7 +123,7 @@ impl TryFrom<RkyvBridge> for Rkyv {
 }
 
 #[test]
-fn test_codec_prost() {
+fn test_codec_prost() -> Result<()> {
     let value = Prost {
         string: "hello".to_owned(),
         number: 42,
@@ -130,20 +131,22 @@ fn test_codec_prost() {
 
     let bridge_value = ProstBridge::from(&value);
 
-    let value_bytes = Encode::encode_to_bytes(&value, None).unwrap();
-    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None).unwrap();
+    let value_bytes = Encode::encode_to_bytes(&value, None)?;
+    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None)?;
 
     assert_eq!(value_bytes, bridge_value_bytes);
 
-    let value_decoded = <Prost as Decode>::decode(value_bytes, None).unwrap();
-    let bridge_value_decoded = <ProstBridge as Decode>::decode(bridge_value_bytes, None).unwrap();
+    let value_decoded = <Prost as Decode>::decode(value_bytes, None)?;
+    let bridge_value_decoded = <ProstBridge as Decode>::decode(bridge_value_bytes, None)?;
 
     assert_eq!(value, value_decoded);
     assert_eq!(bridge_value, bridge_value_decoded);
+
+    Ok(())
 }
 
 #[test]
-fn test_codec_zerocopy() {
+fn test_codec_zerocopy() -> Result<()> {
     let value = Zerocopy {
         number: 42,
         flags: 7,
@@ -151,21 +154,22 @@ fn test_codec_zerocopy() {
 
     let bridge_value = ZerocopyBridge::from(&value);
 
-    let value_bytes = Encode::encode_to_bytes(&value, None).unwrap();
-    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None).unwrap();
+    let value_bytes = Encode::encode_to_bytes(&value, None)?;
+    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None)?;
 
     assert_eq!(value_bytes, bridge_value_bytes);
 
-    let value_decoded = <Zerocopy as Decode>::decode(value_bytes, None).unwrap();
-    let bridge_value_decoded =
-        <ZerocopyBridge as Decode>::decode(bridge_value_bytes, None).unwrap();
+    let value_decoded = <Zerocopy as Decode>::decode(value_bytes, None)?;
+    let bridge_value_decoded = <ZerocopyBridge as Decode>::decode(bridge_value_bytes, None)?;
 
     assert_eq!(value, value_decoded);
     assert_eq!(bridge_value, bridge_value_decoded);
+
+    Ok(())
 }
 
 #[test]
-fn test_codec_rkyv() {
+fn test_codec_rkyv() -> Result<()> {
     let value = Rkyv {
         number: 42,
         string: "hello".to_owned(),
@@ -174,14 +178,16 @@ fn test_codec_rkyv() {
 
     let bridge_value = RkyvBridge::from(&value);
 
-    let value_bytes = Encode::encode_to_bytes(&value, None).unwrap();
-    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None).unwrap();
+    let value_bytes = Encode::encode_to_bytes(&value, None)?;
+    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None)?;
 
     assert_eq!(value_bytes, bridge_value_bytes);
 
-    let value_decoded = <Rkyv as Decode>::decode(value_bytes, None).unwrap();
-    let bridge_value_decoded = <RkyvBridge as Decode>::decode(bridge_value_bytes, None).unwrap();
+    let value_decoded = <Rkyv as Decode>::decode(value_bytes, None)?;
+    let bridge_value_decoded = <RkyvBridge as Decode>::decode(bridge_value_bytes, None)?;
 
     assert_eq!(value, value_decoded);
     assert_eq!(bridge_value, bridge_value_decoded);
+
+    Ok(())
 }

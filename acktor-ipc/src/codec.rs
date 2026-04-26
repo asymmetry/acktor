@@ -225,11 +225,13 @@ mod test {
     macro_rules! create_test {
         ($name:ident, $type:ty, $value:expr) => {
             #[test]
-            fn $name() {
+            fn $name() -> anyhow::Result<()> {
                 let value = $value;
-                let buf = Encode::encode_to_bytes(&value, None).unwrap();
-                let decoded = <$type as Decode>::decode(buf, None).unwrap();
+                let buf = Encode::encode_to_bytes(&value, None)?;
+                let decoded = <$type as Decode>::decode(buf, None)?;
                 assert_eq!(value, decoded);
+
+                Ok(())
             }
         };
     }
@@ -335,22 +337,20 @@ mod test {
     );
 
     #[test]
-    fn test_result_string() {
+    fn test_result_string() -> anyhow::Result<()> {
         for value in [
             Ok::<String, String>("hello".to_string()),
             Err::<String, String>("boom".to_string()),
         ] {
             let expected_len = value.encoded_len();
             let mut buf = BytesMut::with_capacity(expected_len);
-            value.encode(&mut buf, None).unwrap();
-            assert_eq!(
-                buf.len(),
-                expected_len,
-                "encoded_len mismatch for {value:?}"
-            );
+            value.encode(&mut buf, None)?;
+            assert_eq!(buf.len(), expected_len);
 
-            let decoded = <Result<String, String> as Decode>::decode(buf.freeze(), None).unwrap();
+            let decoded = <Result<String, String> as Decode>::decode(buf.freeze(), None)?;
             assert_eq!(value, decoded);
         }
+
+        Ok(())
     }
 }

@@ -44,11 +44,18 @@ where
 pub struct RemoveListener(pub String);
 
 /// A command which is used to add an actor to a node.
+///
+/// The `label` is registered alongside the address so the actor can later be looked up by label
+/// from a remote peer. Returns `false` if either the label or the actor is already registered.
 #[derive(Message)]
 #[result_type(bool)]
-pub struct AddActor<A>(pub Address<A>)
+pub struct AddActor<A>
 where
-    A: RemoteActor;
+    A: RemoteActor,
+{
+    pub label: String,
+    pub address: Address<A>,
+}
 
 impl<A> Debug for AddActor<A>
 where
@@ -56,7 +63,8 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple(&format!("{}", acktor::utils::ShortName::of::<Self>()))
-            .field(&format_args!("{}", self.0.index()))
+            .field(&self.label)
+            .field(&format_args!("{}", self.address.index()))
             .finish()
     }
 }

@@ -1,3 +1,4 @@
+use pretty_assertions::assert_eq;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use acktor::{Actor, Context, Handler, Message};
@@ -42,20 +43,14 @@ async fn test_add_remove_listener() -> anyhow::Result<()> {
     let (node, node_join_handle) = Node::new().run("node")?;
 
     // 1st add
-    let port_1 = pick_free_port().await;
+    let port_1 = pick_free_port().await?;
     let bind_addr_1 = format!("127.0.0.1:{port_1}");
     let listener_1 = WebSocketListener::bind(&bind_addr_1).await?;
-    let command = command::AddListener(listener_1);
-    let debug_str = format!("{command:?}");
-    assert_eq!(
-        debug_str,
-        format!("AddListener<WebSocketListener>({bind_addr_1})")
-    );
-    let succeed = node.send(command).await?.await?;
+    let succeed = node.send(command::AddListener(listener_1)).await?.await?;
     assert!(succeed);
 
     // 2nd add
-    let port_2 = pick_free_port().await;
+    let port_2 = pick_free_port().await?;
     let bind_addr_2 = format!("127.0.0.1:{port_2}");
     let listener_2 = WebSocketListener::bind(&bind_addr_2).await?;
     let succeed = node.send(command::AddListener(listener_2)).await?.await?;
@@ -94,15 +89,24 @@ async fn test_add_remove_actor() -> anyhow::Result<()> {
     let dummy_idx = dummy.index();
 
     // add
-    let command = command::AddActor(dummy.clone());
-    let debug_str = format!("{command:?}");
-    assert_eq!(debug_str, format!("AddActor<Dummy>({})", dummy.index()));
-    let succeed = node.send(command).await?.await?;
+    let succeed = node
+        .send(command::AddActor {
+            label: "dummy".to_string(),
+            address: dummy.clone(),
+        })
+        .await?
+        .await?;
     assert!(succeed);
 
-    // add again
-    let succeed = node.send(command::AddActor(dummy.clone())).await?.await?;
-    assert!(!succeed); // should report false
+    // add again with the same label and address
+    let succeed = node
+        .send(command::AddActor {
+            label: "dummy".to_string(),
+            address: dummy.clone(),
+        })
+        .await?
+        .await?;
+    assert!(!succeed); // duplicate label rejected
 
     // remove
     let succeed = node.send(command::RemoveActor(dummy_idx)).await?.await?;
@@ -119,16 +123,61 @@ async fn test_add_remove_actor() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_debug_fmt() -> anyhow::Result<()> {
+    // AddListener
+    let port = pick_free_port().await?;
+    let bind_addr = format!("127.0.0.1:{port}");
+    let listener = WebSocketListener::bind(&bind_addr).await?;
+    let cmd = command::AddListener(listener);
+    assert_eq!(
+        format!("{cmd:?}"),
+        format!("AddListener<WebSocketListener>({bind_addr})")
+    );
+
+    // AddActor
+    let (dummy, dummy_join_handle) = Dummy.run("dummy")?;
+    let dummy_idx = dummy.index();
+    let cmd = command::AddActor {
+        label: "dummy".to_string(),
+        address: dummy.clone(),
+    };
+    assert_eq!(
+        format!("{cmd:?}"),
+        format!("AddActor<Dummy>(\"dummy\", {dummy_idx})")
+    );
+    acktor::utils::terminate_actor(dummy, dummy_join_handle).await;
+
+    // Connect with a session label
+    let cmd = command::Connect::<WebSocketConnection>::new(
+        "ws://localhost:9000".to_string(),
+        Some("session-x".to_string()),
+    );
+    assert_eq!(
+        format!("{cmd:?}"),
+        "Connect<WebSocketConnection>(\"ws://localhost:9000\", Some(\"session-x\"))"
+    );
+
+    // Connect without a session label
+    let cmd = command::Connect::<WebSocketConnection>::new("ws://localhost:9000".to_string(), None);
+    assert_eq!(
+        format!("{cmd:?}"),
+        "Connect<WebSocketConnection>(\"ws://localhost:9000\", None)"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_actor_commands() -> anyhow::Result<()> {
-    let port = pick_free_port().await;
+    let port = pick_free_port().await?;
     let bind_addr = format!("127.0.0.1:{port}");
     let endpoint = format!("ws://{bind_addr}");
 
-    let (server, server_join_handle) = start_websocket_server(&bind_addr).await;
-    let (client, client_join_handle) = start_client();
+    let (server, server_join_handle) = start_websocket_server(&bind_addr).await?;
+    let (client, client_join_handle) = start_client()?;
 
     // test Connect
-    let session = connect::<WebSocketConnection>(&client, endpoint).await;
+    let session = connect::<WebSocketConnection>(&client, endpoint).await?;
     assert!(session.index() > 0);
 
     // test GetRemoteActor with unknown actor

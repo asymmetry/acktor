@@ -778,7 +778,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_debug_str() {
+    fn test_debug_fmt() {
         let ok = ActorMessageResponse {
             tag: 42,
             result: Ok(Bytes::from_static(b"payload")),
