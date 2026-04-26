@@ -1,3 +1,4 @@
+use anyhow::Result;
 use pretty_assertions::assert_eq;
 
 use acktor::{
@@ -93,28 +94,28 @@ impl Handler<Collect> for Watcher {
     }
 }
 
-async fn spawn_actors(
+#[allow(clippy::type_complexity)]
+fn spawn_actors(
     panic_at: PanicAt,
-) -> (
+) -> Result<(
     acktor::Address<Panicker>,
     acktor::JoinHandle<()>,
     acktor::Address<Watcher>,
     acktor::JoinHandle<()>,
-) {
-    let (watcher_address, watcher_join_handle) = Watcher::default().run("watcher").unwrap();
+)> {
+    let (watcher_address, watcher_join_handle) = Watcher::default().run("watcher")?;
 
     let (panicker_address, panicker_join_handle) = Panicker::create("panicker", |ctx| {
         ctx.set_supervisor(Some(watcher_address.clone().into()));
         Ok(Panicker { panic_at })
-    })
-    .unwrap();
+    })?;
 
-    (
+    Ok((
         panicker_address,
         panicker_join_handle,
         watcher_address,
         watcher_join_handle,
-    )
+    ))
 }
 
 #[tokio::test]
@@ -123,52 +124,58 @@ async fn test_panic_in_pre_start() {
     // `pre_start` runs synchronously before the actor task is spawned. The runtime
     // catches the panic and calls `resume_unwind`, so the panic propagates to the
     // caller (this test) instead of being reported to the supervisor.
-    let _ = spawn_actors(PanicAt::PreStart).await;
+    let _ = spawn_actors(PanicAt::PreStart);
 }
 
 #[tokio::test]
-async fn test_panic_in_handler() {
-    let (panicker, panicker_join_handle, watcher, _) = spawn_actors(PanicAt::Handler).await;
+async fn test_panic_in_handler() -> Result<()> {
+    let (panicker, panicker_join_handle, watcher, _) = spawn_actors(PanicAt::Handler)?;
 
-    panicker.do_send(Boom).await.unwrap();
-    panicker_join_handle.await.unwrap();
+    panicker.do_send(Boom).await?;
+    panicker_join_handle.await?;
 
-    let panics = watcher.send(Collect).await.unwrap().await.unwrap();
+    let panics = watcher.send(Collect).await?.await?;
     assert_eq!(panics.len(), 1);
     assert!(
         panics[0].contains("handler exploded"),
         "unexpected panic message: {}",
         panics[0],
     );
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_panic_in_post_start() {
-    let (_panicker, panicker_join_handle, watcher, _) = spawn_actors(PanicAt::PostStart).await;
+async fn test_panic_in_post_start() -> Result<()> {
+    let (_panicker, panicker_join_handle, watcher, _) = spawn_actors(PanicAt::PostStart)?;
 
-    panicker_join_handle.await.unwrap();
+    panicker_join_handle.await?;
 
-    let panics = watcher.send(Collect).await.unwrap().await.unwrap();
+    let panics = watcher.send(Collect).await?.await?;
     assert_eq!(panics.len(), 1);
     assert!(
         panics[0].contains("post_start exploded"),
         "unexpected panic message: {}",
         panics[0],
     );
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_panic_in_post_stop() {
-    let (panicker, panicker_join, watcher, _) = spawn_actors(PanicAt::PostStop).await;
+async fn test_panic_in_post_stop() -> Result<()> {
+    let (panicker, panicker_join, watcher, _) = spawn_actors(PanicAt::PostStop)?;
 
-    panicker.do_send(Signal::Terminate).await.unwrap();
-    panicker_join.await.unwrap();
+    panicker.do_send(Signal::Terminate).await?;
+    panicker_join.await?;
 
-    let panics = watcher.send(Collect).await.unwrap().await.unwrap();
+    let panics = watcher.send(Collect).await?.await?;
     assert_eq!(panics.len(), 1);
     assert!(
         panics[0].contains("post_stop exploded"),
         "unexpected panic message: {}",
         panics[0],
     );
+
+    Ok(())
 }

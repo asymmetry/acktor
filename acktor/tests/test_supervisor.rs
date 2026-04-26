@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{Result, anyhow};
 use pretty_assertions::assert_eq;
 
 use acktor::{
@@ -89,48 +89,44 @@ impl Handler<CheckB> for B {
 }
 
 #[tokio::test]
-async fn test_supervisor() {
-    let (a_address, _) = A.run("A").unwrap();
+async fn test_supervisor() -> Result<()> {
+    let (a_address, _) = A.run("A")?;
 
     // no effect
-    a_address.send(Notify).await.unwrap().await.unwrap();
-    a_address.send(TryNotify).await.unwrap().await.unwrap();
+    a_address.send(Notify).await?.await?;
+    a_address.send(TryNotify).await?.await?;
 
-    let (b_address, _) = B { received: 0 }.run("B").unwrap();
+    let (b_address, _) = B { received: 0 }.run("B")?;
 
     // set B as the supervisor of A
-    let command = Supervisor::Set(b_address.clone().into());
-    let debug_str = format!("{command:?}");
-    assert_eq!(
-        debug_str,
-        format!("Supervisor<A>::Set({})", b_address.index())
-    );
-    a_address.send(command).await.unwrap().await.unwrap();
+    a_address
+        .send(Supervisor::Set(b_address.clone().into()))
+        .await?
+        .await?;
 
     // trigger A to notify supervisor
-    a_address.send(Notify).await.unwrap().await.unwrap();
+    a_address.send(Notify).await?.await?;
 
     // B should receive the supervision events
-    let received = b_address.send(CheckB).await.unwrap().await.unwrap();
+    let received = b_address.send(CheckB).await?.await?;
     assert_eq!(received, 7);
 
     // trigger A to notify supervisor
-    a_address.send(TryNotify).await.unwrap().await.unwrap();
+    a_address.send(TryNotify).await?.await?;
 
     // B should receive the supervision events
-    let received = b_address.send(CheckB).await.unwrap().await.unwrap();
+    let received = b_address.send(CheckB).await?.await?;
     assert_eq!(received, 7);
 
     // unset supervisor
-    let command = Supervisor::Unset;
-    let debug_str = format!("{command:?}");
-    assert_eq!(debug_str, "Supervisor<A>::Unset");
-    a_address.send(command).await.unwrap().await.unwrap();
+    a_address.send(Supervisor::Unset).await?.await?;
 
     // trigger A to notify supervisor
-    a_address.send(Notify).await.unwrap().await.unwrap();
+    a_address.send(Notify).await?.await?;
 
     // B should not receive any supervision events
-    let received = b_address.send(CheckB).await.unwrap().await.unwrap();
+    let received = b_address.send(CheckB).await?.await?;
     assert_eq!(received, 0);
+
+    Ok(())
 }

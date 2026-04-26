@@ -8,7 +8,7 @@ use std::any::Any;
 use std::fmt::Display;
 use std::panic::{self, AssertUnwindSafe};
 
-use futures_util::future::FutureExt;
+use futures_util::FutureExt;
 use tracing::{Instrument, Span, debug, error, error_span, warn};
 
 use crate::address::{Address, Mailbox, Recipient, Sender};
@@ -517,7 +517,6 @@ pub struct TypeErasedRecipient {
 }
 
 #[cfg(feature = "type-erased-recipient-hook")]
-#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
 impl TypeErasedRecipient {
     /// Constructs a new [`TypeErasedRecipient`] from a concrete value.
     pub fn new<T>(value: T) -> Self
@@ -561,9 +560,9 @@ pub type TypeErasedRecipientFn<A> = fn(&Address<A>) -> TypeErasedRecipient;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use pretty_assertions::assert_eq;
+
+    use super::*;
 
     #[test]
     fn test_actor_state() {
@@ -573,5 +572,39 @@ mod tests {
         assert_eq!(ActorState::try_from(3), Ok(ActorState::Stopping));
         assert_eq!(ActorState::try_from(4), Ok(ActorState::Stopped));
         assert_eq!(ActorState::try_from(5), Err(()));
+    }
+
+    #[cfg(feature = "type-erased-recipient-hook")]
+    #[test]
+    fn test_type_erased_recipient() -> anyhow::Result<()> {
+        // downcast to the original type succeeds
+        let erased = TypeErasedRecipient::new(42_u32);
+        let value = erased
+            .downcast::<u32>()
+            .map_err(|(_, e)| anyhow::anyhow!(e))?;
+        assert_eq!(*value, 42);
+
+        // downcast to a wrong type returns the original recipient and a descriptive error
+        let erased = TypeErasedRecipient::new(42_u32);
+        let (recovered, error_msg) = erased
+            .downcast::<String>()
+            .err()
+            .ok_or(anyhow::anyhow!("downcast to wrong type should have failed"))?;
+        assert!(
+            error_msg.contains("expected type String"),
+            "missing expected type in error: {error_msg}"
+        );
+        assert!(
+            error_msg.contains("actual type u32"),
+            "missing actual type in error: {error_msg}"
+        );
+
+        // the recovered recipient still holds the original value
+        let value = recovered
+            .downcast::<u32>()
+            .map_err(|(_, e)| anyhow::anyhow!(e))?;
+        assert_eq!(*value, 42);
+
+        Ok(())
     }
 }

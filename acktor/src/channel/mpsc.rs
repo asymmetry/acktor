@@ -138,23 +138,29 @@ pub fn channel<T>(capacity: usize) -> (Sender<T>, Receiver<T>) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::future::poll_fn;
 
+    use anyhow::Result;
     use pretty_assertions::assert_eq;
 
-    #[tokio::test]
-    async fn test_recv() {
-        // async `recv` delivers a value
-        let (tx, mut rx) = channel::<u32>(4);
-        tx.send(1).await.unwrap();
-        assert_eq!(rx.recv().await.unwrap(), 1);
+    use super::*;
 
-        // `try_recv` on an empty open channel is Empty
+    #[tokio::test]
+    async fn test_send_recv() -> Result<()> {
+        // send and recv
+        let (tx, mut rx) = channel::<u32>(4);
+        tx.send(1).await?;
+        assert_eq!(rx.recv().await?, 1);
+
+        // try_recv on an empty open channel is Empty
         assert!(matches!(rx.try_recv(), Err(RecvError::Empty)));
 
-        // `try_recv` yields a value once present
-        tx.send(2).await.unwrap();
-        assert_eq!(rx.try_recv().unwrap(), 2);
+        // try_send and try_recv
+        tx.try_send(2)?;
+        assert_eq!(rx.try_recv()?, 2);
+
+        tx.send(3).await?;
+        assert_eq!(poll_fn(|cx| rx.poll_recv(cx)).await?, 3);
 
         // dropping all senders closes the channel
         drop(tx);
@@ -163,20 +169,22 @@ mod tests {
 
         // `blocking_recv` must run off the async runtime
         let (tx, mut rx) = channel::<u32>(4);
-        let rx_handle = tokio::task::spawn_blocking(move || {
-            let v = rx.blocking_recv().unwrap();
+        let join_handle = tokio::task::spawn_blocking(move || {
+            let result = rx.blocking_recv();
             let closed = rx.blocking_recv();
-            (v, closed)
+            (result, closed)
         });
-        tx.send(42).await.unwrap();
+        tx.send(4).await?;
         drop(tx);
-        let (v, closed) = rx_handle.await.unwrap();
-        assert_eq!(v, 42);
+        let (result, closed) = join_handle.await?;
+        assert_eq!(result?, 4);
         assert!(matches!(closed, Err(RecvError::Closed)));
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn recv_timeout() {
+    async fn test_recv_timeout() -> Result<()> {
         let (tx, mut rx) = channel::<u32>(1);
 
         // times out when nothing is sent
@@ -185,9 +193,9 @@ mod tests {
             Err(RecvError::Timeout),
         ));
 
-        // the receiver is intact after a timeout — sending now succeeds
-        tx.send(7).await.unwrap();
-        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).await.unwrap(), 7);
+        // recv succeeds if a value is sent before the timeout
+        tx.send(7).await?;
+        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).await?, 7);
 
         // closed channel returns Closed immediately, not Timeout
         drop(tx);
@@ -195,13 +203,15 @@ mod tests {
             rx.recv_timeout(Duration::from_secs(1)).await,
             Err(RecvError::Closed),
         ));
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn recv_many_behavior() {
+    async fn test_recv_many() -> Result<()> {
         let (tx, mut rx) = channel::<u32>(8);
-        for i in 0..5 {
-            tx.send(i).await.unwrap();
+        for i in 0..8 {
+            tx.send(i).await?;
         }
 
         // `recv_many` drains up to `limit` messages already buffered
@@ -210,6 +220,12 @@ mod tests {
         assert_eq!(n, 3);
         assert_eq!(buf, vec![0, 1, 2]);
 
+        // `poll_recv_many` also works
+        let mut buf = Vec::new();
+        let n = poll_fn(|cx| rx.poll_recv_many(cx, &mut buf, 3)).await;
+        assert_eq!(n, 3);
+        assert_eq!(buf, vec![3, 4, 5]);
+
         // `blocking_recv_many` pulls the rest off the async runtime
         let rx_handle = tokio::task::spawn_blocking(move || {
             let mut buf = Vec::new();
@@ -217,13 +233,15 @@ mod tests {
             (n, buf)
         });
         drop(tx);
-        let (n, buf) = rx_handle.await.unwrap();
+        let (n, buf) = rx_handle.await?;
         assert_eq!(n, 2);
-        assert_eq!(buf, vec![3, 4]);
+        assert_eq!(buf, vec![6, 7]);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn channel_state_and_close() {
+    async fn test_channel_state_and_close() -> Result<()> {
         let (tx, mut rx) = channel::<u32>(4);
 
         // fresh channel: empty, open, full capacity available
@@ -233,8 +251,8 @@ mod tests {
         assert_eq!(rx.capacity(), 4);
         assert_eq!(rx.max_capacity(), 4);
 
-        tx.send(1).await.unwrap();
-        tx.send(2).await.unwrap();
+        tx.send(1).await?;
+        tx.send(2).await?;
         assert_eq!(rx.len(), 2);
         assert!(!rx.is_empty());
         assert_eq!(rx.capacity(), 2);
@@ -253,9 +271,11 @@ mod tests {
         // `close()` closes the receiver without dropping it; pending messages remain drainable
         rx.close();
         assert!(rx.is_closed());
-        assert!(tx.send(3).await.is_err());
-        assert_eq!(rx.recv().await.unwrap(), 1);
-        assert_eq!(rx.recv().await.unwrap(), 2);
+        assert!(matches!(tx.send(3).await, Err(error::SendError(3))));
+        assert_eq!(rx.recv().await?, 1);
+        assert_eq!(rx.recv().await?, 2);
         assert!(matches!(rx.recv().await, Err(RecvError::Closed)));
+
+        Ok(())
     }
 }

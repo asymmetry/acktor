@@ -2,7 +2,7 @@ use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use futures_util::future::{FutureExt, TryFutureExt};
+use futures_util::{FutureExt, TryFutureExt};
 use tokio::time::Duration;
 
 use super::sender::{
@@ -307,5 +307,46 @@ where
 
     fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
         self.tx.blocking_send(msg).map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+    use crate::test_utils::Ping;
+
+    fn hash_of<T: Hash>(value: &T) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn test_recipient_proxy() {
+        let (tx, _rx) = mpsc::channel::<Ping>(1);
+        let proxy = RecipientProxy {
+            index: create_actor_id(),
+            tx,
+        };
+
+        // clone preserves index and tx — clones compare equal
+        let clone = proxy.clone();
+        assert_eq!(proxy, clone);
+        assert_eq!(proxy.index(), clone.index());
+        assert_eq!(hash_of(&proxy), hash_of(&clone));
+
+        // distinct proxies with different indices are not equal
+        let (tx2, _rx2) = mpsc::channel::<Ping>(1);
+        let other = RecipientProxy {
+            index: create_actor_id(),
+            tx: tx2,
+        };
+        assert_ne!(proxy, other);
+        assert_ne!(proxy.index(), other.index());
     }
 }

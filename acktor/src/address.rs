@@ -30,6 +30,7 @@ pub use mailbox::Mailbox;
 mod tests {
     use std::collections::HashSet;
 
+    use anyhow::{Context as _, Result};
     use pretty_assertions::assert_eq;
     use tokio::time::{Duration, timeout};
 
@@ -45,29 +46,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_address() {
+    async fn test_address() -> Result<()> {
         // clone + eq
-        let (a1, m1) = make_address(4);
+        let (a1, _m1) = make_address(4);
         let clone = a1.clone();
         assert_eq!(a1, clone);
         assert_eq!(a1.index(), clone.index());
-
-        let debug_str = format!("{a1:?}");
-        assert_eq!(debug_str, format!("Address<Dummy>({})", a1.index()));
-
-        let debug_str = format!("{m1:?}");
-        assert_eq!(debug_str, "Mailbox<Dummy>");
 
         // hash
         #[allow(clippy::mutable_key_type)]
         let mut map = HashSet::new();
         map.insert(a1);
         map.insert(clone);
-        assert_eq!(
-            map.len(),
-            1,
-            "clones should have the same hash and be equal"
-        );
+        assert_eq!(map.len(), 1, "clones should have the same hash and equal");
 
         // index is unique
         let (a1, m1) = make_address(4);
@@ -84,27 +75,29 @@ mod tests {
         assert!(a1.is_closed());
         timeout(Duration::from_millis(500), closed)
             .await
-            .expect("closed() did not resolve after mailbox drop");
+            .context("closed() should resolve after mailbox drop")?;
 
         // do_send
-        let (a1, mut m1) = make_address(1);
-        a1.do_send(Ping(1)).await.expect("do_send should succeed");
+        let (a1, m1) = make_address(1);
+        a1.do_send(Ping(1)).await?;
         assert_eq!(m1.len(), 1);
-        m1.recv().await.expect("recv should succeed");
 
         // send
-        a1.send(Ping(2)).await.expect("send should succeed");
-        m1.recv().await.expect("recv should succeed");
+        let (a1, m1) = make_address(1);
+        a1.send(Ping(2)).await?;
+        assert_eq!(m1.len(), 1);
 
         // try_do_send
         let (a1, m1) = make_address(1);
-        a1.try_do_send(Ping(3)).expect("first message fits");
+        a1.try_do_send(Ping(3))?;
         assert_eq!(m1.len(), 1);
+
         let result = a1.try_do_send(Ping(4));
         assert!(
             matches!(result, Err(SendError::Full(_))),
             "expected Full, got {result:?}"
         );
+
         drop(m1);
         let result = a1.try_do_send(Ping(5));
         assert!(
@@ -114,14 +107,16 @@ mod tests {
 
         // try_send
         let (a1, m1) = make_address(1);
-        a1.try_send(Ping(6)).expect("first message fits");
+        a1.try_send(Ping(6))?;
         assert_eq!(m1.len(), 1);
+
         let result = a1.try_send(Ping(7));
         assert!(
             matches!(result, Err(SendError::Full(_))),
             "expected Full, got {result:?}"
         );
         drop(m1);
+
         let result = a1.try_send(Ping(8));
         assert!(
             matches!(result, Err(SendError::Closed(_))),
@@ -131,9 +126,9 @@ mod tests {
         // do_send_timeout
         let (a1, m1) = make_address(1);
         a1.do_send_timeout(Ping(9), Duration::from_millis(10))
-            .await
-            .expect("first message fits");
+            .await?;
         assert_eq!(m1.len(), 1);
+
         let result = a1
             .do_send_timeout(Ping(10), Duration::from_millis(10))
             .await;
@@ -141,6 +136,7 @@ mod tests {
             matches!(result, Err(SendError::Timeout(_))),
             "expected Timeout, got {result:?}"
         );
+
         drop(m1);
         let result = a1
             .do_send_timeout(Ping(11), Duration::from_millis(10))
@@ -152,15 +148,15 @@ mod tests {
 
         // send_timeout
         let (a1, m1) = make_address(1);
-        a1.send_timeout(Ping(12), Duration::from_millis(10))
-            .await
-            .expect("first message fits");
+        a1.send_timeout(Ping(12), Duration::from_millis(10)).await?;
         assert_eq!(m1.len(), 1);
+
         let result = a1.send_timeout(Ping(13), Duration::from_millis(10)).await;
         assert!(
             matches!(result, Err(SendError::Timeout(_))),
             "expected Timeout, got {result:?}"
         );
+
         drop(m1);
         let result = a1.send_timeout(Ping(14), Duration::from_millis(10)).await;
         assert!(
@@ -169,29 +165,31 @@ mod tests {
         );
 
         // blocking_do_send
-        let (a1, mut m1) = make_address(1);
-        tokio::task::spawn_blocking(move || {
-            a1.blocking_do_send(Ping(15)).expect("first message fits");
+        let (a1, m1) = make_address(1);
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            a1.blocking_do_send(Ping(15))?;
             assert_eq!(m1.len(), 1);
-            m1.try_recv().expect("recv should succeed");
+
+            Ok(())
         })
-        .await
-        .expect("spawn_blocking join");
+        .await??;
 
         // blocking_send
-        let (a1, mut m1) = make_address(1);
-        tokio::task::spawn_blocking(move || {
-            a1.blocking_send(Ping(16)).expect("first message fits");
+        let (a1, m1) = make_address(1);
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            a1.blocking_send(Ping(16))?;
             assert_eq!(m1.len(), 1);
-            m1.try_recv().expect("recv should succeed");
+
+            Ok(())
         })
-        .await
-        .expect("spawn_blocking join");
+        .await??;
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_mailbox() {
-        // basic properties
+    async fn test_mailbox() -> Result<()> {
+        // basics
         let (a1, mut m1) = make_address(4);
         assert!(m1.is_empty());
         assert_eq!(m1.len(), 0);
@@ -201,8 +199,8 @@ mod tests {
         assert!(!m1.is_closed());
 
         // len reflects pending messages
-        a1.try_do_send(Ping(1)).unwrap();
-        a1.try_do_send(Ping(2)).unwrap();
+        a1.try_do_send(Ping(1))?;
+        a1.try_do_send(Ping(2))?;
         assert_eq!(m1.len(), 2);
         assert!(!m1.is_empty());
 
@@ -215,21 +213,17 @@ mod tests {
             matches!(result, Err(SendError::Closed(_))),
             "expected Closed, got {result:?}"
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_recipient() {
+    async fn test_recipient() -> Result<()> {
         // create() delivers to the receiver
         let (recipient, mut rx) = Recipient::<Ping>::create(4);
-        recipient
-            .do_send(Ping(1))
-            .await
-            .expect("do_send should succeed");
-        let msg = rx.recv().await.expect("recv should succeed");
+        recipient.do_send(Ping(1)).await?;
+        let msg = rx.recv().await?;
         assert_eq!(msg.0, 1);
-
-        let debug_str = format!("{recipient:?}");
-        assert_eq!(debug_str, format!("Recipient<Ping>({})", recipient.index()));
 
         // clone preserves identity
         let clone = recipient.clone();
@@ -243,39 +237,26 @@ mod tests {
         assert!(recipient.is_closed());
         timeout(Duration::from_millis(500), recipient.closed())
             .await
-            .expect("closed() should resolve after receiver drop");
+            .context("closed() should resolve after receiver drop")?;
 
         // send functions with create() recipient
         let (recipient, rx) = Recipient::<Ping>::create(8);
-        recipient.send(Ping(2)).await.expect("send should succeed");
-        recipient
-            .do_send(Ping(3))
-            .await
-            .expect("do_send should succeed");
-        recipient
-            .try_send(Ping(4))
-            .expect("try_send should succeed");
-        recipient
-            .try_do_send(Ping(5))
-            .expect("try_do_send should succeed");
+        recipient.send(Ping(2)).await?;
+        recipient.do_send(Ping(3)).await?;
+        recipient.try_send(Ping(4))?;
+        recipient.try_do_send(Ping(5))?;
         recipient
             .send_timeout(Ping(6), Duration::from_millis(10))
-            .await
-            .expect("send_timeout should succeed");
+            .await?;
         recipient
             .do_send_timeout(Ping(7), Duration::from_millis(10))
-            .await
-            .expect("do_send_timeout should succeed");
-        tokio::task::spawn_blocking(move || {
-            recipient
-                .blocking_send(Ping(8))
-                .expect("blocking_send should succeed");
-            recipient
-                .blocking_do_send(Ping(9))
-                .expect("blocking_do_send should succeed");
+            .await?;
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            recipient.blocking_send(Ping(8))?;
+            recipient.blocking_do_send(Ping(9))?;
+            Ok(())
         })
-        .await
-        .expect("spawn_blocking join");
+        .await??;
         assert_eq!(rx.len(), 8);
 
         // From<Address> preserves index
@@ -289,35 +270,22 @@ mod tests {
         assert_eq!(recipient.index(), clone.index());
 
         // send functions with From<Address> recipient
-        recipient.send(Ping(10)).await.expect("send should succeed");
-        recipient
-            .do_send(Ping(11))
-            .await
-            .expect("do_send should succeed");
-        recipient
-            .try_send(Ping(12))
-            .expect("try_send should succeed");
-        recipient
-            .try_do_send(Ping(13))
-            .expect("try_do_send should succeed");
+        recipient.send(Ping(10)).await?;
+        recipient.do_send(Ping(11)).await?;
+        recipient.try_send(Ping(12))?;
+        recipient.try_do_send(Ping(13))?;
         recipient
             .send_timeout(Ping(14), Duration::from_millis(10))
-            .await
-            .expect("send_timeout should succeed");
+            .await?;
         recipient
             .do_send_timeout(Ping(15), Duration::from_millis(10))
-            .await
-            .expect("do_send_timeout should succeed");
-        tokio::task::spawn_blocking(move || {
-            recipient
-                .blocking_send(Ping(16))
-                .expect("blocking_send should succeed");
-            recipient
-                .blocking_do_send(Ping(17))
-                .expect("blocking_do_send should succeed");
+            .await?;
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            recipient.blocking_send(Ping(16))?;
+            recipient.blocking_do_send(Ping(17))?;
+            Ok(())
         })
-        .await
-        .expect("spawn_blocking join");
+        .await??;
         assert_eq!(m1.len(), 8);
 
         assert!(!clone.is_closed());
@@ -325,23 +293,25 @@ mod tests {
         assert!(clone.is_closed());
         timeout(Duration::from_millis(100), clone.closed())
             .await
-            .expect("closed() should resolve after mailbox drop");
+            .context("closed() should resolve after mailbox drop")?;
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_permits() {
+    async fn test_permits() -> Result<()> {
         // reserve
         let (a1, m1) = make_address(2);
-        let permit = a1.reserve().await.expect("reserve should succeed");
+        let permit = a1.reserve().await?;
         permit.do_send(Ping(1));
-        let permit = a1.try_reserve().expect("try_reserve should succeed");
+        let permit = a1.try_reserve()?;
         permit.send(Ping(2));
         assert_eq!(m1.len(), 2);
 
         // capacity
         let (a1, m1) = make_address(2);
-        let p1 = a1.reserve().await.expect("first reserve should succeed");
-        let _p2 = a1.reserve().await.expect("second reserve should succeed");
+        let p1 = a1.reserve().await?;
+        let _p2 = a1.reserve().await?;
         let result = a1.try_reserve();
         assert!(
             matches!(result, Err(SendError::Full(_))),
@@ -350,7 +320,7 @@ mod tests {
 
         // drop a permit releases the slot
         drop(p1);
-        let _ = a1.try_reserve().expect("try_reserve should succeed");
+        let _ = a1.try_reserve()?;
 
         // close
         drop(m1);
@@ -362,27 +332,16 @@ mod tests {
 
         // reserve_owned
         let (a1, m1) = make_address(2);
-        let permit = a1
-            .reserve_owned()
-            .await
-            .expect("reserve_owned should succeed");
+        let permit = a1.reserve_owned().await?;
         permit.do_send(Ping(2));
-        let permit = a1
-            .try_reserve_owned()
-            .expect("try_reserve_owned should succeed");
+        let permit = a1.try_reserve_owned()?;
         permit.send(Ping(3));
         assert_eq!(m1.len(), 2);
 
         // capacity
         let (a1, m1) = make_address(2);
-        let p1 = a1
-            .reserve_owned()
-            .await
-            .expect("first reserve should succeed");
-        let _p2 = a1
-            .reserve_owned()
-            .await
-            .expect("second reserve should succeed");
+        let p1 = a1.reserve_owned().await?;
+        let _p2 = a1.reserve_owned().await?;
         let result = a1.try_reserve_owned();
         assert!(
             matches!(result, Err(SendError::Full(_))),
@@ -391,9 +350,7 @@ mod tests {
 
         // drop a permit releases the slot
         drop(p1);
-        let _ = a1
-            .try_reserve_owned()
-            .expect("try_reserve_owned should succeed");
+        let _ = a1.try_reserve_owned()?;
 
         // close
         drop(m1);
@@ -402,6 +359,8 @@ mod tests {
             matches!(result, Err(SendError::Closed(_))),
             "expected Closed, got {result:?}"
         );
+
+        Ok(())
     }
 
     #[test]
@@ -410,5 +369,21 @@ mod tests {
         assert_eq!(sender_id.index(), u64::MAX);
         #[cfg(feature = "ipc")]
         assert_eq!(sender_id.is_remote(), true);
+    }
+
+    #[test]
+    fn test_debug_fmt() {
+        let (address, mailbox) = make_address(4);
+        assert_eq!(
+            format!("{address:?}"),
+            format!("Address<Dummy>({})", address.index())
+        );
+        assert_eq!(format!("{mailbox:?}"), "Mailbox<Dummy>");
+
+        let (recipient, _rx) = Recipient::<Ping>::create(4);
+        assert_eq!(
+            format!("{recipient:?}"),
+            format!("Recipient<Ping>({})", recipient.index())
+        );
     }
 }

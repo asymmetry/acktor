@@ -2,10 +2,10 @@ use std::any::Any;
 use std::fmt::{self, Debug};
 use std::pin::Pin;
 
-use futures_util::future::FutureExt;
+use futures_util::FutureExt;
 use tracing::debug;
 
-use super::{Envelope, EnvelopeProxy, FromEnvelope, ToEnvelope};
+use super::{Envelope, EnvelopeProxy, FromEnvelope, IntoEnvelope};
 use crate::actor::Actor;
 use crate::channel::oneshot;
 use crate::message::{Handler, Message, MessageResponse};
@@ -80,20 +80,20 @@ where
     }
 }
 
-impl<A, M> ToEnvelope<A, M, DefaultEnvelopeProxy<M>> for A
+impl<A, M> IntoEnvelope<A, DefaultEnvelopeProxy<M>> for M
 where
     A: Actor + Handler<M>,
     M: Message,
 {
-    fn pack(msg: M, tx: Option<oneshot::Sender<M::Result>>) -> Envelope<A> {
+    fn pack(self, tx: Option<oneshot::Sender<M::Result>>) -> Envelope<A> {
         Envelope::with_proxy(Box::new(DefaultEnvelopeProxy {
-            message: Some(msg),
+            message: Some(self),
             tx,
         }))
     }
 }
 
-impl<A, M> FromEnvelope<A, M, DefaultEnvelopeProxy<M>> for A
+impl<A, M> FromEnvelope<A, DefaultEnvelopeProxy<M>> for M
 where
     A: Actor + Handler<M>,
     M: Message,
@@ -104,18 +104,15 @@ where
             .downcast_mut::<DefaultEnvelopeProxy<M>>()
             .unwrap_or_else(|| {
                 panic!(
-                    "envelope type mismatch during downcast: expected DefaultEnvelopeProxy<{}> \
-                     for actor {}",
+                    "envelope proxy mismatch during downcast: expected DefaultEnvelopeProxy<{}>",
                     crate::utils::ShortName::of::<M>(),
-                    crate::utils::ShortName::of::<A>(),
                 )
             })
             .message()
             .unwrap_or_else(|| {
                 panic!(
-                    "message already taken from DefaultEnvelopeProxy<{}> for actor {}",
+                    "message already taken from DefaultEnvelopeProxy<{}>",
                     crate::utils::ShortName::of::<M>(),
-                    crate::utils::ShortName::of::<A>(),
                 )
             })
     }

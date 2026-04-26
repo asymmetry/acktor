@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use anyhow::Result;
 use pretty_assertions::assert_eq;
 
 use acktor::{
@@ -149,87 +150,88 @@ impl Handler<Collect> for Watcher {
     }
 }
 
-async fn spawn_actors(
+#[allow(clippy::type_complexity)]
+fn spawn_actors(
     actor: TestActor,
-) -> (
+) -> Result<(
     Address<TestActor>,
     JoinHandle<()>,
     Address<Watcher>,
     JoinHandle<()>,
-) {
-    let (watcher_address, watcher_join_handle) = Watcher::default().run("watcher").unwrap();
+)> {
+    let (watcher_address, watcher_join_handle) = Watcher::default().run("watcher")?;
 
     let (actor_address, actor_join_handle) = TestActor::create("actor", |ctx| {
         ctx.set_supervisor(Some(watcher_address.clone().into()));
         Ok(actor)
-    })
-    .unwrap();
+    })?;
 
-    (
+    Ok((
         actor_address,
         actor_join_handle,
         watcher_address,
         watcher_join_handle,
-    )
+    ))
 }
 
 #[tokio::test]
-async fn test_stopping_continue() {
+async fn test_stopping_continue() -> Result<()> {
     let (actor, actor_join_handle, watcher, _) = spawn_actors(TestActor {
         stopping_action: Stopping::Continue,
         post_stop_err: None,
         count: 0,
-    })
-    .await;
+    })?;
 
-    actor.do_send(Fail("boom".into())).await.unwrap();
+    actor.do_send(Fail("boom".into())).await?;
 
     // the actor is still alive since `stopping` returned `Continue`
-    let result = actor.send(Ping(42)).await.unwrap().await.unwrap();
+    let result = actor.send(Ping(42)).await?.await?;
     assert_eq!(result, 42);
 
     acktor::utils::terminate_actor(actor, actor_join_handle).await;
 
-    let events = watcher.send(Collect).await.unwrap().await.unwrap();
+    let events = watcher.send(Collect).await?.await?;
     assert_eq!(
         events,
         vec![Event::Warn("boom".into()), Event::Terminated(None)],
     );
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_stopping_stop() {
+async fn test_stopping_stop() -> Result<()> {
     let (actor, actor_join_handle, watcher, _) = spawn_actors(TestActor {
         stopping_action: Stopping::Stop,
         post_stop_err: None,
         count: 0,
-    })
-    .await;
+    })?;
 
-    actor.do_send(Fail("boom".into())).await.unwrap();
+    actor.do_send(Fail("boom".into())).await?;
 
     // the actor is stopped since `stopping` returned `Stop`
-    actor_join_handle.await.unwrap();
+    actor_join_handle.await?;
 
-    let events = watcher.send(Collect).await.unwrap().await.unwrap();
+    let events = watcher.send(Collect).await?.await?;
     assert_eq!(events, vec![Event::Terminated(Some("boom".into()))]);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_post_stop_error() {
+async fn test_post_stop_error() -> Result<()> {
     // if handler returns ok, we should receive the post_stop error
 
     let (actor, actor_join_handle, watcher, _) = spawn_actors(TestActor {
         stopping_action: Stopping::Stop,
         post_stop_err: Some("shutdown-fail".into()),
         count: 0,
-    })
-    .await;
+    })?;
 
-    actor.do_send(Signal::Stop).await.unwrap();
-    actor_join_handle.await.unwrap();
+    actor.do_send(Signal::Stop).await?;
+    actor_join_handle.await?;
 
-    let events = watcher.send(Collect).await.unwrap().await.unwrap();
+    let events = watcher.send(Collect).await?.await?;
     assert_eq!(
         events,
         vec![Event::Terminated(Some("shutdown-fail".into()))]
@@ -241,43 +243,45 @@ async fn test_post_stop_error() {
         stopping_action: Stopping::Stop,
         post_stop_err: Some("shutdown-fail".into()),
         count: 0,
-    })
-    .await;
+    })?;
 
-    actor.do_send(Fail("handler-fail".into())).await.unwrap();
-    actor_join_handle.await.unwrap();
+    actor.do_send(Fail("handler-fail".into())).await?;
+    actor_join_handle.await?;
 
-    let events = watcher.send(Collect).await.unwrap().await.unwrap();
+    let events = watcher.send(Collect).await?.await?;
     assert_eq!(events, vec![Event::Terminated(Some("handler-fail".into()))]);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_drain_mailbox() {
+async fn test_drain_mailbox() -> Result<()> {
     let (actor, _, _, _) = spawn_actors(TestActor {
         stopping_action: Stopping::Stop,
         post_stop_err: None,
         count: 0,
-    })
-    .await;
+    })?;
 
     // block occupies the actor long enough for the remaining messages to queue behind it
     // in a deterministic order
-    let block_rx = actor.send(Block(Duration::from_millis(30))).await.unwrap();
+    let block_rx = actor.send(Block(Duration::from_millis(30))).await?;
 
     // mailbox order while actor is blocked: [Increment, Increment, Drain, Increment, Increment]
-    actor.do_send(Increment).await.unwrap();
-    actor.do_send(Increment).await.unwrap();
-    actor.do_send(Drain).await.unwrap();
-    actor.do_send(Increment).await.unwrap();
-    actor.do_send(Increment).await.unwrap();
+    actor.do_send(Increment).await?;
+    actor.do_send(Increment).await?;
+    actor.do_send(Drain).await?;
+    actor.do_send(Increment).await?;
+    actor.do_send(Increment).await?;
 
     // wait for block to finish, then give the actor time to process the first 3 messages
     // and drain the rest on the next loop iteration.
-    block_rx.await.unwrap();
+    block_rx.await?;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // count arrives after the mailbox has been drained
-    let count = actor.send(GetCount).await.unwrap().await.unwrap();
+    let count = actor.send(GetCount).await?.await?;
     // only Increment, Increment, Drain were processed (count = 3)
     assert_eq!(count, 3);
+
+    Ok(())
 }

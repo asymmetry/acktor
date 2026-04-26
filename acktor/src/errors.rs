@@ -192,4 +192,57 @@ mod tests {
         let err_ref: &(dyn std::error::Error + Send + Sync) = e.as_ref();
         assert_eq!(err_ref.report(), "top context: middle context: root cause",);
     }
+
+    #[test]
+    fn test_error() {
+        // SendError Display
+        let err: SendError<()> = SendError::Closed(());
+        assert_eq!(format!("{err}"), "sending on a closed channel");
+
+        let err: SendError<()> = SendError::Full(());
+        assert_eq!(format!("{err}"), "sending on a full channel");
+
+        let err: SendError<()> = SendError::Timeout(());
+        assert_eq!(format!("{err}"), "timed out waiting on sending");
+
+        let err: SendError<()> = SendError::other(io::Error::other("io-level"), ());
+        assert_eq!(format!("{err}"), "io-level");
+
+        // SendError Debug
+        let err: SendError<()> = SendError::Closed(());
+        assert_eq!(format!("{err:?}"), "Closed(..)");
+
+        let err: SendError<()> = SendError::Full(());
+        assert_eq!(format!("{err:?}"), "Full(..)");
+
+        let err: SendError<()> = SendError::Timeout(());
+        assert_eq!(format!("{err:?}"), "Timeout(..)");
+
+        // RecvError Display
+        assert_eq!(
+            format!("{}", RecvError::Closed),
+            "receiving on a closed channel"
+        );
+        assert_eq!(
+            format!("{}", RecvError::Empty),
+            "receiving on an empty channel"
+        );
+        assert_eq!(
+            format!("{}", RecvError::Timeout),
+            "timed out waiting on receiving"
+        );
+
+        // RecvError Debug
+        assert_eq!(format!("{:?}", RecvError::Closed), "Closed");
+        assert_eq!(format!("{:?}", RecvError::Empty), "Empty");
+        assert_eq!(format!("{:?}", RecvError::Timeout), "Timeout");
+
+        // From<String> for RecvError
+        let err: RecvError = String::from("string-error").into();
+        assert_eq!(format!("{err}"), "string-error");
+
+        // From<&str> for RecvError
+        let err: RecvError = "str-error".into();
+        assert_eq!(format!("{err}"), "str-error");
+    }
 }

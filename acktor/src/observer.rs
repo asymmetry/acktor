@@ -223,3 +223,29 @@ where
         future::ready(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+    use crate::test_utils::Ping;
+
+    #[test]
+    fn test_debug_fmt() {
+        let (recipient, _rx) = Recipient::<Ping>::create(1);
+        let recipient_index = recipient.index();
+
+        let cmd: Observer<Ping> = Observer::Register(recipient.clone());
+        assert_eq!(
+            format!("{cmd:?}"),
+            format!("Observer<Ping>::Register({recipient_index})")
+        );
+
+        let cmd: Observer<Ping> = Observer::Unregister(recipient);
+        assert_eq!(
+            format!("{cmd:?}"),
+            format!("Observer<Ping>::Unregister({recipient_index})")
+        );
+    }
+}

@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{Result, anyhow};
 use pretty_assertions::assert_eq;
 
 use acktor::{
@@ -62,19 +62,18 @@ impl Handler<Check> for Watcher {
 }
 
 #[tokio::test]
-async fn test_normal() {
-    let (watcher, _) = Watcher::default().run("watcher").unwrap();
+async fn test_normal() -> Result<()> {
+    let (watcher, _) = Watcher::default().run("watcher")?;
 
     let (normal, join_handle) = Normal::create("normal", |ctx| {
         ctx.set_supervisor(Some(watcher.clone().into()));
         Ok(Normal)
-    })
-    .unwrap();
+    })?;
 
-    normal.do_send(Signal::Stop).await.unwrap();
-    join_handle.await.unwrap();
+    normal.do_send(Signal::Stop).await?;
+    join_handle.await?;
 
-    let states = watcher.send(Check).await.unwrap().await.unwrap();
+    let states = watcher.send(Check).await?.await?;
     assert_eq!(
         states,
         vec![
@@ -88,13 +87,12 @@ async fn test_normal() {
     let (normal, join_handle) = Normal::create("normal", |ctx| {
         ctx.set_supervisor(Some(watcher.clone().into()));
         Ok(Normal)
-    })
-    .unwrap();
+    })?;
 
-    normal.do_send(Signal::Terminate).await.unwrap();
-    join_handle.await.unwrap();
+    normal.do_send(Signal::Terminate).await?;
+    join_handle.await?;
 
-    let states = watcher.send(Check).await.unwrap().await.unwrap();
+    let states = watcher.send(Check).await?.await?;
     assert_eq!(
         states,
         vec![
@@ -103,21 +101,22 @@ async fn test_normal() {
             ActorState::Stopped,
         ],
     );
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_post_start_failed() {
-    let (watcher, _) = Watcher::default().run("watcher").unwrap();
+async fn test_post_start_failed() -> Result<()> {
+    let (watcher, _) = Watcher::default().run("watcher")?;
 
     let (_, join_handle) = PostStartFailed::create("fail", |ctx| {
         ctx.set_supervisor(Some(watcher.clone().into()));
         Ok(PostStartFailed)
-    })
-    .unwrap();
+    })?;
 
-    join_handle.await.unwrap();
+    join_handle.await?;
 
-    let states = watcher.send(Check).await.unwrap().await.unwrap();
+    let states = watcher.send(Check).await?.await?;
 
     assert!(
         states.contains(&ActorState::Starting),
@@ -128,4 +127,6 @@ async fn test_post_start_failed() {
         Some(&ActorState::Stopped),
         "actor must end in Stopped state, got {states:?}",
     );
+
+    Ok(())
 }
