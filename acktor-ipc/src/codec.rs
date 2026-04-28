@@ -6,7 +6,7 @@
 
 use bytes::{Bytes, BytesMut};
 
-use acktor::{Actor, Address, Message, Recipient, SenderId};
+use acktor::{Actor, Address, Message, MessageId, Recipient, SenderId};
 
 use crate::remote_actor::RemoteActorRegistry;
 use crate::remote_address::RemoteAddress;
@@ -159,6 +159,15 @@ where
     }
 }
 
+impl Decode for RemoteAddress {
+    #[inline]
+    fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
+        let actor_id = <u64 as prost::Message>::decode(buf)?;
+        ctx.ok_or(DecodeError::MissingDecodeContext)?
+            .create_remote_address(actor_id)
+    }
+}
+
 impl<M> Encode for Recipient<M>
 where
     M: Message,
@@ -177,12 +186,17 @@ where
     }
 }
 
-impl Decode for RemoteAddress {
+impl<M> Decode for Recipient<M>
+where
+    M: Message + MessageId + Encode,
+    M::Result: Decode,
+{
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let actor_id = <u64 as prost::Message>::decode(buf)?;
         ctx.ok_or(DecodeError::MissingDecodeContext)?
             .create_remote_address(actor_id)
+            .map(|addr| addr.into())
     }
 }
 

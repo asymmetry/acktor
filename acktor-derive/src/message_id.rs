@@ -38,7 +38,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
     let where_clause_tokens = match (where_clause, extra_bounds.is_empty()) {
         (Some(wc), true) => quote! { #wc },
-        (Some(wc), false) => quote! { #wc #(#extra_bounds,)* },
+        (Some(wc), false) => quote! { #wc, #(#extra_bounds,)* },
         (None, true) => quote! {},
         (None, false) => quote! { where #(#extra_bounds,)* },
     };

@@ -1,3 +1,6 @@
+use std::fmt::Display;
+use std::marker::PhantomData;
+
 use anyhow::Result;
 use bytes::Bytes;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -45,31 +48,43 @@ pub struct Triple {
     pub value: i64,
 }
 
-#[derive(Debug, RemoteActor)]
+#[derive(Debug, Default, RemoteActor)]
 #[message(Double, Triple)]
-pub struct Calculator;
+pub struct Calculator<T>(PhantomData<fn() -> T>)
+where
+    T: Display + 'static;
 
-impl Actor for Calculator {
+impl<T> Actor for Calculator<T>
+where
+    T: Display,
+{
     type Context = Context<Self>;
     type Error = anyhow::Error;
 }
 
-impl Handler<Double> for Calculator {
+impl<T> Handler<Double> for Calculator<T>
+where
+    T: Display,
+{
     type Result = i64;
     async fn handle(&mut self, msg: Double, _ctx: &mut Self::Context) -> Self::Result {
         msg.value * 2
     }
 }
 
-impl Handler<Triple> for Calculator {
+impl<T> Handler<Triple> for Calculator<T>
+where
+    T: Display,
+{
     type Result = i64;
     async fn handle(&mut self, msg: Triple, _ctx: &mut Self::Context) -> Self::Result {
         msg.value * 3
     }
 }
 
-async fn roundtrip<M>(address: &Address<Calculator>, msg: M) -> Result<i64>
+async fn roundtrip<T, M>(address: &Address<Calculator<T>>, msg: M) -> Result<i64>
 where
+    T: Display,
     M: Message + MessageId + Encode,
     M::Result: Decode,
 {
@@ -83,7 +98,7 @@ where
 
 #[tokio::test]
 async fn test_derived_remote_actor() -> Result<()> {
-    let (address, handle) = Calculator.run("calc")?;
+    let (address, handle) = Calculator::<u64>::default().run("calc")?;
 
     assert_eq!(roundtrip(&address, Double { value: 5 }).await?, 10);
     assert_eq!(roundtrip(&address, Triple { value: 5 }).await?, 15);

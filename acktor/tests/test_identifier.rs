@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use pretty_assertions::{assert_eq, assert_ne};
 
 use acktor::{HasStableTypeId, Message, MessageId, Signal};
@@ -11,7 +13,25 @@ struct Ping;
 struct Pong;
 
 #[derive(HasStableTypeId)]
-struct Wrap<T>(std::marker::PhantomData<T>);
+struct Wrap<T>(PhantomData<T>);
+
+#[derive(Message, MessageId)]
+#[result_type(())]
+struct Bound<T>(PhantomData<T>)
+where
+    T: Send + 'static;
+
+#[derive(Message, MessageId)]
+#[result_type(())]
+struct BoundDup<T>(PhantomData<T>)
+where
+    T: HasStableTypeId + Send + 'static;
+
+#[derive(Message, MessageId)]
+#[result_type(())]
+struct BoundLifetime<'a>(PhantomData<&'a ()>)
+where
+    'a: 'static;
 
 #[derive(HasStableTypeId)]
 struct A;
@@ -32,7 +52,9 @@ struct Bool<const F: bool>;
 struct Char<const C: char>;
 
 #[derive(HasStableTypeId)]
-struct Mixed<T, const N: usize>(std::marker::PhantomData<T>);
+struct Mixed<T, const N: usize>(PhantomData<T>)
+where
+    T: Send + 'static;
 
 mod inner_a {
     #[derive(acktor::HasStableTypeId)]
@@ -78,6 +100,10 @@ fn test_type_generics() {
         .update(&a)
         .finalize();
     assert_eq!(<Wrap<A>>::STABLE_TYPE_ID.as_bytes(), &expected);
+
+    assert!(<Bound<A>>::STABLE_TYPE_ID.as_u64() != 0);
+    assert!(<BoundDup<A>>::STABLE_TYPE_ID.as_u64() != 0);
+    assert!(<BoundLifetime<'_>>::STABLE_TYPE_ID.as_u64() != 0);
 }
 
 #[test]
