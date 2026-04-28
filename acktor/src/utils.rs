@@ -1,3 +1,6 @@
+//! Utility functions and types used by this crate.
+//!
+
 use std::any::Any;
 use std::sync::atomic::{AtomicU64, Ordering};
 

@@ -7,7 +7,8 @@ use bytes::Bytes;
 use thiserror::Error;
 
 use acktor::{
-    Actor, ActorState, Address, Message, Recipient, Sender, channel::oneshot, utils::ShortName,
+    Actor, ActorState, Address, HasStableTypeId, Message, MessageId, Recipient, Sender,
+    channel::oneshot, utils::ShortName,
 };
 
 use crate::codec::DecodeContext;
@@ -19,8 +20,6 @@ use crate::remote_address::RemoteAddress;
 /// in a remote process through [`Session`][crate::session::Session]) and for inbound messages
 /// (received by a [`Session`][crate::session::Session] and forwarded to an actor in the current
 /// process for handling).
-#[derive(Message)]
-#[result_type(())]
 pub struct RemoteMessage {
     pub actor_id: u64,
     pub message_id: u64,
@@ -44,6 +43,10 @@ impl Debug for RemoteMessage {
             )
             .finish()
     }
+}
+
+impl Message for RemoteMessage {
+    type Result = ();
 }
 
 impl RemoteMessage {
@@ -136,8 +139,7 @@ where
 }
 
 /// A message which is used to report actor status to a supervisor from a remote node.
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 pub enum RemoteSupervisionEvent {
     /// Warning, the actor could resume by itself.
     Warn(RemoteAddress, String),
@@ -147,4 +149,48 @@ pub enum RemoteSupervisionEvent {
     Panicked(RemoteAddress, String),
     /// Actor state changed.
     State(RemoteAddress, ActorState),
+}
+
+impl Message for RemoteSupervisionEvent {
+    type Result = ();
+}
+
+impl HasStableTypeId for RemoteSupervisionEvent {
+    const STABLE_TYPE_ID: acktor::StableTypeId = acktor::StableTypeId::from_stable_type_name(
+        concat!(module_path!(), "::", stringify!(RemoteSupervisionEvent)),
+    );
+}
+
+impl MessageId for RemoteSupervisionEvent {
+    /// `RemoteSupervisionEvent` is the decode result of a
+    /// [`SupervisionEvent`][acktor::supervisor::SupervisionEvent] so we force them to share the
+    /// same message identifier.
+    const ID: u64 =
+        acktor::StableTypeId::from_stable_type_name("acktor::supervisor::SupervisionEvent")
+            .as_u64();
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_debug_fmt() {
+        // do_send variant: result_tx is None, debug shows "DoSend"
+        let msg = RemoteMessage::do_send(7, 99, Bytes::from_static(b"hello"));
+        assert_eq!(
+            format!("{msg:?}"),
+            "RemoteMessage { actor_id: 7, message_id: 99, message: Bytes(5), result_tx: DoSend }"
+        );
+
+        // send variant: result_tx is Some, debug shows "Send"
+        let (tx, _rx) = oneshot::channel::<Bytes>();
+        let msg = RemoteMessage::send(7, 99, Bytes::from_static(b"hi"), tx);
+        assert_eq!(
+            format!("{msg:?}"),
+            "RemoteMessage { actor_id: 7, message_id: 99, message: Bytes(2), result_tx: Send }"
+        );
+    }
 }

@@ -1,7 +1,7 @@
 use crate::actor::Actor;
 use crate::channel::{mpsc, oneshot};
-use crate::envelope::{Envelope, ToEnvelope};
-use crate::message::{Handler, Message};
+use crate::envelope::{Envelope, IntoEnvelope};
+use crate::message::Message;
 
 /// Permit to send one message to an actor.
 #[derive(Debug)]
@@ -23,12 +23,10 @@ where
     /// This method will consume the permit.
     pub fn send<M, EP>(self, msg: M) -> oneshot::Receiver<M::Result>
     where
-        A: Handler<M> + ToEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP>,
     {
         let (tx, rx) = oneshot::channel();
-        self.permit
-            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)));
+        self.permit.send(msg.pack(Some(tx)));
         rx
     }
 
@@ -37,11 +35,9 @@ where
     /// This method will consume the permit.
     pub fn do_send<M, EP>(self, msg: M)
     where
-        A: Handler<M> + ToEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP>,
     {
-        self.permit
-            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, None));
+        self.permit.send(msg.pack(None));
     }
 }
 
@@ -65,12 +61,10 @@ where
     /// This method will consume the permit.
     pub fn send<M, EP>(self, msg: M) -> oneshot::Receiver<M::Result>
     where
-        A: Handler<M> + ToEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP>,
     {
         let (tx, rx) = oneshot::channel();
-        self.permit
-            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)));
+        self.permit.send(msg.pack(Some(tx)));
         rx
     }
 
@@ -79,10 +73,8 @@ where
     /// This method will consume the permit.
     pub fn do_send<M, EP>(self, msg: M)
     where
-        A: Handler<M> + ToEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP>,
     {
-        self.permit
-            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, None));
+        self.permit.send(msg.pack(None));
     }
 }

@@ -8,7 +8,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures_util::FutureExt;
 use tokio::{
     sync::oneshot::{
         Receiver as OneshotReceiver, Sender as OneshotSender, channel as oneshot_channel,
@@ -112,11 +111,6 @@ impl<T> Receiver<T> {
 
     // new methods
 
-    /// Receives a value.
-    pub fn recv(self) -> impl Future<Output = Result<T, RecvError>> {
-        self.0.map(|r| Ok(r??))
-    }
-
     /// Awaits a value with a timeout.
     ///
     /// It returns [`RecvError::Timeout`] if `timeout` elapses before a value is received. The
@@ -145,48 +139,35 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 
 #[cfg(test)]
 mod tests {
+    use std::future::poll_fn;
+
+    use anyhow::Result;
     use pretty_assertions::assert_eq;
 
     use super::*;
     use crate::errors::SendError;
 
     #[tokio::test]
-    async fn test_send_recv() {
+    async fn test_send_recv() -> Result<()> {
         // value path
         let (tx, rx) = channel::<u32>();
-        tx.send(42).unwrap();
+        tx.send(42)?;
         assert!(!rx.is_empty());
-        assert!(!rx.is_terminated());
-        assert_eq!(rx.await.unwrap(), 42);
+        assert_eq!(rx.await?, 42);
 
         // custom error path
         let (tx, rx) = channel::<u32>();
-        tx.send_err("boom").unwrap();
-        match rx.recv().await {
+        tx.send_err("boom")?;
+        match rx.await {
             Err(RecvError::Other(e)) => assert_eq!(e.to_string(), "boom"),
             other => panic!("expected RecvError::Other, got {:?}", other),
         }
 
-        // sender dropped → Closed
+        // sender dropped → closed
         let (tx, rx) = channel::<u32>();
         drop(tx);
         assert!(matches!(rx.await, Err(RecvError::Closed)));
-    }
 
-    #[tokio::test]
-    async fn test_try_send_recv() {
-        let (tx, mut rx) = channel::<u32>();
-        assert!(matches!(rx.try_recv(), Err(RecvError::Empty)));
-        tx.send(11).unwrap();
-        assert_eq!(rx.try_recv().unwrap(), 11);
-
-        let (tx, mut rx) = channel::<u32>();
-        drop(tx);
-        assert!(matches!(rx.try_recv(), Err(RecvError::Closed)));
-    }
-
-    #[tokio::test]
-    async fn test_send_closed() {
         // send returns the unsent value
         let (tx, rx) = channel::<u32>();
         drop(rx);
@@ -202,36 +183,63 @@ mod tests {
             Err(SendError::Closed(e)) => assert_eq!(e.to_string(), "late"),
             other => panic!("expected SendError::Closed, got {:?}", other),
         }
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_close_detection() {
-        // dropping the receiver closes the sender
-        let (mut tx, rx) = channel::<u32>();
-        assert!(!tx.is_closed());
-        drop(rx);
-        assert!(tx.is_closed());
-        tx.closed().await;
+    async fn test_try_send_recv() -> Result<()> {
+        let (tx, mut rx) = channel::<u32>();
+        assert!(matches!(rx.try_recv(), Err(RecvError::Empty)));
 
-        // explicit Receiver::close() also signals the sender
-        let (mut tx, mut rx) = channel::<u32>();
-        rx.close();
-        tx.closed().await;
-        assert!(tx.is_closed());
+        tx.send(11)?;
+        assert_eq!(rx.try_recv()?, 11);
+
+        let (tx, mut rx) = channel::<u32>();
+        drop(tx);
+        assert!(matches!(rx.try_recv(), Err(RecvError::Closed)));
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_recv_timeout() {
+    async fn test_recv_timeout() -> Result<()> {
         let (tx, mut rx) = channel::<u32>();
         assert!(matches!(
             rx.recv_timeout(Duration::from_millis(10)).await,
             Err(RecvError::Timeout)
         ));
+
         // receiver remains usable after timeout
-        tx.send(99).unwrap();
-        assert_eq!(
-            rx.recv_timeout(Duration::from_millis(10)).await.unwrap(),
-            99
-        );
+        tx.send(99)?;
+        assert_eq!(rx.recv_timeout(Duration::from_millis(10)).await?, 99);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_close_detection() -> Result<()> {
+        // dropping the receiver closes the sender
+        let (mut tx, rx) = channel::<u32>();
+        assert!(!tx.is_closed());
+        drop(rx);
+        tx.closed().await;
+        assert!(tx.is_closed());
+
+        // dropping the sender does not close the receiver
+        let (tx, mut rx) = channel::<u32>();
+        assert!(!rx.is_terminated());
+        drop(tx);
+        assert!(!rx.is_terminated());
+        assert!(matches!(rx.try_recv(), Err(RecvError::Closed)));
+        assert!(rx.is_terminated());
+
+        // explicit receiver::close() also signals the sender
+        let (mut tx, mut rx) = channel::<u32>();
+        rx.close();
+        poll_fn(|cx| tx.poll_closed(cx)).await;
+        assert!(tx.is_closed());
+
+        Ok(())
     }
 }

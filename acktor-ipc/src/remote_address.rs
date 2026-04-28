@@ -1,6 +1,6 @@
 use std::fmt::{self, Debug};
 use std::future;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,7 +9,7 @@ use futures_util::{FutureExt, TryFutureExt};
 use tracing::Instrument;
 
 use acktor::{
-    Address, Message, Recipient, SendError, Sender, SenderId,
+    Address, Message, MessageId, Recipient, SendError, Sender, SenderId,
     address::{ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture},
     channel::oneshot,
 };
@@ -72,8 +72,12 @@ impl Eq for RemoteAddress {}
 
 impl Hash for RemoteAddress {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.index.hash(state)
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.remote_actor_id.hash(state);
+        self.session.index().hash(state);
     }
 }
 
@@ -167,7 +171,7 @@ impl SenderId for RemoteAddress {
 
 impl<M> Sender<M> for RemoteAddress
 where
-    M: Message + Encode,
+    M: Message + MessageId + Encode,
     M::Result: Decode,
 {
     fn closed(&self) -> ClosedResultFuture<'_> {
@@ -193,12 +197,7 @@ where
 
         let decode_context = self.decode_context();
 
-        tokio::spawn(
-            async move {
-                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
-            }
-            .in_current_span(),
-        );
+        tokio::spawn(decode_and_forward::<M>(raw_rx, tx, decode_context).in_current_span());
 
         // this future will be resolved to Ok once the message is in the session actor's mailbox,
         // it does not guarantee the message arrives at the remote peer actor, the IPC
@@ -206,7 +205,7 @@ where
         self.session
             .do_send(RemoteMessage::send(
                 self.remote_actor_id,
-                <M as Encode>::ID,
+                M::ID,
                 message_bytes,
                 raw_tx,
             ))
@@ -231,7 +230,7 @@ where
         self.session
             .do_send(RemoteMessage::do_send(
                 self.remote_actor_id,
-                <M as Encode>::ID,
+                M::ID,
                 message_bytes,
             ))
             // error return by the sender, which means the session actor's mailbox is closed
@@ -251,16 +250,11 @@ where
 
         let decode_context = self.decode_context();
 
-        tokio::spawn(
-            async move {
-                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
-            }
-            .in_current_span(),
-        );
+        tokio::spawn(decode_and_forward::<M>(raw_rx, tx, decode_context).in_current_span());
 
         match self.session.try_do_send(RemoteMessage::send(
             self.remote_actor_id,
-            <M as Encode>::ID,
+            M::ID,
             message_bytes,
             raw_tx,
         )) {
@@ -281,7 +275,7 @@ where
         self.session
             .try_do_send(RemoteMessage::do_send(
                 self.remote_actor_id,
-                <M as Encode>::ID,
+                M::ID,
                 message_bytes,
             ))
             .map_err(|e| match e {
@@ -301,24 +295,14 @@ where
 
         let decode_context = self.decode_context();
 
-        tokio::spawn(
-            async move {
-                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
-            }
-            .in_current_span(),
-        );
+        tokio::spawn(decode_and_forward::<M>(raw_rx, tx, decode_context).in_current_span());
 
         // this future will be resolved to Ok once the message is in the session actor's mailbox,
         // it does not guarantee the message arrives at the remote peer actor, the IPC
         // communication may fail
         self.session
             .do_send_timeout(
-                RemoteMessage::send(
-                    self.remote_actor_id,
-                    <M as Encode>::ID,
-                    message_bytes,
-                    raw_tx,
-                ),
+                RemoteMessage::send(self.remote_actor_id, M::ID, message_bytes, raw_tx),
                 timeout,
             )
             // error return by the sender, which means the session actor's mailbox is closed
@@ -341,7 +325,7 @@ where
         // communication may fail
         self.session
             .do_send_timeout(
-                RemoteMessage::do_send(self.remote_actor_id, <M as Encode>::ID, message_bytes),
+                RemoteMessage::do_send(self.remote_actor_id, M::ID, message_bytes),
                 timeout,
             )
             // error return by the sender, which means the session actor's mailbox is closed
@@ -361,16 +345,11 @@ where
 
         let decode_context = self.decode_context();
 
-        tokio::spawn(
-            async move {
-                decode_and_forward::<M>(raw_rx, tx, decode_context).await;
-            }
-            .in_current_span(),
-        );
+        tokio::spawn(decode_and_forward::<M>(raw_rx, tx, decode_context).in_current_span());
 
         match self.session.blocking_do_send(RemoteMessage::send(
             self.remote_actor_id,
-            <M as Encode>::ID,
+            M::ID,
             message_bytes,
             raw_tx,
         )) {
@@ -388,7 +367,7 @@ where
         self.session
             .blocking_do_send(RemoteMessage::do_send(
                 self.remote_actor_id,
-                <M as Encode>::ID,
+                M::ID,
                 message_bytes,
             ))
             .map_err(|_| SendError::Closed(msg))
@@ -397,10 +376,36 @@ where
 
 impl<M> From<RemoteAddress> for Recipient<M>
 where
-    M: Message + Encode,
+    M: Message + MessageId + Encode,
     M::Result: Decode,
 {
     fn from(address: RemoteAddress) -> Self {
         Recipient::new(Arc::new(address))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use acktor::{channel::mpsc, envelope::Envelope};
+
+    use super::*;
+    use crate::remote_actor::RemoteActorRegistry;
+
+    #[test]
+    fn test_debug_fmt() {
+        let (tx, _rx) = mpsc::channel::<Envelope<Session>>(1);
+        let session: Address<Session> = Address::new(tx);
+        let session_index = session.index();
+        let registry = RemoteActorRegistry::with_capacity(1);
+
+        let remote_actor_id = 42_u64;
+        let remote = RemoteAddress::new(remote_actor_id, session, registry);
+
+        assert_eq!(
+            format!("{remote:?}"),
+            format!("RemoteAddress({session_index}, {remote_actor_id})")
+        );
     }
 }

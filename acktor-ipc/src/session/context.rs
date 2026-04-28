@@ -1,5 +1,5 @@
 use tokio::time;
-use tracing::{debug, warn};
+use tracing::{Instrument, debug, warn};
 
 use acktor::{
     ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, Handler, Message,
@@ -10,9 +10,12 @@ use acktor::{
 use super::{CLEANUP_INTERVAL, Session};
 use crate::errors::SessionError;
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 struct RequireCleanup;
+
+impl Message for RequireCleanup {
+    type Result = ();
+}
 
 impl Handler<RequireCleanup> for Session {
     type Result = ();
@@ -90,12 +93,15 @@ impl ActorContext<Session> for SessionContext {
                 self.require_cleanup = false;
                 // schedule the next cleanup
                 let address = self.address();
-                tokio::spawn(async move {
-                    time::sleep(CLEANUP_INTERVAL).await;
-                    if let Err(e) = address.do_send(RequireCleanup).await {
-                        debug!("Could not send RequireCleanup: {}", e);
+                tokio::spawn(
+                    async move {
+                        time::sleep(CLEANUP_INTERVAL).await;
+                        if let Err(e) = address.do_send(RequireCleanup).await {
+                            debug!("Could not send RequireCleanup: {}", e);
+                        }
                     }
-                });
+                    .in_current_span(),
+                );
             }
 
             tokio::select! {

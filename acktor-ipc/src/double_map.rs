@@ -729,19 +729,23 @@ mod tests {
         use super::*;
 
         #[test]
-        fn reserve() {
+        fn reserve() -> anyhow::Result<()> {
             let mut map = fresh();
             map.reserve(128);
             assert!(map.capacity() >= 128);
-            map.insert(1, "foo".to_string(), 10).unwrap();
+            map.insert(1, "foo".to_string(), 10)?;
             assert_eq!(map.get_by_key1(&1), Some(&10));
+
+            Ok(())
         }
 
         #[test]
-        fn try_reserve() {
+        fn try_reserve() -> anyhow::Result<()> {
             let mut map: DoubleMap<u64, String, i32> = fresh();
-            map.try_reserve(64).unwrap();
+            map.try_reserve(64)?;
             assert!(map.capacity() >= 64);
+
+            Ok(())
         }
 
         #[test]
@@ -768,16 +772,16 @@ mod tests {
         use super::*;
 
         #[test]
-        fn insert() {
+        fn insert() -> anyhow::Result<()> {
             let mut map = fresh();
 
             // New entry.
-            assert_eq!(map.insert(1, "foo".to_string(), 10).unwrap(), None);
+            assert_eq!(map.insert(1, "foo".to_string(), 10)?, None);
             assert_eq!(map.get_by_key1(&1), Some(&10));
             assert_eq!(map.get_by_key2("foo"), Some(&10));
 
             // Same (key1, key2) pair replaces the value.
-            assert_eq!(map.insert(1, "foo".to_string(), 99).unwrap(), Some(10));
+            assert_eq!(map.insert(1, "foo".to_string(), 99)?, Some(10));
             assert_eq!(map.get_by_key1(&1), Some(&99));
 
             // key1 collides with a different key2.
@@ -789,9 +793,11 @@ mod tests {
             assert!(matches!(err, KeyConflictError::Key2Exists(2, _, 30)));
 
             // Both keys present in different entries.
-            map.insert(2, "bar".to_string(), 20).unwrap();
+            map.insert(2, "bar".to_string(), 20)?;
             let err = map.insert(1, "bar".to_string(), 42).unwrap_err();
             assert!(matches!(err, KeyConflictError::BothKeysExist(1, _, 42)));
+
+            Ok(())
         }
     }
 
@@ -1146,11 +1152,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn entry() {
+        fn entry() -> anyhow::Result<()> {
             let mut map = populated();
 
             // Occupied: both keys identify the same entry.
-            match map.entry(1, "foo".to_string()).unwrap() {
+            match map.entry(1, "foo".to_string())? {
                 Entry::Occupied(mut occ) => {
                     assert_eq!(*occ.get(), 10);
                     *occ.get_mut() = 42;
@@ -1163,7 +1169,7 @@ mod tests {
             assert!(!map.contains_key1(&1));
 
             // Vacant: neither key is present.
-            match map.entry(3, "baz".to_string()).unwrap() {
+            match map.entry(3, "baz".to_string())? {
                 Entry::Vacant(vac) => {
                     assert_eq!(*vac.key1(), 3);
                     assert_eq!(vac.key2(), "baz");
@@ -1190,138 +1196,148 @@ mod tests {
                 map.entry(2, "baz".to_string()),
                 Err(KeyConflictError::BothKeysExist(2, _, _))
             ));
+
+            Ok(())
         }
 
         #[test]
-        fn key_accessors() {
+        fn key_accessors() -> anyhow::Result<()> {
             let mut map = populated();
 
             // Occupied branch.
-            let e = map.entry(1, "foo".to_string()).unwrap();
+            let e = map.entry(1, "foo".to_string())?;
             assert_eq!(*e.key1(), 1);
             assert_eq!(e.key2(), "foo");
             let (k1, k2) = e.keys();
             assert_eq!((*k1, k2.as_str()), (1, "foo"));
 
             // Vacant branch.
-            let e = map.entry(3, "baz".to_string()).unwrap();
+            let e = map.entry(3, "baz".to_string())?;
             assert_eq!(*e.key1(), 3);
             assert_eq!(e.key2(), "baz");
             let (k1, k2) = e.keys();
             assert_eq!((*k1, k2.as_str()), (3, "baz"));
+
+            Ok(())
         }
 
         #[test]
-        fn or_insert() {
+        fn or_insert() -> anyhow::Result<()> {
             let mut map = fresh();
 
             // Vacant: inserts and returns a mutable reference.
-            let v = map.entry(1, "foo".to_string()).unwrap().or_insert(10);
+            let v = map.entry(1, "foo".to_string())?.or_insert(10);
             *v = 42;
             assert_eq!(map.get_by_key1(&1), Some(&42));
 
             // Occupied: returns existing value, does not overwrite.
-            let v = map.entry(1, "foo".to_string()).unwrap().or_insert(99);
+            let v = map.entry(1, "foo".to_string())?.or_insert(99);
             assert_eq!(*v, 42);
+
+            Ok(())
         }
 
         #[test]
-        fn or_insert_with() {
+        fn or_insert_with() -> anyhow::Result<()> {
             let mut map = populated();
 
             // Occupied: closure must not run.
             let v = map
-                .entry(1, "foo".to_string())
-                .unwrap()
+                .entry(1, "foo".to_string())?
                 .or_insert_with(|| panic!("closure should not run on Occupied"));
             assert_eq!(*v, 10);
 
             // Vacant: closure runs, value is inserted.
-            let v = map
-                .entry(3, "baz".to_string())
-                .unwrap()
-                .or_insert_with(|| 30);
+            let v = map.entry(3, "baz".to_string())?.or_insert_with(|| 30);
             assert_eq!(*v, 30);
             assert_eq!(map.get_by_key1(&3), Some(&30));
+
+            Ok(())
         }
 
         #[test]
-        fn or_insert_with_keys() {
+        fn or_insert_with_keys() -> anyhow::Result<()> {
             let mut map = populated();
 
             // Occupied: closure must not run.
             let v = map
-                .entry(1, "foo".to_string())
-                .unwrap()
+                .entry(1, "foo".to_string())?
                 .or_insert_with_keys(|_, _| panic!("closure should not run on Occupied"));
             assert_eq!(*v, 10);
 
             // Vacant: closure sees the keys.
             let v = map
-                .entry(3, "baz".to_string())
-                .unwrap()
+                .entry(3, "baz".to_string())?
                 .or_insert_with_keys(|k1, k2| *k1 as i32 + k2.len() as i32);
             assert_eq!(*v, 3 + 3);
+
+            Ok(())
         }
 
         #[test]
-        fn or_default() {
+        fn or_default() -> anyhow::Result<()> {
             let mut map: DoubleMap<u64, String, i32> = fresh();
-            let v = map.entry(1, "foo".to_string()).unwrap().or_default();
+            let v = map.entry(1, "foo".to_string())?.or_default();
             assert_eq!(*v, 0);
+
+            Ok(())
         }
 
         #[test]
-        fn and_modify() {
+        fn and_modify() -> anyhow::Result<()> {
             let mut map = populated();
 
             // Occupied: closure runs.
-            map.entry(1, "foo".to_string())
-                .unwrap()
+            map.entry(1, "foo".to_string())?
                 .and_modify(|v| *v *= 2)
                 .or_insert(0);
             assert_eq!(map.get_by_key1(&1), Some(&20));
 
             // Vacant: closure is a no-op, or_insert inserts.
-            map.entry(3, "baz".to_string())
-                .unwrap()
+            map.entry(3, "baz".to_string())?
                 .and_modify(|v| *v *= 2)
                 .or_insert(5);
             assert_eq!(map.get_by_key1(&3), Some(&5));
+
+            Ok(())
         }
 
         #[test]
-        fn insert_entry() {
+        fn insert_entry() -> anyhow::Result<()> {
             let mut map = populated();
 
             // Occupied: overwrites in place.
-            let occ = map.entry(1, "foo".to_string()).unwrap().insert_entry(42);
+            let occ = map.entry(1, "foo".to_string())?.insert_entry(42);
             assert_eq!(*occ.get(), 42);
             assert_eq!(map.get_by_key1(&1), Some(&42));
 
             // Vacant: inserts fresh entry.
-            let occ = map.entry(3, "baz".to_string()).unwrap().insert_entry(30);
+            let occ = map.entry(3, "baz".to_string())?.insert_entry(30);
             assert_eq!(*occ.get(), 30);
             assert_eq!(map.get_by_key1(&3), Some(&30));
             assert_eq!(map.get_by_key2("baz"), Some(&30));
+
+            Ok(())
         }
 
         #[test]
-        fn vacant_into_keys() {
+        fn vacant_into_keys() -> anyhow::Result<()> {
             let mut map = fresh();
-            let (k1, k2) = match map.entry(1u64, "foo".to_string()).unwrap() {
+            let (k1, k2) = match map.entry(1u64, "foo".to_string())? {
                 Entry::Vacant(v) => v.into_keys(),
                 Entry::Occupied(_) => panic!("expected Vacant"),
             };
             assert_eq!((k1, k2.as_str()), (1, "foo"));
             // into_keys does not insert — map is still empty.
             assert!(map.is_empty());
+
+            Ok(())
         }
 
         #[test]
-        fn vacant_insert_entry() {
+        fn vacant_insert_entry() -> anyhow::Result<()> {
             let mut map = fresh();
-            match map.entry(1u64, "foo".to_string()).unwrap() {
+            match map.entry(1u64, "foo".to_string())? {
                 Entry::Vacant(v) => {
                     let occ = v.insert_entry(10);
                     assert_eq!(*occ.get(), 10);
@@ -1330,12 +1346,14 @@ mod tests {
             }
             assert_eq!(map.get_by_key1(&1), Some(&10));
             assert_eq!(map.get_by_key2("foo"), Some(&10));
+
+            Ok(())
         }
 
         #[test]
-        fn occupied_accessors() {
+        fn occupied_accessors() -> anyhow::Result<()> {
             let mut map = populated();
-            match map.entry(1u64, "foo".to_string()).unwrap() {
+            match map.entry(1u64, "foo".to_string())? {
                 Entry::Occupied(occ) => {
                     assert_eq!(*occ.key1(), 1);
                     assert_eq!(occ.key2(), "foo");
@@ -1344,18 +1362,22 @@ mod tests {
                 }
                 Entry::Vacant(_) => panic!("expected Occupied"),
             }
+
+            Ok(())
         }
 
         #[test]
-        fn occupied_remove() {
+        fn occupied_remove() -> anyhow::Result<()> {
             let mut map = populated();
-            match map.entry(1u64, "foo".to_string()).unwrap() {
+            match map.entry(1u64, "foo".to_string())? {
                 Entry::Occupied(occ) => assert_eq!(occ.remove(), 10),
                 Entry::Vacant(_) => panic!("expected Occupied"),
             }
             assert!(!map.contains_key1(&1));
             assert!(!map.contains_key2("foo"));
             assert_eq!(map.len(), 1);
+
+            Ok(())
         }
     }
 
@@ -1386,9 +1408,9 @@ mod tests {
         }
 
         #[test]
-        fn extend() {
+        fn extend() -> anyhow::Result<()> {
             let mut map = fresh();
-            map.insert(1, "foo".to_string(), 10).unwrap();
+            map.insert(1, "foo".to_string(), 10)?;
 
             // Conflicting triples are silently skipped; consistent repeats update the value.
             map.extend(vec![
@@ -1400,6 +1422,8 @@ mod tests {
             assert_eq!(map.get_by_key1(&1), Some(&42));
             assert_eq!(map.get_by_key1(&2), Some(&20));
             assert!(!map.contains_key2("zzz"));
+
+            Ok(())
         }
 
         #[test]
@@ -1434,41 +1458,47 @@ mod tests {
         }
 
         #[test]
-        fn clone_from() {
+        fn clone_from() -> anyhow::Result<()> {
             let mut target = fresh();
-            target.insert(99, "old".to_string(), 999).unwrap();
+            target.insert(99, "old".to_string(), 999)?;
             target.clone_from(&populated());
             assert_eq!(target.len(), 2);
             assert_eq!(target.get_by_key1(&1), Some(&10));
             assert!(!target.contains_key1(&99));
             assert!(!target.contains_key2("old"));
+
+            Ok(())
         }
 
         #[test]
-        fn eq() {
+        fn eq() -> anyhow::Result<()> {
             let a = populated();
 
             // Insertion order does not matter.
             let mut b = fresh();
-            b.insert(2, "bar".to_string(), 20).unwrap();
-            b.insert(1, "foo".to_string(), 10).unwrap();
+            b.insert(2, "bar".to_string(), 20)?;
+            b.insert(1, "foo".to_string(), 10)?;
             assert_eq!(a, b);
 
             // Differing value.
             let mut c = fresh();
-            c.insert(1, "foo".to_string(), 10).unwrap();
-            c.insert(2, "bar".to_string(), 99).unwrap();
+            c.insert(1, "foo".to_string(), 10)?;
+            c.insert(2, "bar".to_string(), 99)?;
             assert_ne!(a, c);
+
+            Ok(())
         }
 
         #[test]
-        fn debug_fmt() {
+        fn debug_fmt() -> anyhow::Result<()> {
             let mut map = fresh();
-            map.insert(1, "foo".to_string(), 10).unwrap();
+            map.insert(1, "foo".to_string(), 10)?;
             let s = format!("{:?}", map);
             assert!(s.contains('1'));
             assert!(s.contains("foo"));
             assert!(s.contains("10"));
+
+            Ok(())
         }
     }
 

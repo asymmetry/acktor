@@ -223,3 +223,43 @@ where
         future::ready(())
     }
 }
+
+#[cfg(feature = "identifier")]
+impl<M> crate::stable_type_id::HasStableTypeId for Observer<M>
+where
+    M: Message + crate::stable_type_id::HasStableTypeId,
+{
+    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+        crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
+            module_path!(),
+            "::",
+            "Observer"
+        ))
+        .combine(M::STABLE_TYPE_ID.as_bytes());
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+    use crate::test_utils::Ping;
+
+    #[test]
+    fn test_debug_fmt() {
+        let (recipient, _rx) = Recipient::<Ping>::create(1);
+        let recipient_index = recipient.index();
+
+        let cmd: Observer<Ping> = Observer::Register(recipient.clone());
+        assert_eq!(
+            format!("{cmd:?}"),
+            format!("Observer<Ping>::Register({recipient_index})")
+        );
+
+        let cmd: Observer<Ping> = Observer::Unregister(recipient);
+        assert_eq!(
+            format!("{cmd:?}"),
+            format!("Observer<Ping>::Unregister({recipient_index})")
+        );
+    }
+}

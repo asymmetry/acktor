@@ -21,10 +21,30 @@ pub use result::MessageResult;
 mod future_result;
 pub use future_result::FutureMessageResult;
 
+#[cfg(feature = "identifier")]
+mod index;
+#[cfg(feature = "identifier")]
+#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
+pub use index::MessageId;
+
 /// Types that can be sent between actors.
 pub trait Message: Send + 'static {
     /// The type of the response produced when this message is handled.
     type Result: Send + 'static;
+}
+
+/// Types that can be sent as a response to a message.
+pub trait MessageResponse<A, M>: Send
+where
+    A: Actor,
+    M: Message,
+{
+    /// Handles the response.
+    fn handle(
+        self,
+        ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send;
 }
 
 /// Describes how an actor handles a specific message type.
@@ -41,20 +61,6 @@ where
         msg: M,
         ctx: &mut Self::Context,
     ) -> impl Future<Output = Self::Result> + Send;
-}
-
-/// Types that can be sent as a response to a message.
-pub trait MessageResponse<A, M>: Send
-where
-    A: Actor,
-    M: Message,
-{
-    /// Handles the response.
-    fn handle(
-        self,
-        ctx: &mut A::Context,
-        tx: Option<oneshot::Sender<M::Result>>,
-    ) -> impl Future<Output = ()> + Send;
 }
 
 impl Message for () {
@@ -219,6 +225,7 @@ impl_message_response_for!(String);
 mod tests {
     use std::marker::PhantomData;
 
+    use anyhow::Result;
     use pretty_assertions::assert_eq;
 
     use super::*;
@@ -243,41 +250,55 @@ mod tests {
         type Result = T;
     }
 
-    async fn roundtrip<R>(value: R) -> R
+    async fn roundtrip<R>(value: R) -> Result<R>
     where
         R: MessageResponse<A, M<R>> + Send + 'static,
     {
         let mut ctx = Context::<A>::with_capacity("test".into(), 1);
         let (tx, rx) = oneshot::channel::<R>();
         value.handle(&mut ctx, Some(tx)).await;
-        rx.await.unwrap()
+        Ok(rx.await?)
     }
 
     #[tokio::test]
-    async fn test_message_response() {
-        assert_eq!(roundtrip(()).await, ());
-        assert_eq!(roundtrip(true).await, true);
-        assert_eq!(roundtrip(-1_i32).await, -1);
-        assert_eq!(roundtrip(42_u64).await, 42);
-        assert_eq!(roundtrip('x').await, 'x');
-        assert_eq!(roundtrip(String::from("hello")).await, "hello");
+    async fn test_message_response() -> Result<()> {
+        assert_eq!(roundtrip(()).await?, ());
+        assert_eq!(roundtrip(true).await?, true);
+        assert_eq!(roundtrip(-1_i32).await?, -1);
+        assert_eq!(roundtrip(42_u64).await?, 42);
+        assert_eq!(roundtrip('x').await?, 'x');
+        assert_eq!(roundtrip(String::from("hello")).await?, "hello");
 
         // result
-        assert_eq!(roundtrip::<Result<i32, String>>(Ok(10)).await, Ok(10));
         assert_eq!(
-            roundtrip::<Result<i32, String>>(Err(String::from("err"))).await,
+            roundtrip::<std::result::Result<i32, String>>(Ok(10)).await?,
+            Ok(10)
+        );
+        assert_eq!(
+            roundtrip::<std::result::Result<i32, String>>(Err(String::from("err"))).await?,
             Err(String::from("err"))
         );
 
         // option
-        assert_eq!(roundtrip(Some(42_u32)).await, Some(42));
-        assert_eq!(roundtrip(None::<u32>).await, None);
+        assert_eq!(roundtrip(Some(42_u32)).await?, Some(42));
+        assert_eq!(roundtrip(None::<u32>).await?, None);
 
         // box and arc
-        assert_eq!(*roundtrip(Box::new(7_u64)).await, 7);
-        assert_eq!(*roundtrip(Arc::new(String::from("hi"))).await, "hi");
+        assert_eq!(*roundtrip(Box::new(7_u64)).await?, 7);
+        assert_eq!(*roundtrip(Arc::new(String::from("hi"))).await?, "hi");
 
         // vec
-        assert_eq!(roundtrip(vec![1_u8, 2, 3]).await, vec![1, 2, 3]);
+        assert_eq!(roundtrip(vec![1_u8, 2, 3]).await?, vec![1, 2, 3]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_debug_fmt() {
+        let result = MessageResult::<M<i32>>(42);
+        assert_eq!(format!("{result:?}"), "MessageResult<M<i32>>");
+
+        let future_result = FutureMessageResult::<M<i32>>::new(async { 42 });
+        assert_eq!(format!("{future_result:?}"), "FutureMessageResult<M<i32>>");
     }
 }

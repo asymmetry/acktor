@@ -1,6 +1,6 @@
 [package]
 name = "acktor-derive"
-version = "1.0.5"
+version = "1.0.6"
 description = "Derive macros for the acktor actor framework"
 edition.workspace = true
 rust-version.workspace = true
@@ -17,10 +17,19 @@ rustdoc-args = ["--cfg", "docsrs"]
 [lib]
 proc-macro = true
 
+[features]
+default = []
+ipc = []
+
 [dependencies]
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 
 [dev-dependencies]
+anyhow.workspace = true
 trybuild = "1.0"
+
+[[test]]
+name = "compile_fail"
+required-features = ["ipc"]

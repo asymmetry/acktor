@@ -14,17 +14,23 @@ type Result<T> = std::result::Result<T, SessionError>;
 /// The remote node needs to know how to create the actor with the given type and config. If
 /// the operation is successful, the provided `label` will be used as the actor label of the
 /// new actor created in the remote node.
-#[derive(Debug, Message)]
-#[result_type(Result<RemoteAddress>)]
+#[derive(Debug)]
 pub struct CreateRemoteActor {
     pub label: String,
     pub r#type: String,
     pub config: String,
 }
 
+impl Message for CreateRemoteActor {
+    type Result = Result<RemoteAddress>;
+}
+
 /// A command which is used to get the address of an actor in a remote node.
-#[derive(Debug, Message)]
-#[result_type(Result<RemoteAddress>)]
+#[derive(Debug)]
 pub struct GetRemoteActor {
     pub actor: ActorHandle,
+}
+
+impl Message for GetRemoteActor {
+    type Result = Result<RemoteAddress>;
 }

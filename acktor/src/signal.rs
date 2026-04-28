@@ -67,12 +67,22 @@ where
     }
 }
 
+#[cfg(feature = "identifier")]
+impl crate::stable_type_id::HasStableTypeId for Signal {
+    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+        crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
+            module_path!(),
+            "::",
+            "Signal"
+        ));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_signal() {
+    fn test_signal_try_from() {
         assert_eq!(Signal::try_from(0), Ok(Signal::Stop));
         assert_eq!(Signal::try_from(1), Ok(Signal::Terminate));
         assert_eq!(Signal::try_from(2), Err(()));

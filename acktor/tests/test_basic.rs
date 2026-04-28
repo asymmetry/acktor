@@ -1,11 +1,9 @@
 use std::time::Duration;
 
+use anyhow::Result;
 use pretty_assertions::assert_eq;
 
 use acktor::{Actor, Context, Handler, Message, MessageResponse, Signal};
-
-#[derive(Debug, MessageResponse)]
-pub struct Res(i64);
 
 #[derive(Debug)]
 pub struct Number(i64);
@@ -14,6 +12,9 @@ impl Actor for Number {
     type Context = Context<Self>;
     type Error = anyhow::Error;
 }
+
+#[derive(Debug, MessageResponse)]
+pub struct Res(i64);
 
 #[derive(Debug, Message)]
 #[result_type(Res)]
@@ -60,80 +61,68 @@ impl Handler<Command> for Number {
 }
 
 #[tokio::test]
-async fn test_basic() {
+async fn test_basic() -> Result<()> {
     // test run
-    let (address, join_handle) = Number(16).run("Number").unwrap();
+    let (address, join_handle) = Number(16).run("Number")?;
 
     // test send
-    let result = address
-        .send(Arithmetic::Add(32))
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    let result = address.send(Arithmetic::Add(32)).await?.await?;
     assert_eq!(result.0, 48);
 
     // test do_send
-    address.do_send(Arithmetic::Subtract(64)).await.unwrap();
-    let result = address.send(Command::Get).await.unwrap().await.unwrap();
+    address.do_send(Arithmetic::Subtract(64)).await?;
+    let result = address.send(Command::Get).await?.await?;
     assert_eq!(result, -16);
 
     // test try_send
-    let result = address
-        .try_send(Arithmetic::Add(10))
-        .unwrap()
-        .await
-        .unwrap();
+    let result = address.try_send(Arithmetic::Add(10))?.await?;
     assert_eq!(result.0, -6);
 
     // test try_do_send
-    address.try_do_send(Arithmetic::Subtract(5)).unwrap();
-    let result = address.send(Command::Get).await.unwrap().await.unwrap();
+    address.try_do_send(Arithmetic::Subtract(5))?;
+    let result = address.send(Command::Get).await?.await?;
     assert_eq!(result, -11);
 
     // test send_timeout
     let result = address
         .send_timeout(Arithmetic::Multiply(2), Duration::from_millis(10))
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+        .await?
+        .await?;
     assert_eq!(result.0, -22);
 
     // test do_send_timeout
     address
         .do_send_timeout(Arithmetic::Divide(2), Duration::from_millis(10))
-        .await
-        .unwrap();
-    let result = address.send(Command::Get).await.unwrap().await.unwrap();
+        .await?;
+    let result = address.send(Command::Get).await?.await?;
     assert_eq!(result, -11);
 
     let addr = address.clone();
-    let result = tokio::task::spawn_blocking(move || {
+    let result = tokio::task::spawn_blocking(move || -> Result<i64> {
         // test blocking_do_send
-        addr.blocking_do_send(Arithmetic::Add(4)).unwrap();
+        addr.blocking_do_send(Arithmetic::Add(4))?;
 
         // test blocking_send
-        let rx = addr.blocking_send(Command::Get).unwrap();
-        rx.blocking_recv().unwrap()
+        let rx = addr.blocking_send(Command::Get)?;
+        Ok(rx.blocking_recv()?)
     })
-    .await
-    .unwrap();
+    .await??;
     assert_eq!(result, -7);
 
     // test stop
-    address.do_send(Signal::Stop).await.unwrap();
-    join_handle.await.unwrap();
+    address.do_send(Signal::Stop).await?;
+    join_handle.await?;
 
     // test create
-    let (address, join_handle) = Number::create("Number", |_| Ok(Number(16))).unwrap();
+    let (address, join_handle) = Number::create("Number", |_| Ok(Number(16)))?;
 
     // test terminate
     acktor::utils::terminate_actor(address, join_handle).await;
 
     // test create_in_span with no parent (root span)
-    let (address, join_handle) =
-        Number::create_in_span("Number", None, |_| Ok(Number(16))).unwrap();
+    let (address, join_handle) = Number::create_in_span("Number", None, |_| Ok(Number(16)))?;
 
     acktor::utils::terminate_actor(address, join_handle).await;
+
+    Ok(())
 }

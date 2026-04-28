@@ -1,18 +1,25 @@
+use anyhow::Result;
 use pretty_assertions::assert_eq;
 use tokio::time::Duration;
 
 use acktor::{
-    Actor, Context, Handler, Message, Recipient, RecvError, SenderId,
+    Actor, Context, Handler, Message, Recipient, RecvError,
     observer::{Observer, ObserverSet, SubjectActor},
 };
 
-#[derive(Debug, Clone, Copy, Message)]
-#[result_type(())]
+#[derive(Debug, Clone, Copy)]
 pub struct M1;
 
-#[derive(Debug, Clone, Copy, Message)]
-#[result_type(())]
+impl Message for M1 {
+    type Result = ();
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct M2;
+
+impl Message for M2 {
+    type Result = ();
+}
 
 #[derive(Debug, Default)]
 pub struct A {
@@ -39,9 +46,12 @@ impl SubjectActor<M2> for A {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 pub struct NotifyM1;
+
+impl Message for NotifyM1 {
+    type Result = ();
+}
 
 impl Handler<NotifyM1> for A {
     type Result = ();
@@ -51,9 +61,12 @@ impl Handler<NotifyM1> for A {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 pub struct TryNotifyM2;
+
+impl Message for TryNotifyM2 {
+    type Result = ();
+}
 
 impl Handler<TryNotifyM2> for A {
     type Result = ();
@@ -63,9 +76,12 @@ impl Handler<TryNotifyM2> for A {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(usize)]
+#[derive(Debug)]
 pub struct GetObserverCount;
+
+impl Message for GetObserverCount {
+    type Result = usize;
+}
 
 impl Handler<GetObserverCount> for A {
     type Result = usize;
@@ -101,9 +117,12 @@ impl Handler<M2> for B {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(bool)]
+#[derive(Debug)]
 pub struct CheckB;
+
+impl Message for CheckB {
+    type Result = bool;
+}
 
 impl Handler<CheckB> for B {
     type Result = bool;
@@ -116,12 +135,12 @@ impl Handler<CheckB> for B {
 }
 
 #[tokio::test]
-async fn test_observer() {
+async fn test_observer() -> Result<()> {
     // the subject actor
-    let (a_address, _) = A::default().run("A").unwrap();
+    let (a_address, _) = A::default().run("A")?;
 
     // use actor as observer
-    let (b_address, b_join_handle) = B { received: false }.run("B").unwrap();
+    let (b_address, b_join_handle) = B { received: false }.run("B")?;
 
     // use none-actor backed recipientas observer
     let (recipient, mut rx) = Recipient::<M1>::create(8);
@@ -129,78 +148,58 @@ async fn test_observer() {
     // register none-actor backed recipient as an observer for M1
     a_address
         .send(Observer::Register(recipient.clone()))
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+        .await?
+        .await?;
 
     // register B as an observer for M1
-    let command = Observer::<M1>::Register(b_address.clone().into());
-    let debug_str = format!("{command:?}");
-    assert_eq!(
-        debug_str,
-        format!("Observer<M1>::Register({})", b_address.index())
-    );
-    a_address.send(command).await.unwrap().await.unwrap();
+    a_address
+        .send(Observer::<M1>::Register(b_address.clone().into()))
+        .await?
+        .await?;
 
     // register B as an observer for M2
     a_address
         .send(Observer::<M2>::Register(b_address.clone().into()))
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+        .await?
+        .await?;
 
     // trigger A to notify M1 observers
-    a_address.send(NotifyM1).await.unwrap().await.unwrap();
+    a_address.send(NotifyM1).await?.await?;
 
     // both B and the recipient should receive M1
-    let received = b_address.send(CheckB).await.unwrap().await.unwrap();
+    let received = b_address.send(CheckB).await?.await?;
     assert_eq!(received, true);
     let received = rx.recv().await;
     assert_eq!(received.is_ok(), true);
 
     // trigger A to notify M2 observers
-    a_address.send(TryNotifyM2).await.unwrap().await.unwrap();
+    a_address.send(TryNotifyM2).await?.await?;
 
     // B should receive M2
-    let received = b_address.send(CheckB).await.unwrap().await.unwrap();
+    let received = b_address.send(CheckB).await?.await?;
     assert_eq!(received, true);
 
     // unregister none-actor backed recipient
-    let command = Observer::<M1>::Unregister(recipient.clone());
-    let debug_str = format!("{command:?}");
-    assert_eq!(
-        debug_str,
-        format!("Observer<M1>::Unregister({})", recipient.index())
-    );
-    a_address.send(command).await.unwrap().await.unwrap();
+    a_address
+        .send(Observer::<M1>::Unregister(recipient.clone()))
+        .await?
+        .await?;
 
-    let observer_count = a_address
-        .send(GetObserverCount)
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    let observer_count = a_address.send(GetObserverCount).await?.await?;
     assert_eq!(observer_count, 2); // B is still registered for both M1 and M2
 
     // unregister multiple times should not cause error
     let command = Observer::<M1>::Unregister(recipient.clone());
-    a_address.send(command).await.unwrap().await.unwrap();
+    a_address.send(command).await?.await?;
 
-    let observer_count = a_address
-        .send(GetObserverCount)
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    let observer_count = a_address.send(GetObserverCount).await?.await?;
     assert_eq!(observer_count, 2); // B is still registered for both M1 and M2
 
     // trigger A to notify M1 observers
-    a_address.send(NotifyM1).await.unwrap().await.unwrap();
+    a_address.send(NotifyM1).await?.await?;
 
     // B should receive M1, but the recipient should not
-    let received = b_address.send(CheckB).await.unwrap().await.unwrap();
+    let received = b_address.send(CheckB).await?.await?;
     assert_eq!(received, true);
     let received = rx.recv_timeout(Duration::from_millis(10)).await;
     assert!(matches!(received, Err(RecvError::Timeout)));
@@ -208,44 +207,29 @@ async fn test_observer() {
     // register none-actor backed recipient back
     a_address
         .send(Observer::Register(recipient.clone()))
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+        .await?
+        .await?;
 
     // test closed observer cleanup
 
-    let observer_count = a_address
-        .send(GetObserverCount)
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    let observer_count = a_address.send(GetObserverCount).await?.await?;
     assert_eq!(observer_count, 3);
 
     drop(rx);
 
     // trigger A to notify M1 observers, this should cleanup closed M1 observers
-    a_address.send(NotifyM1).await.unwrap().await.unwrap();
+    a_address.send(NotifyM1).await?.await?;
 
-    let observer_count = a_address
-        .send(GetObserverCount)
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    let observer_count = a_address.send(GetObserverCount).await?.await?;
     assert_eq!(observer_count, 2); // the recipient gets cleaned from M1 observers
 
     acktor::utils::terminate_actor(b_address, b_join_handle).await;
 
     // trigger A to try_notify M2 observers, this should cleanup closed M2 observers
-    a_address.send(TryNotifyM2).await.unwrap().await.unwrap();
+    a_address.send(TryNotifyM2).await?.await?;
 
-    let observer_count = a_address
-        .send(GetObserverCount)
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    let observer_count = a_address.send(GetObserverCount).await?.await?;
     assert_eq!(observer_count, 1); // B gets cleaned from M2 observers
+
+    Ok(())
 }

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use anyhow::Result;
 use pretty_assertions::{assert_eq, assert_ne};
 use tokio::time::{self, Instant};
 
@@ -27,7 +28,7 @@ impl Actor for A {
 
 impl CronActor for A {
     async fn task(&mut self, _ctx: &mut Self::Context) -> Result<Duration, Self::Error> {
-        self.recipient.send(()).await.unwrap();
+        self.recipient.send(()).await?;
         Ok(Duration::from_millis(50))
     }
 }
@@ -49,9 +50,12 @@ impl CronActor for B {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(i32)]
+#[derive(Debug)]
 pub struct CheckB;
+
+impl Message for CheckB {
+    type Result = i32;
+}
 
 impl Handler<CheckB> for B {
     type Result = i32;
@@ -62,9 +66,12 @@ impl Handler<CheckB> for B {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(bool)]
+#[derive(Debug)]
 pub struct IsSupervised;
+
+impl Message for IsSupervised {
+    type Result = bool;
+}
 
 impl Handler<IsSupervised> for B {
     type Result = bool;
@@ -94,10 +101,10 @@ impl Handler<SupervisionEvent<B>> for Watcher {
 }
 
 #[tokio::test]
-async fn test_task() {
+async fn test_task() -> Result<()> {
     let (recipient, mut rx) = Recipient::create(8);
 
-    let (a_address, _) = A::new(recipient).run("A").unwrap();
+    let (a_address, _) = A::new(recipient).run("A")?;
 
     // time between two messages should be 50 ms
 
@@ -119,12 +126,7 @@ async fn test_task() {
 
     // pause the cron task
 
-    a_address
-        .send(CronSignal::Pause)
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    a_address.send(CronSignal::Pause).await?.await?;
 
     loop {
         if let Err(acktor::RecvError::Empty) = rx.try_recv() {
@@ -139,12 +141,7 @@ async fn test_task() {
 
     // resume the cron task
 
-    a_address
-        .send(CronSignal::Resume)
-        .await
-        .unwrap()
-        .await
-        .unwrap();
+    a_address.send(CronSignal::Resume).await?.await?;
 
     // time between two messages should be 50 ms
 
@@ -163,43 +160,42 @@ async fn test_task() {
         let elapsed = ((elapsed.as_millis() as f64 / 5.0).round() * 5.0) as u128;
         assert_eq!(elapsed, 50);
     }
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_task_no_wait() {
-    let (b_address, _) = B::default().run("B").unwrap();
+async fn test_task_no_wait() -> Result<()> {
+    let (b_address, _) = B::default().run("B")?;
 
     tokio::time::sleep(Duration::from_millis(1)).await;
 
-    let count_1 = b_address.send(CheckB).await.unwrap().await.unwrap();
-    let count_2 = b_address.send(CheckB).await.unwrap().await.unwrap();
+    let count_1 = b_address.send(CheckB).await?.await?;
+    let count_2 = b_address.send(CheckB).await?.await?;
     assert_ne!(count_1, 0);
     assert_eq!(count_1, count_2);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_set_unset_supervisor() {
-    let (b_address, _) = B::default().run("B").unwrap();
-    let (watcher_address, _) = Watcher.run("watcher").unwrap();
+async fn test_set_unset_supervisor() -> Result<()> {
+    let (b_address, _) = B::default().run("B")?;
+    let (watcher_address, _) = Watcher.run("watcher")?;
 
     // no supervisor by default
-    assert!(!b_address.send(IsSupervised).await.unwrap().await.unwrap());
+    assert!(!b_address.send(IsSupervised).await?.await?);
 
     // set supervisor
     b_address
         .send(Supervisor::Set(watcher_address.into()))
-        .await
-        .unwrap()
-        .await
-        .unwrap();
-    assert!(b_address.send(IsSupervised).await.unwrap().await.unwrap());
+        .await?
+        .await?;
+    assert!(b_address.send(IsSupervised).await?.await?);
 
     // unset supervisor
-    b_address
-        .send(Supervisor::Unset)
-        .await
-        .unwrap()
-        .await
-        .unwrap();
-    assert!(!b_address.send(IsSupervised).await.unwrap().await.unwrap());
+    b_address.send(Supervisor::Unset).await?.await?;
+    assert!(!b_address.send(IsSupervised).await?.await?);
+
+    Ok(())
 }

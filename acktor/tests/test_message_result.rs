@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use anyhow::Result;
 use pretty_assertions::assert_eq;
 
 use acktor::{
@@ -29,9 +30,7 @@ impl Handler<GetCustomRes> for MyActor {
     type Result = MessageResult<GetCustomRes>;
 
     async fn handle(&mut self, _msg: GetCustomRes, _ctx: &mut Self::Context) -> Self::Result {
-        let result = MessageResult(CustomRes(42));
-        println!("{result:?}");
-        result
+        MessageResult(CustomRes(42))
     }
 }
 
@@ -46,36 +45,36 @@ impl Handler<GetCustomResAsync> for MyActor {
     type Result = FutureMessageResult<GetCustomResAsync>;
 
     async fn handle(&mut self, _msg: GetCustomResAsync, _ctx: &mut Self::Context) -> Self::Result {
-        let result = FutureMessageResult::new(async {
+        FutureMessageResult::new(async {
             tokio::time::sleep(Duration::from_millis(50)).await;
             99
-        });
-        println!("{result:?}");
-        result
+        })
     }
 }
 
 #[tokio::test]
-async fn test_message_result() {
-    let (addr, join_handle) = MyActor.run("actor").unwrap();
+async fn test_message_result() -> Result<()> {
+    let (addr, join_handle) = MyActor.run("actor")?;
 
     // MessageResult forwards the custom type as the message response
-    let custom = addr.send(GetCustomRes).await.unwrap().await.unwrap();
+    let custom = addr.send(GetCustomRes).await?.await?;
     assert_eq!(custom, CustomRes(42));
 
     // FutureMessageResult runs detached: the handler returns immediately, so the mailbox is
     // not stalled by the 20ms sleep. Dispatch the async work, then dispatch a second message
     // that completes quickly — the second reply arrives before the first
-    let slow = addr.send(GetCustomResAsync).await.unwrap();
-    let fast = addr.send(GetCustomRes).await.unwrap();
+    let slow = addr.send(GetCustomResAsync).await?;
+    let fast = addr.send(GetCustomRes).await?;
 
     assert!(slow.is_empty());
 
-    let fast_result = fast.await.unwrap();
+    let fast_result = fast.await?;
     assert_eq!(fast_result, CustomRes(42));
 
-    let slow_result = slow.await.unwrap();
+    let slow_result = slow.await?;
     assert_eq!(slow_result, 99);
 
     acktor::utils::terminate_actor(addr, join_handle).await;
+
+    Ok(())
 }

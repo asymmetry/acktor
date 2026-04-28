@@ -8,7 +8,9 @@ use acktor::{
     cron::{CronActor, CronContext},
     observer::Observer,
 };
-use acktor_ipc::{ActorHandle, RemoteActor, RemoteAddress, Session, remote, session::command};
+use acktor_ipc::{
+    ActorHandle, RemoteActor, RemoteAddress, Session, remote_actor, session::command,
+};
 
 use crate::message::{Ping, Pong};
 
@@ -30,7 +32,7 @@ impl Client {
     }
 }
 
-#[remote]
+#[remote_actor]
 impl Actor for Client {
     type Context = CronContext<Self>;
     type Error = anyhow::Error;

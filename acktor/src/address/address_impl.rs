@@ -13,9 +13,9 @@ use super::sender::{
 };
 use crate::actor::{Actor, ActorId};
 use crate::channel::{mpsc, oneshot};
-use crate::envelope::{Envelope, FromEnvelope, ToEnvelope};
+use crate::envelope::{Envelope, FromEnvelope, IntoEnvelope};
 use crate::errors::SendError;
-use crate::message::{Handler, Message};
+use crate::message::Message;
 use crate::utils::{ShortName, create_actor_id};
 
 #[cfg(feature = "type-erased-recipient-hook")]
@@ -126,25 +126,23 @@ where
     ///  response.
     pub fn send<M, EP>(&self, msg: M) -> impl Future<Output = SendResult<M>> + Send + '_
     where
-        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
         let (tx, rx) = oneshot::channel();
         self.tx
-            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)))
+            .send(msg.pack(Some(tx)))
             .map_ok(|_| rx)
-            .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
+            .map_err(|e| SendError::Closed(M::unpack(e.0)))
     }
 
     /// Sends a message, waiting until there is capacity, without expecting a response.
     pub fn do_send<M, EP>(&self, msg: M) -> impl Future<Output = DoSendResult<M>> + Send + '_
     where
-        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
         self.tx
-            .send(<A as ToEnvelope<A, M, EP>>::pack(msg, None))
-            .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
+            .send(msg.pack(None))
+            .map_err(|e| SendError::Closed(M::unpack(e.0)))
     }
 
     /// Attempts to immediately send a message and returns a
@@ -152,35 +150,25 @@ where
     /// response.
     pub fn try_send<M, EP>(&self, msg: M) -> SendResult<M>
     where
-        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
         let (tx, rx) = oneshot::channel();
-        let envelope = <A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx));
+        let envelope = msg.pack(Some(tx));
         self.tx.try_send(envelope).map(|_| rx).map_err(|e| match e {
-            mpsc::error::TrySendError::Closed(envelope) => {
-                SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
-            }
-            mpsc::error::TrySendError::Full(envelope) => {
-                SendError::Full(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
-            }
+            mpsc::error::TrySendError::Closed(envelope) => SendError::Closed(M::unpack(envelope)),
+            mpsc::error::TrySendError::Full(envelope) => SendError::Full(M::unpack(envelope)),
         })
     }
 
     /// Attempts to immediately send a message without expecting a response.
     pub fn try_do_send<M, EP>(&self, msg: M) -> DoSendResult<M>
     where
-        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
-        let envelope = <A as ToEnvelope<A, M, EP>>::pack(msg, None);
+        let envelope = msg.pack(None);
         self.tx.try_send(envelope).map_err(|e| match e {
-            mpsc::error::TrySendError::Closed(envelope) => {
-                SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
-            }
-            mpsc::error::TrySendError::Full(envelope) => {
-                SendError::Full(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
-            }
+            mpsc::error::TrySendError::Closed(envelope) => SendError::Closed(M::unpack(envelope)),
+            mpsc::error::TrySendError::Full(envelope) => SendError::Full(M::unpack(envelope)),
         })
     }
 
@@ -193,19 +181,18 @@ where
         timeout: Duration,
     ) -> impl Future<Output = SendResult<M>> + Send + '_
     where
-        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
         let (tx, rx) = oneshot::channel();
         self.tx
-            .send_timeout(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)), timeout)
+            .send_timeout(msg.pack(Some(tx)), timeout)
             .map_ok(|_| rx)
             .map_err(|e| match e {
                 mpsc::error::SendTimeoutError::Closed(envelope) => {
-                    SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
+                    SendError::Closed(M::unpack(envelope))
                 }
                 mpsc::error::SendTimeoutError::Timeout(envelope) => {
-                    SendError::Timeout(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
+                    SendError::Timeout(M::unpack(envelope))
                 }
             })
     }
@@ -218,17 +205,16 @@ where
         timeout: Duration,
     ) -> impl Future<Output = DoSendResult<M>> + Send + '_
     where
-        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
         self.tx
-            .send_timeout(<A as ToEnvelope<A, M, EP>>::pack(msg, None), timeout)
+            .send_timeout(msg.pack(None), timeout)
             .map_err(|e| match e {
                 mpsc::error::SendTimeoutError::Closed(envelope) => {
-                    SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
+                    SendError::Closed(M::unpack(envelope))
                 }
                 mpsc::error::SendTimeoutError::Timeout(envelope) => {
-                    SendError::Timeout(<A as FromEnvelope<A, M, EP>>::unpack(envelope))
+                    SendError::Timeout(M::unpack(envelope))
                 }
             })
     }
@@ -243,14 +229,13 @@ where
     /// This function panics if called within an asynchronous execution context.
     pub fn blocking_send<M, EP>(&self, msg: M) -> SendResult<M>
     where
-        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
         let (tx, rx) = oneshot::channel();
         self.tx
-            .blocking_send(<A as ToEnvelope<A, M, EP>>::pack(msg, Some(tx)))
+            .blocking_send(msg.pack(Some(tx)))
             .map(|_| rx)
-            .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
+            .map_err(|e| SendError::Closed(M::unpack(e.0)))
     }
 
     /// Blocking do_send to call outside of asynchronous contexts.
@@ -263,12 +248,11 @@ where
     /// This function panics if called within an asynchronous execution context.
     pub fn blocking_do_send<M, EP>(&self, msg: M) -> DoSendResult<M>
     where
-        A: Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-        M: Message,
+        M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
         self.tx
-            .blocking_send(<A as ToEnvelope<A, M, EP>>::pack(msg, None))
-            .map_err(|e| SendError::Closed(<A as FromEnvelope<A, M, EP>>::unpack(e.0)))
+            .blocking_send(msg.pack(None))
+            .map_err(|e| SendError::Closed(M::unpack(e.0)))
     }
 
     /// Reserves channel capacity to send one message.
@@ -342,8 +326,8 @@ where
 
 impl<A, M, EP> Sender<M, EP> for Address<A>
 where
-    A: Actor + Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-    M: Message,
+    A: Actor,
+    M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
 {
     fn closed(&self) -> ClosedResultFuture<'_> {
         self.closed().boxed()
@@ -397,8 +381,8 @@ where
 
 impl<A, M, EP> From<Address<A>> for Recipient<M, EP>
 where
-    A: Actor + Handler<M> + ToEnvelope<A, M, EP> + FromEnvelope<A, M, EP>,
-    M: Message,
+    A: Actor,
+    M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
 {
     fn from(addr: Address<A>) -> Self {
         Self::new(Arc::new(addr))

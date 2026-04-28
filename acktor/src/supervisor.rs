@@ -133,6 +133,34 @@ where
     }
 }
 
+#[cfg(feature = "identifier")]
+impl<A> crate::stable_type_id::HasStableTypeId for Supervisor<A>
+where
+    A: Actor + crate::stable_type_id::HasStableTypeId,
+{
+    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+        crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
+            module_path!(),
+            "::",
+            "Supervisor"
+        ))
+        .combine(A::STABLE_TYPE_ID.as_bytes());
+}
+
+#[cfg(feature = "identifier")]
+impl<A> crate::stable_type_id::HasStableTypeId for SupervisionEvent<A>
+where
+    A: Actor + crate::stable_type_id::HasStableTypeId,
+{
+    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+        crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
+            module_path!(),
+            "::",
+            "Supervisor"
+        ))
+        .combine(A::STABLE_TYPE_ID.as_bytes());
+}
+
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
@@ -143,27 +171,45 @@ mod tests {
     use crate::test_utils::Dummy;
 
     #[test]
-    fn debug_supervision_event() {
+    fn test_debug_fmt() {
         let (tx, _rx) = mpsc::channel::<Envelope<Dummy>>(1);
-        let addr = Address::new(tx);
-        let idx = addr.index();
+        let address = Address::new(tx);
+        let index = address.index();
+
+        // SupervisionEvent
+        let event: SupervisionEvent<Dummy> =
+            SupervisionEvent::Warn(address.clone(), anyhow::anyhow!("oops"));
+        assert_eq!(format!("{event:?}"), format!("Warn({index}, oops)"));
+
+        let event: SupervisionEvent<Dummy> = SupervisionEvent::Terminated(address.clone(), None);
+        assert_eq!(format!("{event:?}"), format!("Terminated({index}, None)"));
 
         let event: SupervisionEvent<Dummy> =
-            SupervisionEvent::Warn(addr.clone(), anyhow::anyhow!("oops"));
-        assert_eq!(format!("{event:?}"), format!("Warn({idx}, oops)"));
-
-        let event: SupervisionEvent<Dummy> = SupervisionEvent::Terminated(addr.clone(), None);
-        assert_eq!(format!("{event:?}"), format!("Terminated({idx}, None)"));
+            SupervisionEvent::Terminated(address.clone(), Some(anyhow::anyhow!("boom")));
+        assert_eq!(format!("{event:?}"), format!("Terminated({index}, boom)"));
 
         let event: SupervisionEvent<Dummy> =
-            SupervisionEvent::Terminated(addr.clone(), Some(anyhow::anyhow!("boom")));
-        assert_eq!(format!("{event:?}"), format!("Terminated({idx}, boom)"));
+            SupervisionEvent::Panicked(address.clone(), "panicked!".to_string());
+        assert_eq!(
+            format!("{event:?}"),
+            format!("Panicked({index}, panicked!)")
+        );
 
         let event: SupervisionEvent<Dummy> =
-            SupervisionEvent::Panicked(addr.clone(), "panicked!".to_string());
-        assert_eq!(format!("{event:?}"), format!("Panicked({idx}, panicked!)"));
+            SupervisionEvent::State(address.clone(), ActorState::Running);
+        assert_eq!(format!("{event:?}"), format!("State({index}, Running)"));
 
-        let event: SupervisionEvent<Dummy> = SupervisionEvent::State(addr, ActorState::Running);
-        assert_eq!(format!("{event:?}"), format!("State({idx}, Running)"));
+        // Supervisor
+        let (recipient, _rx) = Recipient::<SupervisionEvent<Dummy>>::create(1);
+        let recipient_index = recipient.index();
+
+        let cmd: Supervisor<Dummy> = Supervisor::Set(recipient);
+        assert_eq!(
+            format!("{cmd:?}"),
+            format!("Supervisor<Dummy>::Set({recipient_index})")
+        );
+
+        let cmd: Supervisor<Dummy> = Supervisor::Unset;
+        assert_eq!(format!("{cmd:?}"), "Supervisor<Dummy>::Unset");
     }
 }

@@ -22,11 +22,14 @@
 //!     type Error = String;
 //! }
 //!
-//! #[derive(Debug, Message)]
-//! #[result_type(i64)]
+//! #[derive(Debug)]
 //! enum CounterMsg {
 //!     Increment,
 //!     Get,
+//! }
+//!
+//! impl Message for CounterMsg {
+//!     type Result = i64;
 //! }
 //!
 //! impl Handler<CounterMsg> for Counter {
@@ -74,7 +77,6 @@ pub mod channel;
 
 pub mod utils;
 
-#[doc(hidden)]
 pub mod actor;
 pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
 
@@ -86,6 +88,17 @@ pub use address::{Address, Recipient, Sender, SenderId};
 
 pub mod message;
 pub use message::{Handler, Message, MessageResponse};
+
+#[cfg(feature = "identifier")]
+#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
+pub use message::MessageId;
+
+#[cfg(feature = "identifier")]
+#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
+pub mod stable_type_id;
+#[cfg(feature = "identifier")]
+#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
+pub use stable_type_id::{HasStableTypeId, StableTypeId};
 
 pub mod envelope;
 
@@ -102,9 +115,17 @@ pub mod observer;
 #[cfg_attr(docsrs, doc(cfg(feature = "cron")))]
 pub mod cron;
 
+#[cfg(all(feature = "derive", feature = "identifier"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "identifier"))))]
+pub use acktor_derive::{HasStableTypeId, MessageId};
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use acktor_derive::{Message, MessageResponse};
+
+// re-export for use in derived code
+#[doc(hidden)]
+#[cfg(feature = "identifier")]
+pub use sha2_const;
 
 #[cfg(test)]
 mod test_utils {

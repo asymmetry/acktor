@@ -2,6 +2,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Token, Type, punctuated::Punctuated};
 
+use crate::has_stable_type_id;
+
 fn parse_message_list(ast: &syn::DeriveInput) -> syn::Result<Option<Vec<Type>>> {
     let Some(attr) = ast.attrs.iter().find(|a| a.path().is_ident("message")) else {
         return Ok(None);
@@ -27,8 +29,13 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
+    // also emit the `HasStableTypeId` impl so `#[derive(RemoteActor)]` alone is enough
+    let has_stable_type_id_impl = has_stable_type_id::expand(ast);
+
     let marker_impl = quote! {
         impl #impl_generics ::acktor_ipc::RemoteActor for #name #ty_generics #where_clause {}
+
+        #has_stable_type_id_impl
     };
 
     let Some(messages) = messages else {
@@ -37,7 +44,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
     let arms = messages.iter().map(|m| {
         quote! {
-            <#m as ::acktor_ipc::Decode>::ID => {
+            <#m as ::acktor::MessageId>::ID => {
                 match <#m as ::acktor_ipc::Decode>::decode(message, decode_context.as_ref()) {
                     ::core::result::Result::Ok(decoded) => {
                         let result =
@@ -92,7 +99,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     });
 
     let ids = messages.iter().map(|m| {
-        quote! { <#m as ::acktor_ipc::Decode>::ID }
+        quote! { <#m as ::acktor::MessageId>::ID }
     });
     let n = messages.len();
     let uniqueness_check = quote! {
@@ -157,13 +164,15 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
     quote! {
         #marker_impl
-        #uniqueness_check
         #handler_impl
+        #uniqueness_check
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Result;
+
     use super::*;
 
     fn input(src: &str) -> syn::DeriveInput {
@@ -171,20 +180,18 @@ mod tests {
     }
 
     #[test]
-    fn accepts_valid_forms() {
+    fn test_parse_message_list() -> Result<()> {
         // absent attribute → None
-        assert!(parse_message_list(&input("struct Foo;")).unwrap().is_none());
+        assert!(parse_message_list(&input("struct Foo;"))?.is_none());
 
         // list of plain types
-        let list = parse_message_list(&input("#[message(Ping, Echo)] struct Foo;"))
-            .unwrap()
-            .unwrap();
+        let list = parse_message_list(&input("#[message(Ping, Echo)] struct Foo;"))?.unwrap();
         assert_eq!(list.len(), 2);
 
         // generic paths are accepted
-        let list = parse_message_list(&input("#[message(Observer<Pong>)] struct Foo;"))
-            .unwrap()
-            .unwrap();
+        let list = parse_message_list(&input("#[message(Observer<Pong>)] struct Foo;"))?.unwrap();
         assert_eq!(list.len(), 1);
+
+        Ok(())
     }
 }
