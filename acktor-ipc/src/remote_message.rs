@@ -7,7 +7,8 @@ use bytes::Bytes;
 use thiserror::Error;
 
 use acktor::{
-    Actor, ActorState, Address, Message, Recipient, Sender, channel::oneshot, utils::ShortName,
+    Actor, ActorState, Address, HasStableTypeId, Message, MessageId, Recipient, Sender,
+    channel::oneshot, utils::ShortName,
 };
 
 use crate::codec::DecodeContext;
@@ -152,6 +153,21 @@ pub enum RemoteSupervisionEvent {
 
 impl Message for RemoteSupervisionEvent {
     type Result = ();
+}
+
+impl HasStableTypeId for RemoteSupervisionEvent {
+    const STABLE_TYPE_ID: acktor::StableTypeId = acktor::StableTypeId::from_stable_type_name(
+        concat!(module_path!(), "::", stringify!(RemoteSupervisionEvent)),
+    );
+}
+
+impl MessageId for RemoteSupervisionEvent {
+    /// `RemoteSupervisionEvent` is the decode result of a
+    /// [`SupervisionEvent`][acktor::supervisor::SupervisionEvent] so we force them to share the
+    /// same message identifier.
+    const ID: u64 =
+        acktor::StableTypeId::from_stable_type_name("acktor::supervisor::SupervisionEvent")
+            .as_u64();
 }
 
 #[cfg(test)]

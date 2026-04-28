@@ -104,10 +104,14 @@ pub fn has_stable_type_id_derive(input: TokenStream) -> TokenStream {
 
 /// Derive the [`MessageId`] trait for a [`Message`].
 ///
-/// This also emits the [`HasStableTypeId`] impl that `MessageId` requires as a supertrait, so
-/// `#[derive(MessageId)]` alone is sufficient — do **not** also derive [`HasStableTypeId`]
-/// separately, as that would produce conflicting impls. See the [`HasStableTypeId`] derive for
-/// the hashing scheme and the rules around generic parameters.
+/// By default, the derive also emits a [`HasStableTypeId`] impl and sets
+/// `MessageId::ID = STABLE_TYPE_ID.as_u64()`. In that case, do **not** also derive
+/// [`HasStableTypeId`] separately, as that would produce conflicting impls. See the
+/// [`HasStableTypeId`] derive for the hashing scheme and the rules around generic parameters.
+///
+/// An optional `#[custom_id(<u64 value>)]` attribute lets the user supply the id directly. When
+/// present, no [`HasStableTypeId`] impl is emitted, and it is the user's responsibility to ensure
+/// the id is unique across all messages an actor can handle.
 ///
 /// # Example
 ///
@@ -116,12 +120,16 @@ pub fn has_stable_type_id_derive(input: TokenStream) -> TokenStream {
 ///
 /// #[derive(MessageId)]
 /// struct Ping(u64);
+///
+/// #[derive(MessageId)]
+/// #[custom_id(0xdead_beef)]
+/// struct Pong;
 /// ```
 ///
 /// [`MessageId`]: https://docs.rs/acktor/latest/acktor/message/trait.MessageId.html
 /// [`Message`]: https://docs.rs/acktor/latest/acktor/message/trait.Message.html
 /// [`HasStableTypeId`]: https://docs.rs/acktor/latest/acktor/stable_type_id/trait.HasStableTypeId.html
-#[proc_macro_derive(MessageId)]
+#[proc_macro_derive(MessageId, attributes(custom_id))]
 pub fn message_id_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
 

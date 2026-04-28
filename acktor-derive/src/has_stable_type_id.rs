@@ -63,35 +63,25 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 /// We need a `&[u8; 32]` to feed `combine`, so we hash the value's little-endian byte form with
 /// `sha2_const` inline; const-promotion of the resulting array gives us the reference for free.
 fn const_param_combine(ident: &syn::Ident, ty: &Type) -> syn::Result<TokenStream> {
+    const SUPPORTED: &str =
+        "HasStableTypeId derive only supports legal const generic parameter types";
     let Type::Path(tp) = ty else {
-        return Err(syn::Error::new_spanned(
-            ty,
-            "HasStableTypeId derive only supports const generics of primitive types \
-             (u8/u16/u32/u64/usize, i8/i16/i32/i64/isize, bool, char)",
-        ));
+        return Err(syn::Error::new_spanned(ty, SUPPORTED));
     };
     let Some(seg) = tp.path.segments.last() else {
-        return Err(syn::Error::new_spanned(
-            ty,
-            "expected a primitive type name",
-        ));
+        return Err(syn::Error::new_spanned(ty, SUPPORTED));
     };
     let name = seg.ident.to_string();
     let value_bytes = match name.as_str() {
-        "u8" | "u16" | "u32" | "u64" | "usize" => quote! {
-            &(#ident as u64).to_le_bytes()
+        "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64" | "i128" => quote! {
+            &#ident.to_le_bytes()
         },
-        "i8" | "i16" | "i32" | "i64" | "isize" => quote! {
-            &(#ident as i64).to_le_bytes()
-        },
+        "usize" => quote! { &(#ident as u64).to_le_bytes() },
+        "isize" => quote! { &(#ident as i64).to_le_bytes() },
         "bool" => quote! { &[#ident as u8] },
         "char" => quote! { &(#ident as u32).to_le_bytes() },
         _ => {
-            return Err(syn::Error::new_spanned(
-                ty,
-                "HasStableTypeId derive only supports const generics of primitive types \
-                 (u8/u16/u32/u64/usize, i8/i16/i32/i64/isize, bool, char)",
-            ));
+            return Err(syn::Error::new_spanned(ty, SUPPORTED));
         }
     };
 
@@ -137,23 +127,28 @@ mod tests {
 
     #[test]
     fn test_const_generics() {
-        let out = expand(&input("struct Buf<const N: usize>;")).to_string();
+        let out = expand(&input("struct USize<const N: usize>;")).to_string();
         assert!(out.contains("(N as u64) . to_le_bytes ()"));
         assert!(out.contains(":: sha2_const :: Sha256 :: new"));
         assert_eq!(out.matches(". combine (").count(), 1);
 
-        let out = expand(&input("struct Signed<const I: i32>;")).to_string();
+        let out = expand(&input("struct ISize<const I: isize>;")).to_string();
         assert!(out.contains("(I as i64) . to_le_bytes ()"));
 
-        let out = expand(&input("struct Flagged<const F: bool>;")).to_string();
+        let out = expand(&input("struct I32<const I: i32>;")).to_string();
+        assert!(out.contains("I . to_le_bytes ()"));
+
+        let out = expand(&input("struct Bool<const F: bool>;")).to_string();
         assert!(out.contains("[F as u8]"));
 
-        let out = expand(&input("struct Tagged<const C: char>;")).to_string();
+        let out = expand(&input("struct Char<const C: char>;")).to_string();
         assert!(out.contains("(C as u32) . to_le_bytes ()"));
 
         let out = expand(&input("struct Bad<const S: SomeUnknown>;")).to_string();
         assert!(
-            out.contains("HasStableTypeId derive only supports const generics of primitive types")
+            out.contains(
+                "HasStableTypeId derive only supports legal const generic parameter types"
+            )
         );
     }
 

@@ -1,14 +1,31 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::GenericParam;
+use syn::{GenericParam, LitInt};
 
 use crate::has_stable_type_id;
 
 pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
-    let name = &ast.ident;
+    let custom_id = match get_custom_id(ast) {
+        Ok(id) => id,
+        Err(err) => return err.to_compile_error(),
+    };
 
-    // mirror the bounds emitted by the `HasStableTypeId` derive so a generic type ends up with
-    // consistent where-clauses on both impls
+    let name = &ast.ident;
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+
+    if let Some(value) = custom_id {
+        // user-supplied id: skip HasStableTypeId entirely
+        return quote! {
+            impl #impl_generics ::acktor::message::MessageId
+                for #name #ty_generics #where_clause
+            {
+                const ID: u64 = #value;
+            }
+        };
+    }
+
+    // delegate to STABLE_TYPE_ID; mirror the bounds emitted by the HasStableTypeId derive so the
+    // MessageId impl can name `Self::STABLE_TYPE_ID` for the same generic parameters
     let mut extra_bounds = Vec::<TokenStream>::new();
     for param in &ast.generics.params {
         if let GenericParam::Type(t) = param {
@@ -19,8 +36,6 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
         }
     }
 
-    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
-
     let where_clause_tokens = match (where_clause, extra_bounds.is_empty()) {
         (Some(wc), true) => quote! { #wc },
         (Some(wc), false) => quote! { #wc #(#extra_bounds,)* },
@@ -28,15 +43,34 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
         (None, false) => quote! { where #(#extra_bounds,)* },
     };
 
-    // also emit the `HasStableTypeId` impl so `#[derive(MessageId)]` alone is enough
     let has_stable_type_id_impl = has_stable_type_id::expand(ast);
 
     quote! {
         impl #impl_generics ::acktor::message::MessageId
-            for #name #ty_generics #where_clause_tokens {}
+            for #name #ty_generics #where_clause_tokens
+        {
+            const ID: u64 =
+                <Self as ::acktor::stable_type_id::HasStableTypeId>::STABLE_TYPE_ID.as_u64();
+        }
 
         #has_stable_type_id_impl
     }
+}
+
+fn get_custom_id(ast: &syn::DeriveInput) -> syn::Result<Option<LitInt>> {
+    let Some(attr) = ast.attrs.iter().find(|a| a.path().is_ident("custom_id")) else {
+        return Ok(None);
+    };
+    let syn::Meta::List(list) = &attr.meta else {
+        return Err(syn::Error::new_spanned(
+            attr,
+            "the correct syntax is `#[custom_id(<u64 value>)]`",
+        ));
+    };
+    let lit = list.parse_args::<LitInt>()?;
+    // ensure it fits in u64
+    lit.base10_parse::<u64>()?;
+    Ok(Some(lit))
 }
 
 #[cfg(test)]
@@ -52,8 +86,7 @@ mod tests {
         let out = expand(&input("struct Ping;")).to_string();
         assert!(out.contains("impl :: acktor :: stable_type_id :: HasStableTypeId for Ping"));
         assert!(out.contains("impl :: acktor :: message :: MessageId for Ping"));
-        // the MessageId impl body is empty (marker trait)
-        assert!(out.contains("MessageId for Ping { }"));
+        assert!(out.contains("STABLE_TYPE_ID . as_u64 ()"));
     }
 
     #[test]
@@ -72,9 +105,11 @@ mod tests {
     #[test]
     fn test_const_generics() {
         let out = expand(&input("struct Buf<const N: usize>;")).to_string();
-        assert!(out.contains(
-            "impl < const N : usize > :: acktor :: message :: MessageId for Buf < N > { }"
-        ));
+        assert!(
+            out.contains(
+                "impl < const N : usize > :: acktor :: message :: MessageId for Buf < N >"
+            )
+        );
         // no `where` for either impl when only const generics are present
         assert!(!out.contains("where"));
     }
@@ -85,9 +120,7 @@ mod tests {
         assert!(out.contains(
             "impl < 'a > :: acktor :: stable_type_id :: HasStableTypeId for Borrow < 'a >"
         ));
-        assert!(
-            out.contains("impl < 'a > :: acktor :: message :: MessageId for Borrow < 'a > { }")
-        );
+        assert!(out.contains("impl < 'a > :: acktor :: message :: MessageId for Borrow < 'a >"));
         assert!(!out.contains("where"));
     }
 
@@ -97,13 +130,37 @@ mod tests {
             "struct Mixed<'a, T, const N: usize>(&'a std::marker::PhantomData<[T; N]>);",
         ))
         .to_string();
-        // each impl bounds T exactly once
         assert_eq!(
             out.matches("T : :: acktor :: stable_type_id :: HasStableTypeId")
                 .count(),
             2
         );
-        // const N still folded into the HasStableTypeId hash
         assert!(out.contains("(N as u64) . to_le_bytes ()"));
+    }
+
+    #[test]
+    fn test_custom_id() {
+        let out = expand(&input("#[custom_id(42)] struct Ping;")).to_string();
+        assert!(out.contains("impl :: acktor :: message :: MessageId for Ping"));
+        assert!(out.contains("const ID : u64 = 42"));
+        // no HasStableTypeId impl is emitted when a custom id is supplied
+        assert!(!out.contains("HasStableTypeId for Ping"));
+        assert!(!out.contains("STABLE_TYPE_ID"));
+
+        let out = expand(&input("#[custom_id(0xdead_beef)] struct Ping;")).to_string();
+        assert!(out.contains("const ID : u64 = 0xdead_beef"));
+
+        let out = expand(&input("#[custom_id(7)] struct Wrap<T>(T);")).to_string();
+        assert!(out.contains("impl < T > :: acktor :: message :: MessageId for Wrap < T >"));
+        // no auto-added HasStableTypeId bound on T
+        assert!(!out.contains("T : :: acktor :: stable_type_id :: HasStableTypeId"));
+        assert!(!out.contains("HasStableTypeId for Wrap"));
+
+        // u64::MAX + 1 — must not parse as u64
+        let out = expand(&input("#[custom_id(18446744073709551616)] struct Ping;")).to_string();
+        assert!(out.contains("compile_error"));
+
+        let out = expand(&input("#[custom_id(\"oops\")] struct Ping;")).to_string();
+        assert!(out.contains("compile_error"));
     }
 }
