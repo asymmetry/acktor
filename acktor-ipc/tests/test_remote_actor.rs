@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::marker::PhantomData;
 
 use anyhow::Result;
@@ -50,13 +49,16 @@ pub struct Triple {
 
 #[derive(Debug, Default, RemoteActor)]
 #[message(Double, Triple)]
-pub struct Calculator<T>(PhantomData<fn() -> T>)
+pub struct Calculator<T>
 where
-    T: Display + 'static;
+    T: Send + 'static,
+{
+    _marker: PhantomData<T>,
+}
 
 impl<T> Actor for Calculator<T>
 where
-    T: Display,
+    T: Send + 'static,
 {
     type Context = Context<Self>;
     type Error = anyhow::Error;
@@ -64,7 +66,7 @@ where
 
 impl<T> Handler<Double> for Calculator<T>
 where
-    T: Display,
+    T: Send + 'static,
 {
     type Result = i64;
     async fn handle(&mut self, msg: Double, _ctx: &mut Self::Context) -> Self::Result {
@@ -74,7 +76,7 @@ where
 
 impl<T> Handler<Triple> for Calculator<T>
 where
-    T: Display,
+    T: Send + 'static,
 {
     type Result = i64;
     async fn handle(&mut self, msg: Triple, _ctx: &mut Self::Context) -> Self::Result {
@@ -84,7 +86,7 @@ where
 
 async fn roundtrip<T, M>(address: &Address<Calculator<T>>, msg: M) -> Result<i64>
 where
-    T: Display,
+    T: Send + 'static,
     M: Message + MessageId + Encode,
     M::Result: Decode,
 {

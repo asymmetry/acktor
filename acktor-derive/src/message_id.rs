@@ -38,9 +38,16 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
     let where_clause_tokens = match (where_clause, extra_bounds.is_empty()) {
         (Some(wc), true) => quote! { #wc },
-        (Some(wc), false) => quote! { #wc, #(#extra_bounds,)* },
+        (Some(wc), false) => {
+            let sep = if wc.predicates.empty_or_trailing() {
+                quote! {}
+            } else {
+                quote! { , }
+            };
+            quote! { #wc #sep #(#extra_bounds),* }
+        }
         (None, true) => quote! {},
-        (None, false) => quote! { where #(#extra_bounds,)* },
+        (None, false) => quote! { where #(#extra_bounds),* },
     };
 
     let has_stable_type_id_impl = has_stable_type_id::expand(ast);
