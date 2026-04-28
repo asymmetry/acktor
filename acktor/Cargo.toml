@@ -18,7 +18,7 @@ rustc-args = ["--cfg", "tokio_unstable"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["derive", "observer", "cron"]
+default = ["derive", "observer", "cron", "identifier"]
 derive = ["dep:acktor-derive"]
 observer = ["dep:ahash"]
 cron = []

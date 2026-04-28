@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use acktor::{Actor, Handler, HasStableTypeId};
+use acktor::{Actor, Handler};
 use ahash::HashMap;
 
 use crate::remote_message::RemoteMessage;
@@ -33,4 +33,4 @@ pub(crate) type RemoteActorFactoryRegistry = HashMap<String, Arc<dyn DynRemoteAc
 /// `Recipient<RemoteMessage>`. With the help of this hook, the actor's address will be registered
 /// in the [`Node`][crate::Node]'s [`RemoteActorRegistry`] automatically when it is encoded for
 /// the first time. This is more convenient than manual registration.
-pub trait RemoteActor: Actor + Handler<RemoteMessage> + HasStableTypeId {}
+pub trait RemoteActor: Actor + Handler<RemoteMessage> {}

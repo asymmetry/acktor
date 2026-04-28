@@ -40,7 +40,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
     let where_clause_tokens = match (where_clause, extra_bounds.is_empty()) {
         (Some(wc), true) => quote! { #wc },
-        (Some(wc), false) => quote! { #wc #(#extra_bounds,)* },
+        (Some(wc), false) => quote! { #wc, #(#extra_bounds,)* },
         (None, true) => quote! {},
         (None, false) => quote! { where #(#extra_bounds,)* },
     };
@@ -68,9 +68,11 @@ fn const_param_combine(ident: &syn::Ident, ty: &Type) -> syn::Result<TokenStream
     let Type::Path(tp) = ty else {
         return Err(syn::Error::new_spanned(ty, SUPPORTED));
     };
-    let Some(seg) = tp.path.segments.last() else {
-        return Err(syn::Error::new_spanned(ty, SUPPORTED));
-    };
+    let seg = tp
+        .path
+        .segments
+        .last()
+        .expect("type syntax should guarantee at least one segment");
     let name = seg.ident.to_string();
     let value_bytes = match name.as_str() {
         "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64" | "i128" => quote! {
