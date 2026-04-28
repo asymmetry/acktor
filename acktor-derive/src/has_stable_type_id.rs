@@ -40,9 +40,16 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
     let where_clause_tokens = match (where_clause, extra_bounds.is_empty()) {
         (Some(wc), true) => quote! { #wc },
-        (Some(wc), false) => quote! { #wc, #(#extra_bounds,)* },
+        (Some(wc), false) => {
+            let sep = if wc.predicates.empty_or_trailing() {
+                quote! {}
+            } else {
+                quote! { , }
+            };
+            quote! { #wc #sep #(#extra_bounds),* }
+        }
         (None, true) => quote! {},
-        (None, false) => quote! { where #(#extra_bounds,)* },
+        (None, false) => quote! { where #(#extra_bounds),* },
     };
 
     quote! {
@@ -125,6 +132,16 @@ mod tests {
         assert_eq!(out.matches(". combine (").count(), 2);
         assert!(out.contains("A : :: acktor :: stable_type_id :: HasStableTypeId"));
         assert!(out.contains("B : :: acktor :: stable_type_id :: HasStableTypeId"));
+
+        let out = expand(&input("struct Wrap<T, U>(T, U) where T: Clone, U: Clone,;")).to_string();
+        assert!(!out.contains(", ,"));
+        assert!(out.contains("T : :: acktor :: stable_type_id :: HasStableTypeId"));
+        assert!(out.contains("U : :: acktor :: stable_type_id :: HasStableTypeId"));
+
+        let out = expand(&input("struct Wrap<T, U>(T, U) where T: Clone, U: Clone;")).to_string();
+        assert!(!out.contains(", ,"));
+        assert!(out.contains("T : :: acktor :: stable_type_id :: HasStableTypeId"));
+        assert!(out.contains("U : :: acktor :: stable_type_id :: HasStableTypeId"));
     }
 
     #[test]

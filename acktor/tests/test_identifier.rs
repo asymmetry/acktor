@@ -23,9 +23,14 @@ where
 
 #[derive(Message, MessageId)]
 #[result_type(())]
-struct BoundDup<T>(PhantomData<T>)
+struct BoundDup<T1, T2>
 where
-    T: HasStableTypeId + Send + 'static;
+    T1: Send + 'static,
+    T2: Send + 'static,
+{
+    _1: PhantomData<T1>,
+    _2: PhantomData<T2>,
+}
 
 #[derive(Message, MessageId)]
 #[result_type(())]
@@ -102,7 +107,7 @@ fn test_type_generics() {
     assert_eq!(<Wrap<A>>::STABLE_TYPE_ID.as_bytes(), &expected);
 
     assert!(<Bound<A>>::STABLE_TYPE_ID.as_u64() != 0);
-    assert!(<BoundDup<A>>::STABLE_TYPE_ID.as_u64() != 0);
+    assert!(<BoundDup<A, B>>::STABLE_TYPE_ID.as_u64() != 0);
     assert!(<BoundLifetime<'_>>::STABLE_TYPE_ID.as_u64() != 0);
 }
 
