@@ -45,52 +45,23 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let arms = messages.iter().map(|m| {
         quote! {
             <#m as ::acktor::MessageId>::ID => {
-                match <#m as ::acktor_ipc::Decode>::decode(message, decode_context.as_ref()) {
-                    ::core::result::Result::Ok(decoded) => {
+                match <#m as ::acktor_ipc::Decode>::decode(
+                    message,
+                    decode_context.as_ref(),
+                ) {
+                    ::core::result::Result::Ok(msg) => {
                         let result =
-                            <Self as ::acktor::Handler<#m>>::handle(self, decoded, ctx).await;
+                            <Self as ::acktor::Handler<#m>>::handle(self, msg, ctx).await;
                         if let ::core::option::Option::Some(tx) = result_tx {
-                            match ::acktor_ipc::Encode::encode_to_bytes(
-                                &result,
-                                encode_ctx.as_ref(),
-                            ) {
-                                ::core::result::Result::Ok(bytes) => {
-                                    if let Err(e) = tx.send(bytes) {
-                                        ::acktor_ipc::tracing::debug!(
-                                            "Could not send the message response to the session \
-                                             actor: {}",
-                                            ::acktor::ErrorReport::report(&e)
-                                        );
-                                    }
-                                }
-                                ::core::result::Result::Err(e) => {
-                                    ::acktor_ipc::tracing::debug!(
-                                        "Could not encode the message response: {}",
-                                        ::acktor::ErrorReport::report(&e)
-                                    );
-                                    if let Err(e) = tx.send_err(e) {
-                                        ::acktor_ipc::tracing::debug!(
-                                            "Could not report the error to the session actor: {}",
-                                            ::acktor::ErrorReport::report(&e)
-                                        );
-                                    }
-                                }
-                            }
+                            send_result(tx, &result, encode_ctx.as_ref());
                         }
-                        // sender has explicitly indicated that it does not care about the result
-                        // of this message
                     }
                     ::core::result::Result::Err(e) => {
                         ::acktor_ipc::tracing::debug!(
                             "Could not decode the message: {}", ::acktor::ErrorReport::report(&e)
                         );
                         if let ::core::option::Option::Some(tx) = result_tx {
-                            if let Err(e) = tx.send_err(e) {
-                                ::acktor_ipc::tracing::debug!(
-                                    "Could not report the error to the session actor: {}",
-                                    ::acktor::ErrorReport::report(&e)
-                                );
-                            }
+                            send_err(tx, e);
                         }
                     }
                 }
@@ -121,7 +92,9 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     };
 
     let handler_impl = quote! {
-        impl #impl_generics ::acktor::Handler<::acktor_ipc::RemoteMessage> for #name #ty_generics #where_clause {
+        impl #impl_generics ::acktor::Handler<::acktor_ipc::RemoteMessage>
+            for #name #ty_generics #where_clause
+        {
             type Result = ();
 
             async fn handle(
@@ -136,25 +109,59 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                     decode_context,
                     ..
                 } = msg;
-                let encode_ctx = decode_context
-                    .as_ref()
-                    .map(|c| c.create_encode_context());
+
+                let encode_ctx = decode_context.as_ref().map(|c| c.create_encode_context());
+
+                #[inline]
+                fn send_err(
+                    tx: ::acktor::channel::oneshot::Sender<::acktor_ipc::bytes::Bytes>,
+                    err: impl ::core::convert::Into::<::acktor::BoxError>,
+                ) {
+                    if let Err(e) = tx.send_err(err) {
+                        ::acktor_ipc::tracing::debug!(
+                            "Could not report the error to the sender: {}",
+                            ::acktor::ErrorReport::report(&e)
+                        );
+                    }
+                }
+
+                #[inline]
+                fn send_result(
+                    tx: ::acktor::channel::oneshot::Sender<::acktor_ipc::bytes::Bytes>,
+                    result: &impl ::acktor_ipc::Encode,
+                    encode_ctx: Option<&::acktor_ipc::EncodeContext>,
+                ) {
+                    match ::acktor_ipc::Encode::encode_to_bytes(result, encode_ctx) {
+                        ::core::result::Result::Ok(bytes) => {
+                            if let Err(e) = tx.send(bytes) {
+                                ::acktor_ipc::tracing::debug!(
+                                    "Could not send the message response to the sender: {}",
+                                    ::acktor::ErrorReport::report(&e)
+                                );
+                            }
+                        }
+                        ::core::result::Result::Err(e) => {
+                            ::acktor_ipc::tracing::debug!(
+                                "Could not encode the message response: {}",
+                                ::acktor::ErrorReport::report(&e)
+                            );
+                            send_err(tx, e);
+                        }
+                    }
+                }
 
                 match message_id {
                     #(#arms)*
                     _ => {
                         ::acktor_ipc::tracing::debug!(
-                            "Received a message with unknown message id {}", message_id
+                            "Received a message with unknown message id {}",
+                            message_id
                         );
                         if let ::core::option::Option::Some(tx) = result_tx {
-                            if let Err(e) = tx.send_err(
-                                ::acktor_ipc::errors::DecodeError::UnknownMessageId(message_id),
-                            ) {
-                                ::acktor_ipc::tracing::debug!(
-                                    "Could not report the error to the session actor: {}",
-                                    ::acktor::ErrorReport::report(&e)
-                                );
-                            }
+                            send_err(
+                                tx,
+                                ::acktor_ipc::errors::DecodeError::UnknownMessageId(message_id)
+                            );
                         }
                     }
                 }
