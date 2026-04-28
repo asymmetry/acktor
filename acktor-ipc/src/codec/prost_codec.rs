@@ -8,6 +8,72 @@ use super::errors::{DecodeError, EncodeError};
 use super::protobuf_helper::LENGTH_DELIMITED_TAGS;
 use super::{Decode, DecodeContext, Encode, EncodeContext};
 
+#[inline]
+fn zigzag32(n: i32) -> u64 {
+    (((n << 1) ^ (n >> 31)) as u32) as u64
+}
+
+#[inline]
+fn zigzag64(n: i64) -> u64 {
+    ((n << 1) ^ (n >> 63)) as u64
+}
+
+#[inline]
+fn encoded_len_packed_varint<T: Copy>(values: &[T], to_varint: impl Fn(T) -> u64) -> usize {
+    if values.is_empty() {
+        return 0;
+    }
+    let data_len: usize = values
+        .iter()
+        .map(|&v| prost::encoding::encoded_len_varint(to_varint(v)))
+        .sum();
+    1 + prost::length_delimiter_len(data_len) + data_len
+}
+
+#[inline]
+fn encode_packed_varint<T: Copy>(values: &[T], buf: &mut BytesMut, to_varint: impl Fn(T) -> u64) {
+    if values.is_empty() {
+        return;
+    }
+    let data_len: usize = values
+        .iter()
+        .map(|&v| prost::encoding::encoded_len_varint(to_varint(v)))
+        .sum();
+    buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
+    buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
+    prost::encoding::encode_varint(data_len as u64, buf);
+    for &value in values.iter() {
+        prost::encoding::encode_varint(to_varint(value), buf);
+    }
+}
+
+#[inline]
+fn encoded_len_packed_fixed<T>(values: &[T]) -> usize {
+    if values.is_empty() {
+        return 0;
+    }
+    let data_len = std::mem::size_of_val(values);
+    1 + prost::length_delimiter_len(data_len) + data_len
+}
+
+#[inline]
+fn encode_packed_fixed<T: Copy>(
+    values: &[T],
+    buf: &mut BytesMut,
+    write: impl Fn(T, &mut BytesMut),
+) {
+    if values.is_empty() {
+        return;
+    }
+    let data_len = std::mem::size_of_val(values);
+    buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
+    buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
+    prost::encoding::encode_varint(data_len as u64, buf);
+    for &value in values.iter() {
+        write(value, buf);
+    }
+}
+
 macro_rules! impl_encode_decode_for {
     ($type:ty) => {
         impl Encode for $type {
@@ -78,18 +144,11 @@ impl_encode_decode_for!(String);
 impl_encode_decode_for!(Vec<u8>);
 
 macro_rules! impl_encode_decode_for_vec {
-    (varint, $type:ty, $msg:ident) => {
+    (varint, $type:ty, $msg:ident, |$v:ident| $to_varint:expr) => {
         impl Encode for Vec<$type> {
             #[inline]
             fn encoded_len(&self) -> usize {
-                if self.is_empty() {
-                    return 0;
-                }
-                let data_len: usize = self
-                    .iter()
-                    .map(|&v| prost::encoding::encoded_len_varint(v as u64))
-                    .sum();
-                1 + prost::length_delimiter_len(data_len) + data_len
+                encoded_len_packed_varint::<$type>(self, |$v| $to_varint)
             }
 
             #[inline]
@@ -98,68 +157,7 @@ macro_rules! impl_encode_decode_for_vec {
                 buf: &mut BytesMut,
                 _ctx: Option<&EncodeContext>,
             ) -> Result<(), EncodeError> {
-                if self.is_empty() {
-                    return Ok(());
-                }
-
-                let data_len: usize = self
-                    .iter()
-                    .map(|&v| prost::encoding::encoded_len_varint(v as u64))
-                    .sum();
-                buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
-                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
-                prost::encoding::encode_varint(data_len as u64, buf);
-                for value in self.iter() {
-                    prost::encoding::encode_varint(*value as u64, buf);
-                }
-
-                Ok(())
-            }
-        }
-
-        impl Decode for Vec<$type> {
-            #[inline]
-            fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
-                let message = <$msg as prost::Message>::decode(buf)?;
-
-                Ok(message.values)
-            }
-        }
-    };
-    (varint, $type:ty, $wire_type:ty, $msg:ident) => {
-        impl Encode for Vec<$type> {
-            #[inline]
-            fn encoded_len(&self) -> usize {
-                if self.is_empty() {
-                    return 0;
-                }
-                let data_len: usize = self
-                    .iter()
-                    .map(|&v| prost::encoding::encoded_len_varint(v as $wire_type as u64))
-                    .sum();
-                1 + prost::length_delimiter_len(data_len) + data_len
-            }
-
-            #[inline]
-            fn encode(
-                &self,
-                buf: &mut BytesMut,
-                _ctx: Option<&EncodeContext>,
-            ) -> Result<(), EncodeError> {
-                if self.is_empty() {
-                    return Ok(());
-                }
-
-                let data_len: usize = self
-                    .iter()
-                    .map(|&v| prost::encoding::encoded_len_varint(v as $wire_type as u64))
-                    .sum();
-                buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
-                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
-                prost::encoding::encode_varint(data_len as u64, buf);
-                for value in self.iter() {
-                    prost::encoding::encode_varint(*value as $wire_type as u64, buf);
-                }
+                encode_packed_varint::<$type>(self, buf, |$v| $to_varint);
 
                 Ok(())
             }
@@ -181,11 +179,7 @@ macro_rules! impl_encode_decode_for_vec {
         impl Encode for Vec<$type> {
             #[inline]
             fn encoded_len(&self) -> usize {
-                if self.is_empty() {
-                    return 0;
-                }
-                let data_len = self.len() * std::mem::size_of::<$type>();
-                1 + prost::length_delimiter_len(data_len) + data_len
+                encoded_len_packed_fixed::<$type>(self)
             }
 
             #[inline]
@@ -194,17 +188,9 @@ macro_rules! impl_encode_decode_for_vec {
                 buf: &mut BytesMut,
                 _ctx: Option<&EncodeContext>,
             ) -> Result<(), EncodeError> {
-                if self.is_empty() {
-                    return Ok(());
-                }
-
-                let data_len = self.len() * std::mem::size_of::<$type>();
-                buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
-                buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
-                prost::encoding::encode_varint(data_len as u64, buf);
-                for value in self.iter() {
-                    buf.extend_from_slice(&value.to_le_bytes());
-                }
+                encode_packed_fixed::<$type>(self, buf, |v, b| {
+                    b.extend_from_slice(&v.to_le_bytes())
+                });
 
                 Ok(())
             }
@@ -221,19 +207,19 @@ macro_rules! impl_encode_decode_for_vec {
     };
 }
 
-impl_encode_decode_for_vec!(varint, bool, VecBool);
-impl_encode_decode_for_vec!(varint, i8, i32, VecInt32);
-impl_encode_decode_for_vec!(varint, i16, i32, VecInt32);
-impl_encode_decode_for_vec!(varint, i32, VecInt32);
-impl_encode_decode_for_vec!(varint, i64, VecInt64);
+impl_encode_decode_for_vec!(varint, bool, VecBool, |v| v as u64);
+impl_encode_decode_for_vec!(varint, i8, VecInt32, |v| zigzag32(v as i32));
+impl_encode_decode_for_vec!(varint, i16, VecInt32, |v| zigzag32(v as i32));
+impl_encode_decode_for_vec!(varint, i32, VecInt32, |v| zigzag32(v));
+impl_encode_decode_for_vec!(varint, i64, VecInt64, |v| zigzag64(v));
 // `Vec<u8>` is handled above by `impl_encode_decode_for!(Vec<u8>)` via prost's bytes field.
-impl_encode_decode_for_vec!(varint, u16, u32, VecUint32);
-impl_encode_decode_for_vec!(varint, u32, VecUint32);
-impl_encode_decode_for_vec!(varint, u64, VecUint64);
+impl_encode_decode_for_vec!(varint, u16, VecUint32, |v| v as u64);
+impl_encode_decode_for_vec!(varint, u32, VecUint32, |v| v as u64);
+impl_encode_decode_for_vec!(varint, u64, VecUint64, |v| v);
+impl_encode_decode_for_vec!(varint, isize, VecInt64, |v| zigzag64(v as i64));
+impl_encode_decode_for_vec!(varint, usize, VecUint64, |v| v as u64);
 impl_encode_decode_for_vec!(fixed, f32, VecFloat);
 impl_encode_decode_for_vec!(fixed, f64, VecDouble);
-impl_encode_decode_for_vec!(varint, isize, i64, VecInt64);
-impl_encode_decode_for_vec!(varint, usize, u64, VecUint64);
 
 macro_rules! impl_encode_decode_for_tuple {
     ($($type:ident<$index:tt>($field:ident)),+) => {
