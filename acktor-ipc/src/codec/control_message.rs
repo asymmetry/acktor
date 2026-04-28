@@ -4,7 +4,7 @@ use bytes::{Bytes, BytesMut};
 use prost::Message as _;
 
 use acktor::{
-    Actor, ActorState, Address, Message, SenderId, Signal,
+    Actor, ActorState, Address, HasStableTypeId, Message, MessageId, SenderId, Signal,
     cron::CronSignal,
     observer::Observer,
     supervisor::{SupervisionEvent, Supervisor},
@@ -16,8 +16,6 @@ use super::{Decode, DecodeContext, Encode, EncodeContext};
 use crate::remote_message::RemoteSupervisionEvent;
 
 impl Encode for Signal {
-    const ID: u64 = u64::MAX;
-
     #[inline]
     fn encoded_len(&self) -> usize {
         proto::Signal::new(*self as i32).encoded_len()
@@ -32,8 +30,6 @@ impl Encode for Signal {
 }
 
 impl Decode for Signal {
-    const ID: u64 = u64::MAX;
-
     #[inline]
     fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let signal = proto::Signal::decode(buf)?;
@@ -46,8 +42,6 @@ impl<A> Encode for Supervisor<A>
 where
     A: Actor,
 {
-    const ID: u64 = u64::MAX - 1;
-
     fn encoded_len(&self) -> usize {
         let supervisor = match self {
             Supervisor::Set(recipient) => proto::Supervisor::set(recipient.index()),
@@ -72,10 +66,8 @@ where
 
 impl<A> Decode for Supervisor<A>
 where
-    A: Actor,
+    A: Actor + HasStableTypeId,
 {
-    const ID: u64 = u64::MAX - 1;
-
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
         let supervisor = proto::Supervisor::decode(buf)?;
@@ -91,11 +83,8 @@ where
 
 impl<M> Encode for Observer<M>
 where
-    M: Message + Encode,
-    M::Result: Decode,
+    M: Message,
 {
-    const ID: u64 = u64::MAX - 2;
-
     fn encoded_len(&self) -> usize {
         let observer = match self {
             Observer::Register(recipient) => proto::Observer::register(recipient.index()),
@@ -124,11 +113,9 @@ where
 
 impl<M> Decode for Observer<M>
 where
-    M: Message + Encode,
+    M: Message + MessageId + Encode,
     M::Result: Decode,
 {
-    const ID: u64 = u64::MAX - 2;
-
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
         let observer = proto::Observer::decode(buf)?;
@@ -179,8 +166,6 @@ where
     A: Actor,
     A::Error: Display,
 {
-    const ID: u64 = u64::MAX - 3;
-
     fn encoded_len(&self) -> usize {
         let (event, _) = build_supervision_event_message(self);
         event.encoded_len()
@@ -204,8 +189,6 @@ where
 }
 
 impl Decode for RemoteSupervisionEvent {
-    const ID: u64 = u64::MAX - 3;
-
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
@@ -243,8 +226,6 @@ impl Decode for RemoteSupervisionEvent {
 }
 
 impl Encode for CronSignal {
-    const ID: u64 = u64::MAX - 4;
-
     #[inline]
     fn encoded_len(&self) -> usize {
         proto::CronSignal::new(*self as i32).encoded_len()
@@ -259,8 +240,6 @@ impl Encode for CronSignal {
 }
 
 impl Decode for CronSignal {
-    const ID: u64 = u64::MAX - 4;
-
     #[inline]
     fn decode(buf: Bytes, _ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         let cron_signal = proto::CronSignal::decode(buf)?;

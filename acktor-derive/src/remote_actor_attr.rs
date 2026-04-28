@@ -13,14 +13,14 @@ pub fn expand(input: TokenStream) -> TokenStream {
         Some((_, path, _)) => {
             return syn::Error::new_spanned(
                 path,
-                "#[remote] must be applied to an `impl Actor for ..` block",
+                "#[remote_actor] must be applied to an `impl Actor for ..` block",
             )
             .to_compile_error();
         }
         None => {
             return syn::Error::new_spanned(
                 &item.self_ty,
-                "#[remote] must be applied to an `impl Actor for ..` block",
+                "#[remote_actor] must be applied to an `impl Actor for ..` block",
             )
             .to_compile_error();
         }

@@ -152,5 +152,9 @@ mod tests {
 
         let trait_object = envelope.as_any();
         assert!(trait_object.is::<DefaultEnvelopeProxy<Ping>>());
+
+        let envelope = Envelope::<Dummy>::with_proxy(Box::new(timed_proxy));
+        let trait_object = envelope.as_any();
+        assert!(trait_object.is::<TimedEnvelopeProxy<Ping>>());
     }
 }

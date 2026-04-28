@@ -3,10 +3,10 @@ use std::collections::HashSet;
 use tokio::time::{Duration, timeout};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{Actor, Context, Handler, Message, Recipient, Sender, SenderId};
+use acktor::{Actor, Context, Handler, Message, MessageId, Recipient, Sender, SenderId};
 use acktor_ipc::{
     ActorHandle, Decode, Encode, RemoteActor, RemoteAddress,
-    ipc_method::websocket::WebSocketConnection, node::command, remote,
+    ipc_method::websocket::WebSocketConnection, node::command, remote_actor,
     session::command as session_command,
 };
 
@@ -15,11 +15,20 @@ use common::{connect, pick_free_port, start_client, start_websocket_server};
 
 // Minimal echo remote actor: doubles the input.
 #[derive(
-    Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
+    Debug,
+    Clone,
+    Copy,
+    KnownLayout,
+    Immutable,
+    FromBytes,
+    IntoBytes,
+    Message,
+    MessageId,
+    Encode,
+    Decode,
 )]
 #[result_type(i64)]
 #[codec(zerocopy)]
-#[index(1)]
 #[repr(C)]
 pub struct Echo {
     pub value: i64,
@@ -29,7 +38,7 @@ pub struct Echo {
 #[message(Echo)]
 pub struct EchoServer;
 
-#[remote]
+#[remote_actor]
 impl Actor for EchoServer {
     type Context = Context<Self>;
     type Error = anyhow::Error;

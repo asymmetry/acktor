@@ -3,14 +3,14 @@ use bytes::BytesMut;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use acktor::{
-    Actor, ActorState, Context, Handler, Message, Recipient, SenderId, Signal,
+    Actor, ActorState, Context, Handler, Message, MessageId, Recipient, SenderId, Signal,
     cron::CronSignal,
     observer::Observer,
     supervisor::{SupervisionEvent, Supervisor},
 };
 use acktor_ipc::{
     Decode, DecodeContext, Encode, EncodeContext, RemoteActor, RemoteAddress,
-    ipc_method::websocket::WebSocketConnection, remote, remote_actor::RemoteActorRegistry,
+    ipc_method::websocket::WebSocketConnection, remote_actor, remote_actor::RemoteActorRegistry,
     remote_message::RemoteSupervisionEvent,
 };
 
@@ -18,11 +18,20 @@ mod common;
 use common::{connect, pick_free_port, start_client, start_websocket_server};
 
 #[derive(
-    Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
+    Debug,
+    Clone,
+    Copy,
+    KnownLayout,
+    Immutable,
+    FromBytes,
+    IntoBytes,
+    Message,
+    MessageId,
+    Encode,
+    Decode,
 )]
 #[result_type(())]
 #[codec(zerocopy)]
-#[index(1)]
 #[repr(C)]
 pub struct Ping {
     pub value: u64,
@@ -32,7 +41,7 @@ pub struct Ping {
 #[message(Ping)]
 pub struct Probe;
 
-#[remote]
+#[remote_actor]
 impl Actor for Probe {
     type Context = Context<Self>;
     type Error = anyhow::Error;

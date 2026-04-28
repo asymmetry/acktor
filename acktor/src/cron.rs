@@ -355,6 +355,16 @@ where
     }
 }
 
+#[cfg(feature = "identifier")]
+impl crate::stable_type_id::HasStableTypeId for CronSignal {
+    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+        crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
+            module_path!(),
+            "::",
+            "CronSignal"
+        ));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

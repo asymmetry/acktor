@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use acktor::{Actor, Handler};
+use acktor::{Actor, Handler, HasStableTypeId};
 use ahash::HashMap;
 
 use crate::remote_message::RemoteMessage;
@@ -25,11 +25,12 @@ pub(crate) type RemoteActorFactoryRegistry = HashMap<String, Arc<dyn DynRemoteAc
 /// [`with_actor`][crate::Node::with_actor] method or the
 /// [`AddActor`][crate::node::command::AddActor] command.
 ///
-/// It is highly recommended to use the [`#[acktor_ipc::remote]`][crate::remote] attribute macro
+/// It is highly recommended to use the [`#[remote_actor]`][crate::remote_actor] attribute macro
 /// to annotate the `impl Actor for MyActor { ... }` block of a remote actor. The macro overrides
 /// the [`Actor::type_erased_recipient_fn`] hook, which will opt-in the
-/// `type-erased-recipient-hook` feature, and allow conversion from any `Recipient` type of this
-/// actor to a `Recipient<RemoteMessage>`. With the help of this hook, the actor's address can be
-/// registered in the [`Node`][crate::Node]'s [`RemoteActorRegistry`] automatically. This is more
-/// convenient than registering the actor manually.
-pub trait RemoteActor: Actor + Handler<RemoteMessage> {}
+/// `type-erased-recipient-hook` feature of the [`acktor`] crate, and enable the conversion from
+/// any `Recipient` type backed by the actor's [`Address`][acktor::Address] to a
+/// `Recipient<RemoteMessage>`. With the help of this hook, the actor's address will be registered
+/// in the [`Node`][crate::Node]'s [`RemoteActorRegistry`] automatically when it is encoded for
+/// the first time. This is more convenient than manual registration.
+pub trait RemoteActor: Actor + Handler<RemoteMessage> + HasStableTypeId {}

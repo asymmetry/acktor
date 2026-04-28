@@ -22,6 +22,7 @@ disqualified = "=1.0.0"
 futures-util = "0.3"
 interprocess = { version = "2.2", features = ["tokio"] }
 prost = "0.14"
+sha2-const = "0.1"
 thiserror = "2.0"
 tokio = "1.47"
 tokio-tungstenite = "0.29"
@@ -37,7 +38,7 @@ rkyv = "0.8"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # workspace
-acktor = { version = "1.0", path = "./acktor" }
+acktor = { version = "1.0", path = "./acktor", default-features = false }
 acktor-derive = { version = "1.0", path = "./acktor-derive" }
-acktor-ipc = { version = "1.0", path = "./acktor-ipc" }
+acktor-ipc = { version = "1.0", path = "./acktor-ipc", default-features = false }
 acktor-ipc-proto = { version = "1.0", path = "./acktor-ipc-proto" }

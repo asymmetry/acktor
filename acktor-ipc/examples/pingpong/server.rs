@@ -6,7 +6,7 @@ use acktor::{
     Actor, Address, Context, Handler, JoinHandle,
     observer::{Observer, ObserverSet, SubjectActor},
 };
-use acktor_ipc::{RemoteActor, RemoteActorFactory, remote};
+use acktor_ipc::{RemoteActor, RemoteActorFactory, remote_actor};
 
 use crate::message::{Ping, Pong};
 
@@ -16,7 +16,7 @@ pub struct Server {
     observers: ObserverSet<Pong>,
 }
 
-#[remote]
+#[remote_actor]
 impl Actor for Server {
     type Context = Context<Self>;
     type Error = anyhow::Error;

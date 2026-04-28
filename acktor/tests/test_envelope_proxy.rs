@@ -12,11 +12,14 @@ impl Actor for Slow {
     type Error = anyhow::Error;
 }
 
-#[derive(Debug, Message)]
-#[result_type(u32)]
+#[derive(Debug)]
 struct Work {
     expense: Duration,
     value: u32,
+}
+
+impl Message for Work {
+    type Result = u32;
 }
 
 impl Handler<Work> for Slow {

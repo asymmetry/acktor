@@ -32,13 +32,13 @@ pub struct VecBool {
 /// A message which represents a `Vec<i32>`.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct VecInt32 {
-    #[prost(int32, repeated, tag = "1")]
+    #[prost(sint32, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<i32>,
 }
 /// A message which represents a `Vec<i64>`.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct VecInt64 {
-    #[prost(int64, repeated, tag = "1")]
+    #[prost(sint64, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<i64>,
 }
 /// A message which represents a `Vec<u32>`.

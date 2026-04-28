@@ -49,9 +49,12 @@ where
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(Vec<ActorState>)]
+#[derive(Debug)]
 pub struct Check;
+
+impl Message for Check {
+    type Result = Vec<ActorState>;
+}
 
 impl Handler<Check> for Watcher {
     type Result = Vec<ActorState>;

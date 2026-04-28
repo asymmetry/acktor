@@ -224,6 +224,20 @@ where
     }
 }
 
+#[cfg(feature = "identifier")]
+impl<M> crate::stable_type_id::HasStableTypeId for Observer<M>
+where
+    M: Message + crate::stable_type_id::HasStableTypeId,
+{
+    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+        crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
+            module_path!(),
+            "::",
+            "Observer"
+        ))
+        .combine(M::STABLE_TYPE_ID.as_bytes());
+}
+
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;

@@ -50,9 +50,12 @@ impl CronActor for B {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(i32)]
+#[derive(Debug)]
 pub struct CheckB;
+
+impl Message for CheckB {
+    type Result = i32;
+}
 
 impl Handler<CheckB> for B {
     type Result = i32;
@@ -63,9 +66,12 @@ impl Handler<CheckB> for B {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(bool)]
+#[derive(Debug)]
 pub struct IsSupervised;
+
+impl Message for IsSupervised {
+    type Result = bool;
+}
 
 impl Handler<IsSupervised> for B {
     type Result = bool;

@@ -7,13 +7,19 @@ use acktor::{
     observer::{Observer, ObserverSet, SubjectActor},
 };
 
-#[derive(Debug, Clone, Copy, Message)]
-#[result_type(())]
+#[derive(Debug, Clone, Copy)]
 pub struct M1;
 
-#[derive(Debug, Clone, Copy, Message)]
-#[result_type(())]
+impl Message for M1 {
+    type Result = ();
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct M2;
+
+impl Message for M2 {
+    type Result = ();
+}
 
 #[derive(Debug, Default)]
 pub struct A {
@@ -40,9 +46,12 @@ impl SubjectActor<M2> for A {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 pub struct NotifyM1;
+
+impl Message for NotifyM1 {
+    type Result = ();
+}
 
 impl Handler<NotifyM1> for A {
     type Result = ();
@@ -52,9 +61,12 @@ impl Handler<NotifyM1> for A {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 pub struct TryNotifyM2;
+
+impl Message for TryNotifyM2 {
+    type Result = ();
+}
 
 impl Handler<TryNotifyM2> for A {
     type Result = ();
@@ -64,9 +76,12 @@ impl Handler<TryNotifyM2> for A {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(usize)]
+#[derive(Debug)]
 pub struct GetObserverCount;
+
+impl Message for GetObserverCount {
+    type Result = usize;
+}
 
 impl Handler<GetObserverCount> for A {
     type Result = usize;
@@ -102,9 +117,12 @@ impl Handler<M2> for B {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(bool)]
+#[derive(Debug)]
 pub struct CheckB;
+
+impl Message for CheckB {
+    type Result = bool;
+}
 
 impl Handler<CheckB> for B {
     type Result = bool;

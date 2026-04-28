@@ -2,26 +2,44 @@ use anyhow::Result;
 use bytes::Bytes;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{Actor, Address, Context, Handler, Message, channel::oneshot};
+use acktor::{Actor, Address, Context, Handler, Message, MessageId, channel::oneshot};
 use acktor_ipc::{Decode, Encode, RemoteActor, RemoteMessage};
 
 #[derive(
-    Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
+    Debug,
+    Clone,
+    Copy,
+    KnownLayout,
+    Immutable,
+    FromBytes,
+    IntoBytes,
+    Message,
+    MessageId,
+    Encode,
+    Decode,
 )]
 #[result_type(i64)]
 #[codec(zerocopy)]
-#[index(1)]
 #[repr(C)]
 pub struct Double {
     pub value: i64,
 }
 
 #[derive(
-    Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
+    Debug,
+    Clone,
+    Copy,
+    KnownLayout,
+    Immutable,
+    FromBytes,
+    IntoBytes,
+    Message,
+    MessageId,
+    Encode,
+    Decode,
 )]
 #[result_type(i64)]
 #[codec(zerocopy)]
-#[index(2)]
 #[repr(C)]
 pub struct Triple {
     pub value: i64,
@@ -52,12 +70,12 @@ impl Handler<Triple> for Calculator {
 
 async fn roundtrip<M>(address: &Address<Calculator>, msg: M) -> Result<i64>
 where
-    M: Message + Encode,
+    M: Message + MessageId + Encode,
     M::Result: Decode,
 {
     let bytes = msg.encode_to_bytes(None)?;
     let (tx, rx) = oneshot::channel::<Bytes>();
-    let rm = RemoteMessage::send(0, <M as acktor_ipc::Encode>::ID, bytes, tx);
+    let rm = RemoteMessage::send(0, M::ID, bytes, tx);
     address.do_send(rm).await?;
     let bytes = rx.await?;
     Ok(<i64 as Decode>::decode(bytes, None)?)

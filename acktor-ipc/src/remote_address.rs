@@ -9,7 +9,7 @@ use futures_util::{FutureExt, TryFutureExt};
 use tracing::Instrument;
 
 use acktor::{
-    Address, Message, Recipient, SendError, Sender, SenderId,
+    Address, Message, MessageId, Recipient, SendError, Sender, SenderId,
     address::{ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture},
     channel::oneshot,
 };
@@ -171,7 +171,7 @@ impl SenderId for RemoteAddress {
 
 impl<M> Sender<M> for RemoteAddress
 where
-    M: Message + Encode,
+    M: Message + MessageId + Encode,
     M::Result: Decode,
 {
     fn closed(&self) -> ClosedResultFuture<'_> {
@@ -205,7 +205,7 @@ where
         self.session
             .do_send(RemoteMessage::send(
                 self.remote_actor_id,
-                <M as Encode>::ID,
+                M::ID,
                 message_bytes,
                 raw_tx,
             ))
@@ -230,7 +230,7 @@ where
         self.session
             .do_send(RemoteMessage::do_send(
                 self.remote_actor_id,
-                <M as Encode>::ID,
+                M::ID,
                 message_bytes,
             ))
             // error return by the sender, which means the session actor's mailbox is closed
@@ -254,7 +254,7 @@ where
 
         match self.session.try_do_send(RemoteMessage::send(
             self.remote_actor_id,
-            <M as Encode>::ID,
+            M::ID,
             message_bytes,
             raw_tx,
         )) {
@@ -275,7 +275,7 @@ where
         self.session
             .try_do_send(RemoteMessage::do_send(
                 self.remote_actor_id,
-                <M as Encode>::ID,
+                M::ID,
                 message_bytes,
             ))
             .map_err(|e| match e {
@@ -302,12 +302,7 @@ where
         // communication may fail
         self.session
             .do_send_timeout(
-                RemoteMessage::send(
-                    self.remote_actor_id,
-                    <M as Encode>::ID,
-                    message_bytes,
-                    raw_tx,
-                ),
+                RemoteMessage::send(self.remote_actor_id, M::ID, message_bytes, raw_tx),
                 timeout,
             )
             // error return by the sender, which means the session actor's mailbox is closed
@@ -330,7 +325,7 @@ where
         // communication may fail
         self.session
             .do_send_timeout(
-                RemoteMessage::do_send(self.remote_actor_id, <M as Encode>::ID, message_bytes),
+                RemoteMessage::do_send(self.remote_actor_id, M::ID, message_bytes),
                 timeout,
             )
             // error return by the sender, which means the session actor's mailbox is closed
@@ -354,7 +349,7 @@ where
 
         match self.session.blocking_do_send(RemoteMessage::send(
             self.remote_actor_id,
-            <M as Encode>::ID,
+            M::ID,
             message_bytes,
             raw_tx,
         )) {
@@ -372,7 +367,7 @@ where
         self.session
             .blocking_do_send(RemoteMessage::do_send(
                 self.remote_actor_id,
-                <M as Encode>::ID,
+                M::ID,
                 message_bytes,
             ))
             .map_err(|_| SendError::Closed(msg))
@@ -381,7 +376,7 @@ where
 
 impl<M> From<RemoteAddress> for Recipient<M>
 where
-    M: Message + Encode,
+    M: Message + MessageId + Encode,
     M::Result: Decode,
 {
     fn from(address: RemoteAddress) -> Self {

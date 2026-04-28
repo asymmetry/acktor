@@ -1,0 +1,5 @@
+error: HasStableTypeId derive only supports const generics of primitive types (u8/u16/u32/u64/usize, i8/i16/i32/i64/isize, bool, char)
+ --> tests/ui/has_stable_type_id_unsupported_const_generic_type.rs:4:21
+  |
+4 | struct Bad<const N: u128>;
+  |                     ^^^^

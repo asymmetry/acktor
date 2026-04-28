@@ -1,23 +1,32 @@
 use pretty_assertions::assert_eq;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{Actor, Context, Handler, Message};
+use acktor::{Actor, Context, Handler, Message, MessageId};
 use acktor_ipc::{
     Decode, Encode, Node, NodeError, RemoteActor,
     ipc_method::websocket::{WebSocketConnection, WebSocketListener},
     node::command,
-    remote,
+    remote_actor,
 };
 
 mod common;
 use common::{connect, pick_free_port, start_client, start_websocket_server};
 
 #[derive(
-    Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
+    Debug,
+    Clone,
+    Copy,
+    KnownLayout,
+    Immutable,
+    FromBytes,
+    IntoBytes,
+    Message,
+    MessageId,
+    Encode,
+    Decode,
 )]
 #[result_type(())]
 #[codec(zerocopy)]
-#[index(1)]
 #[repr(C)]
 pub struct Tick {
     pub value: u64,
@@ -27,7 +36,7 @@ pub struct Tick {
 #[message(Tick)]
 pub struct Dummy;
 
-#[remote]
+#[remote_actor]
 impl Actor for Dummy {
     type Context = Context<Self>;
     type Error = anyhow::Error;

@@ -32,11 +32,13 @@ pub use acktor_ipc_proto as proto;
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use acktor_derive::{Decode, Encode, RemoteActor, remote};
+pub use acktor_derive::{Decode, Encode, RemoteActor, remote_actor};
+
+// consider publish these two as separate crates
 
 pub mod double_map;
 
-// Re-export some dependencies for use in derived code.
+// re-export some dependencies for use in derived code.
 
 pub use bytes;
 

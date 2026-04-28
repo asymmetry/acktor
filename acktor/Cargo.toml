@@ -22,6 +22,8 @@ default = ["derive", "observer", "cron"]
 derive = ["dep:acktor-derive"]
 observer = ["dep:ahash"]
 cron = []
+# a stable unique identifier for types
+identifier = ["dep:sha2-const"]
 # opt-in hook to bridge an actor's address into a type-erased trait object which can be downcast
 # into a concrete recipient type of a specific message type
 type-erased-recipient-hook = []
@@ -30,7 +32,7 @@ tokio-tracing = ["tokio/tracing"]
 # emits debug-level tracing logs when an observer's mailbox is full during notification
 bottleneck-warning = []
 # marker feature enabled by `acktor-ipc`
-ipc = ["type-erased-recipient-hook"]
+ipc = ["identifier", "type-erased-recipient-hook"]
 
 [dependencies]
 disqualified.workspace = true
@@ -40,6 +42,7 @@ tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tracing.workspace = true
 
 ahash = { workspace = true, optional = true }
+sha2-const = { workspace = true, optional = true }
 
 acktor-derive = { workspace = true, optional = true }
 
@@ -47,6 +50,14 @@ acktor-derive = { workspace = true, optional = true }
 anyhow.workspace = true
 clap.workspace = true
 pretty_assertions.workspace = true
+
+[[example]]
+name = "ring"
+required-features = ["derive"]
+
+[[test]]
+name = "test_basic"
+required-features = ["derive"]
 
 [[test]]
 name = "test_observer"
@@ -59,3 +70,7 @@ required-features = ["cron"]
 [[test]]
 name = "test_cron_context"
 required-features = ["cron"]
+
+[[test]]
+name = "test_identifier"
+required-features = ["derive", "identifier"]

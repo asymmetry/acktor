@@ -30,9 +30,7 @@ impl Handler<GetCustomRes> for MyActor {
     type Result = MessageResult<GetCustomRes>;
 
     async fn handle(&mut self, _msg: GetCustomRes, _ctx: &mut Self::Context) -> Self::Result {
-        let result = MessageResult(CustomRes(42));
-        println!("{result:?}");
-        result
+        MessageResult(CustomRes(42))
     }
 }
 
@@ -47,12 +45,10 @@ impl Handler<GetCustomResAsync> for MyActor {
     type Result = FutureMessageResult<GetCustomResAsync>;
 
     async fn handle(&mut self, _msg: GetCustomResAsync, _ctx: &mut Self::Context) -> Self::Result {
-        let result = FutureMessageResult::new(async {
+        FutureMessageResult::new(async {
             tokio::time::sleep(Duration::from_millis(50)).await;
             99
-        });
-        println!("{result:?}");
-        result
+        })
     }
 }
 

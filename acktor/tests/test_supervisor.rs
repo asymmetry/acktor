@@ -14,9 +14,12 @@ impl Actor for A {
     type Error = anyhow::Error;
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 pub struct Notify;
+
+impl Message for Notify {
+    type Result = ();
+}
 
 impl Handler<Notify> for A {
     type Result = ();
@@ -34,9 +37,12 @@ impl Handler<Notify> for A {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 pub struct TryNotify;
+
+impl Message for TryNotify {
+    type Result = ();
+}
 
 impl Handler<TryNotify> for A {
     type Result = ();
@@ -74,9 +80,12 @@ impl Handler<SupervisionEvent<A>> for B {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(usize)]
+#[derive(Debug)]
 pub struct CheckB;
+
+impl Message for CheckB {
+    type Result = usize;
+}
 
 impl Handler<CheckB> for B {
     type Result = usize;

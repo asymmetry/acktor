@@ -10,9 +10,12 @@ use acktor::{
 use super::{CLEANUP_INTERVAL, Session};
 use crate::errors::SessionError;
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 struct RequireCleanup;
+
+impl Message for RequireCleanup {
+    type Result = ();
+}
 
 impl Handler<RequireCleanup> for Session {
     type Result = ();

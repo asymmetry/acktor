@@ -11,7 +11,7 @@ message ActorMessage {
   // The index of the target actor in the remote node.
   uint64 actor_id = 1;
   // The message identifier of the message to be sent.
-  uint64 message_id = 2;
+  fixed64 message_id = 2;
   // The message to be sent.
   bytes message = 3;
   // The tag to be used in the message response.

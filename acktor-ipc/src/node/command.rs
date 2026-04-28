@@ -19,8 +19,6 @@ type Result<T> = std::result::Result<T, NodeError>;
 ///
 /// A node can hold multiple listeners at once so that it can accept inbound connections on
 /// several endpoints in parallel.
-#[derive(Message)]
-#[result_type(bool)]
 pub struct AddListener<L>(pub L)
 where
     L: IpcListener;
@@ -36,19 +34,27 @@ where
     }
 }
 
+impl<L> Message for AddListener<L>
+where
+    L: IpcListener,
+{
+    type Result = bool;
+}
+
 /// A command which is used to remove an IPC listener from a node.
 ///
 /// The listener is identified by its local endpoint.
-#[derive(Debug, Message)]
-#[result_type(bool)]
+#[derive(Debug)]
 pub struct RemoveListener(pub String);
+
+impl Message for RemoveListener {
+    type Result = bool;
+}
 
 /// A command which is used to add an actor to a node.
 ///
 /// The `label` is registered alongside the address so the actor can later be looked up by label
 /// from a remote peer. Returns `false` if either the label or the actor is already registered.
-#[derive(Message)]
-#[result_type(bool)]
 pub struct AddActor<A>
 where
     A: RemoteActor,
@@ -69,10 +75,20 @@ where
     }
 }
 
+impl<A> Message for AddActor<A>
+where
+    A: RemoteActor,
+{
+    type Result = bool;
+}
+
 /// A command which is used to remove an actor from a node.
-#[derive(Debug, Message)]
-#[result_type(bool)]
+#[derive(Debug)]
 pub struct RemoveActor(pub ActorId);
+
+impl Message for RemoveActor {
+    type Result = bool;
+}
 
 /// A command which is used by a node to actively connect to another node like a client.
 ///
@@ -85,8 +101,6 @@ pub struct RemoveActor(pub ActorId);
 /// the result. The recommended way is to listen to the
 /// [`NodeEvent::SessionCreated`][crate::node::NodeEvent::SessionCreated] event which is emitted
 /// when a session is created, and get the session address from the event.
-#[derive(Message)]
-#[result_type(Result<Address<Session>>)]
 pub struct Connect<C>
 where
     C: IpcConnection,
@@ -108,6 +122,13 @@ where
     }
 }
 
+impl<C> Message for Connect<C>
+where
+    C: IpcConnection,
+{
+    type Result = Result<Address<Session>>;
+}
+
 impl<C> Connect<C>
 where
     C: IpcConnection,
@@ -127,8 +148,7 @@ where
 /// The remote node needs to know how to create the actor with the given type and config. If
 /// the operation is successful, the provided `label` will be used as the actor label of the
 /// new actor created in the remote node.
-#[derive(Debug, Message)]
-#[result_type(Result<RemoteAddress>)]
+#[derive(Debug)]
 pub struct CreateRemoteActor {
     pub session: SessionHandle,
     pub label: String,
@@ -136,10 +156,17 @@ pub struct CreateRemoteActor {
     pub config: String,
 }
 
+impl Message for CreateRemoteActor {
+    type Result = Result<RemoteAddress>;
+}
+
 /// A command which is used to get the address of an actor in a remote node.
-#[derive(Debug, Message)]
-#[result_type(Result<RemoteAddress>)]
+#[derive(Debug)]
 pub struct GetRemoteActor {
     pub session: SessionHandle,
     pub actor: ActorHandle,
+}
+
+impl Message for GetRemoteActor {
+    type Result = Result<RemoteAddress>;
 }

@@ -13,12 +13,15 @@ use crate::remote_actor::RemoteActorRegistry;
 
 /// A command which is used by a [`Session`][crate::session::Session] to create an actor in the
 /// current process on behalf of a remote peer.
-#[derive(Debug, Message)]
-#[result_type(Result<ActorId, SessionError>)]
+#[derive(Debug)]
 pub(crate) struct CreateActor {
     pub(crate) label: String,
     pub(crate) r#type: String,
     pub(crate) config: String,
+}
+
+impl Message for CreateActor {
+    type Result = Result<ActorId, SessionError>;
 }
 
 /// An actor which is responsible for creating actors in the current process on behalf of remote

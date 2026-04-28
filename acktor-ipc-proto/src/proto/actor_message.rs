@@ -8,7 +8,7 @@ pub struct ActorMessage {
     #[prost(uint64, tag = "1")]
     pub actor_id: u64,
     /// The message identifier of the message to be sent.
-    #[prost(uint64, tag = "2")]
+    #[prost(fixed64, tag = "2")]
     pub message_id: u64,
     /// The message to be sent.
     #[prost(bytes = "bytes", tag = "3")]

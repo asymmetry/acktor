@@ -90,27 +90,3 @@ fn is_self_type(ty: &syn::Type, name: &syn::Ident) -> bool {
         false
     }
 }
-
-pub fn detect_index(ast: &syn::DeriveInput) -> syn::Result<u64> {
-    let attr = ast
-        .attrs
-        .iter()
-        .find(|attr| attr.path().is_ident("index"))
-        .ok_or_else(|| {
-            syn::Error::new(
-                Span::call_site(),
-                "missing required attribute `#[index(N)]` where `N` is a `u64` literal",
-            )
-        })?;
-
-    match &attr.meta {
-        syn::Meta::List(list) => {
-            let lit: syn::LitInt = list.parse_args()?;
-            lit.base10_parse::<u64>()
-        }
-        _ => Err(syn::Error::new_spanned(
-            attr,
-            "the correct syntax is `#[index(N)]`",
-        )),
-    }
-}

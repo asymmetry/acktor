@@ -19,8 +19,6 @@ use crate::remote_address::RemoteAddress;
 /// in a remote process through [`Session`][crate::session::Session]) and for inbound messages
 /// (received by a [`Session`][crate::session::Session] and forwarded to an actor in the current
 /// process for handling).
-#[derive(Message)]
-#[result_type(())]
 pub struct RemoteMessage {
     pub actor_id: u64,
     pub message_id: u64,
@@ -44,6 +42,10 @@ impl Debug for RemoteMessage {
             )
             .finish()
     }
+}
+
+impl Message for RemoteMessage {
+    type Result = ();
 }
 
 impl RemoteMessage {
@@ -136,8 +138,7 @@ where
 }
 
 /// A message which is used to report actor status to a supervisor from a remote node.
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 pub enum RemoteSupervisionEvent {
     /// Warning, the actor could resume by itself.
     Warn(RemoteAddress, String),
@@ -147,6 +148,10 @@ pub enum RemoteSupervisionEvent {
     Panicked(RemoteAddress, String),
     /// Actor state changed.
     State(RemoteAddress, ActorState),
+}
+
+impl Message for RemoteSupervisionEvent {
+    type Result = ();
 }
 
 #[cfg(test)]

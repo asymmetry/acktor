@@ -21,10 +21,30 @@ pub use result::MessageResult;
 mod future_result;
 pub use future_result::FutureMessageResult;
 
+#[cfg(feature = "identifier")]
+mod index;
+#[cfg(feature = "identifier")]
+#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
+pub use index::MessageId;
+
 /// Types that can be sent between actors.
 pub trait Message: Send + 'static {
     /// The type of the response produced when this message is handled.
     type Result: Send + 'static;
+}
+
+/// Types that can be sent as a response to a message.
+pub trait MessageResponse<A, M>: Send
+where
+    A: Actor,
+    M: Message,
+{
+    /// Handles the response.
+    fn handle(
+        self,
+        ctx: &mut A::Context,
+        tx: Option<oneshot::Sender<M::Result>>,
+    ) -> impl Future<Output = ()> + Send;
 }
 
 /// Describes how an actor handles a specific message type.
@@ -41,20 +61,6 @@ where
         msg: M,
         ctx: &mut Self::Context,
     ) -> impl Future<Output = Self::Result> + Send;
-}
-
-/// Types that can be sent as a response to a message.
-pub trait MessageResponse<A, M>: Send
-where
-    A: Actor,
-    M: Message,
-{
-    /// Handles the response.
-    fn handle(
-        self,
-        ctx: &mut A::Context,
-        tx: Option<oneshot::Sender<M::Result>>,
-    ) -> impl Future<Output = ()> + Send;
 }
 
 impl Message for () {
@@ -285,5 +291,14 @@ mod tests {
         assert_eq!(roundtrip(vec![1_u8, 2, 3]).await?, vec![1, 2, 3]);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_debug_fmt() {
+        let result = MessageResult::<M<i32>>(42);
+        assert_eq!(format!("{result:?}"), "MessageResult<M<i32>>");
+
+        let future_result = FutureMessageResult::<M<i32>>::new(async { 42 });
+        assert_eq!(format!("{future_result:?}"), "FutureMessageResult<M<i32>>");
     }
 }

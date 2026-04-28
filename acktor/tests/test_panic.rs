@@ -46,9 +46,12 @@ impl Actor for Panicker {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 struct Boom;
+
+impl Message for Boom {
+    type Result = ();
+}
 
 impl Handler<Boom> for Panicker {
     type Result = ();
@@ -82,9 +85,12 @@ impl Handler<SupervisionEvent<Panicker>> for Watcher {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(Vec<String>)]
+#[derive(Debug)]
 struct Collect;
+
+impl Message for Collect {
+    type Result = Vec<String>;
+}
 
 impl Handler<Collect> for Watcher {
     type Result = Vec<String>;

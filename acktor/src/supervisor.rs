@@ -133,6 +133,34 @@ where
     }
 }
 
+#[cfg(feature = "identifier")]
+impl<A> crate::stable_type_id::HasStableTypeId for Supervisor<A>
+where
+    A: Actor + crate::stable_type_id::HasStableTypeId,
+{
+    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+        crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
+            module_path!(),
+            "::",
+            "Supervisor"
+        ))
+        .combine(A::STABLE_TYPE_ID.as_bytes());
+}
+
+#[cfg(feature = "identifier")]
+impl<A> crate::stable_type_id::HasStableTypeId for SupervisionEvent<A>
+where
+    A: Actor + crate::stable_type_id::HasStableTypeId,
+{
+    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+        crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
+            module_path!(),
+            "::",
+            "Supervisor"
+        ))
+        .combine(A::STABLE_TYPE_ID.as_bytes());
+}
+
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;

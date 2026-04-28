@@ -14,8 +14,6 @@ impl<T> Encode for Box<T>
 where
     T: Encode,
 {
-    const ID: u64 = T::ID;
-
     fn encoded_len(&self) -> usize {
         self.as_ref().encoded_len()
     }
@@ -29,8 +27,6 @@ impl<T> Decode for Box<T>
 where
     T: Decode,
 {
-    const ID: u64 = T::ID;
-
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         T::decode(buf, ctx).map(Box::new)
     }
@@ -40,8 +36,6 @@ impl<T> Encode for Arc<T>
 where
     T: Encode,
 {
-    const ID: u64 = T::ID;
-
     fn encoded_len(&self) -> usize {
         self.as_ref().encoded_len()
     }
@@ -55,8 +49,6 @@ impl<T> Decode for Arc<T>
 where
     T: Decode,
 {
-    const ID: u64 = T::ID;
-
     fn decode(buf: Bytes, ctx: Option<&DecodeContext>) -> Result<Self, DecodeError> {
         T::decode(buf, ctx).map(Arc::new)
     }

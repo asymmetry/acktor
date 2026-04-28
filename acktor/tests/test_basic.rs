@@ -5,9 +5,6 @@ use pretty_assertions::assert_eq;
 
 use acktor::{Actor, Context, Handler, Message, MessageResponse, Signal};
 
-#[derive(Debug, MessageResponse)]
-pub struct Res(i64);
-
 #[derive(Debug)]
 pub struct Number(i64);
 
@@ -15,6 +12,9 @@ impl Actor for Number {
     type Context = Context<Self>;
     type Error = anyhow::Error;
 }
+
+#[derive(Debug, MessageResponse)]
+pub struct Res(i64);
 
 #[derive(Debug, Message)]
 #[result_type(Res)]

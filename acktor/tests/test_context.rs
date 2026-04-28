@@ -31,9 +31,12 @@ impl Actor for TestActor {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 struct Fail(String);
+
+impl Message for Fail {
+    type Result = ();
+}
 
 impl Handler<Fail> for TestActor {
     type Result = ();
@@ -43,9 +46,12 @@ impl Handler<Fail> for TestActor {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(i32)]
+#[derive(Debug)]
 struct Ping(i32);
+
+impl Message for Ping {
+    type Result = i32;
+}
 
 impl Handler<Ping> for TestActor {
     type Result = i32;
@@ -55,9 +61,12 @@ impl Handler<Ping> for TestActor {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 struct Block(Duration);
+
+impl Message for Block {
+    type Result = ();
+}
 
 impl Handler<Block> for TestActor {
     type Result = ();
@@ -67,9 +76,12 @@ impl Handler<Block> for TestActor {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 struct Increment;
+
+impl Message for Increment {
+    type Result = ();
+}
 
 impl Handler<Increment> for TestActor {
     type Result = ();
@@ -79,9 +91,12 @@ impl Handler<Increment> for TestActor {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(())]
+#[derive(Debug)]
 struct Drain;
+
+impl Message for Drain {
+    type Result = ();
+}
 
 impl Handler<Drain> for TestActor {
     type Result = ();
@@ -92,9 +107,12 @@ impl Handler<Drain> for TestActor {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(usize)]
+#[derive(Debug)]
 struct GetCount;
+
+impl Message for GetCount {
+    type Result = usize;
+}
 
 impl Handler<GetCount> for TestActor {
     type Result = usize;
@@ -138,9 +156,12 @@ impl Handler<SupervisionEvent<TestActor>> for Watcher {
     }
 }
 
-#[derive(Debug, Message)]
-#[result_type(Vec<Event>)]
+#[derive(Debug)]
 struct Collect;
+
+impl Message for Collect {
+    type Result = Vec<Event>;
+}
 
 impl Handler<Collect> for Watcher {
     type Result = Vec<Event>;

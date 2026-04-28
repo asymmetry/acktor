@@ -21,10 +21,10 @@ message Option {
 message VecBool   { repeated bool   values = 1; }
 
 // A message which represents a `Vec<i32>`.
-message VecInt32  { repeated int32  values = 1; }
+message VecInt32  { repeated sint32  values = 1; }
 
 // A message which represents a `Vec<i64>`.
-message VecInt64  { repeated int64  values = 1; }
+message VecInt64  { repeated sint64  values = 1; }
 
 // A message which represents a `Vec<u32>`.
 message VecUint32 { repeated uint32 values = 1; }

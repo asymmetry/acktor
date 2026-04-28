@@ -1,25 +1,32 @@
 use tokio::time::Duration;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{
-    Actor, Address, Context, Handler, JoinHandle, Message, Sender, SenderId, utils::terminate_actor,
-};
+use acktor::{Actor, Address, Context, Handler, JoinHandle, Message, MessageId, Sender, SenderId};
 use acktor_ipc::{
     Decode, Encode, Node, NodeError, RemoteActor, RemoteActorFactory,
     ipc_method::websocket::{WebSocketConnection, WebSocketListener},
     node::command,
-    remote,
+    remote_actor,
 };
 
 mod common;
 use common::{connect, pick_free_port, start_client};
 
 #[derive(
-    Debug, Clone, Copy, KnownLayout, Immutable, FromBytes, IntoBytes, Message, Encode, Decode,
+    Debug,
+    Clone,
+    Copy,
+    KnownLayout,
+    Immutable,
+    FromBytes,
+    IntoBytes,
+    Message,
+    MessageId,
+    Encode,
+    Decode,
 )]
 #[result_type(i64)]
 #[codec(zerocopy)]
-#[index(1)]
 #[repr(C)]
 pub struct Inc {
     pub by: i64,
@@ -31,7 +38,7 @@ pub struct Counter {
     total: i64,
 }
 
-#[remote]
+#[remote_actor]
 impl Actor for Counter {
     type Context = Context<Self>;
     type Error = anyhow::Error;
@@ -120,8 +127,8 @@ async fn test_create_actor() -> anyhow::Result<()> {
         "expected CreateRemoteActorFailed for duplicate label, got {error:?}"
     );
 
-    terminate_actor(client, client_join_handle).await;
-    terminate_actor(server, server_join_handle).await;
+    acktor::utils::terminate_actor(client, client_join_handle).await;
+    acktor::utils::terminate_actor(server, server_join_handle).await;
 
     Ok(())
 }

@@ -51,8 +51,6 @@ pub(crate) const RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
 /// How often the session runs the response-map cleanup sweep.
 pub(crate) const CLEANUP_INTERVAL: Duration = Duration::from_secs(15);
 
-#[derive(Message)]
-#[result_type(())]
 struct ActorMessageResponse {
     tag: u64,
     result: StdResult<Bytes, String>,
@@ -66,11 +64,17 @@ impl Debug for ActorMessageResponse {
     }
 }
 
-#[derive(Message)]
-#[result_type(())]
+impl Message for ActorMessageResponse {
+    type Result = ();
+}
+
 struct CreateActorResponse {
     tag: u64,
     result: StdResult<ActorId, String>,
+}
+
+impl Message for CreateActorResponse {
+    type Result = ();
 }
 
 impl Debug for CreateActorResponse {
