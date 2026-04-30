@@ -14,7 +14,7 @@ use crate::address::{Address, Mailbox, Recipient, SenderId};
 use crate::channel::mpsc;
 use crate::context::DEFAULT_MAILBOX_CAPACITY;
 use crate::envelope::EnvelopeProxy;
-use crate::errors::RecvError;
+use crate::error::RecvError;
 use crate::message::{Handler, Message};
 use crate::supervisor::SupervisionEvent;
 use crate::utils::debug_trace;

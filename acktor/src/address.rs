@@ -8,6 +8,8 @@
 //! and a [`Recipient`] type which are alternative ways to organize the addresses of actors.
 //!
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 mod address_impl;
 pub use address_impl::Address;
 
@@ -16,8 +18,7 @@ pub use permit::{OwnedSendPermit, SendPermit};
 
 mod sender;
 pub use sender::{
-    ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender,
-    SenderId,
+    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderId,
 };
 
 mod recipient;
@@ -25,6 +26,24 @@ pub use recipient::Recipient;
 
 mod mailbox;
 pub use mailbox::Mailbox;
+
+#[cfg(feature = "ipc")]
+mod remote;
+#[cfg(feature = "ipc")]
+pub use remote::RemoteAddress;
+
+#[cfg(feature = "ipc")]
+mod remote_proxy;
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use remote_proxy::RemoteProxy;
+
+static INDEX_GENERATOR: AtomicU64 = AtomicU64::new(0);
+
+#[inline]
+pub(crate) fn next_actor_id() -> u64 {
+    INDEX_GENERATOR.fetch_add(1, Ordering::Relaxed)
+}
 
 #[cfg(test)]
 mod tests {
@@ -37,7 +56,7 @@ mod tests {
     use super::*;
     use crate::channel::mpsc;
     use crate::envelope::Envelope;
-    use crate::errors::SendError;
+    use crate::error::SendError;
     use crate::test_utils::{Dummy, Ping};
 
     fn make_address(capacity: usize) -> (Address<Dummy>, Mailbox<Dummy>) {
@@ -365,10 +384,15 @@ mod tests {
 
     #[test]
     fn test_sender() {
-        let sender_id = u64::MAX;
-        assert_eq!(sender_id.index(), u64::MAX);
+        let sender_id = crate::actor::ActorId::new(42);
+        assert_eq!(sender_id.index(), sender_id);
+
         #[cfg(feature = "ipc")]
-        assert_eq!(sender_id.is_remote(), true);
+        {
+            let sender_id =
+                crate::actor::ActorId::new_remote(42, std::num::NonZeroU64::new(1).unwrap());
+            assert_eq!(sender_id.is_remote(), true);
+        }
     }
 
     #[test]

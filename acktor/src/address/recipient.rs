@@ -5,18 +5,17 @@ use std::sync::Arc;
 use futures_util::{FutureExt, TryFutureExt};
 use tokio::time::Duration;
 
+use super::next_actor_id;
 use super::sender::{
-    ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender,
-    SenderId,
+    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderId,
 };
 use crate::actor::ActorId;
+#[cfg(feature = "type-erased-recipient-hook")]
+use crate::actor::TypeErasedRecipient;
 use crate::channel::{mpsc, oneshot};
 use crate::envelope::DefaultEnvelopeProxy;
 use crate::message::Message;
-use crate::utils::{ShortName, create_actor_id};
-
-#[cfg(feature = "type-erased-recipient-hook")]
-use crate::actor::TypeErasedRecipient;
+use crate::utils::ShortName;
 
 /// A type which is used to send a specific message type to an actor.
 ///
@@ -96,7 +95,7 @@ where
         let (tx, rx) = mpsc::channel(capacity);
         (
             Self(Arc::new(RecipientProxy {
-                index: create_actor_id(),
+                index: next_actor_id(),
                 tx,
             })),
             rx,
@@ -117,7 +116,7 @@ impl<M, EP> Sender<M, EP> for Recipient<M, EP>
 where
     M: Message,
 {
-    fn closed(&self) -> ClosedResultFuture<'_> {
+    fn closed(&self) -> EmptyFuture<'_> {
         self.0.closed()
     }
 
@@ -172,7 +171,7 @@ struct RecipientProxy<M>
 where
     M: Message<Result = ()>,
 {
-    index: ActorId,
+    index: u64,
     tx: mpsc::Sender<M>,
 }
 
@@ -211,12 +210,21 @@ where
     }
 }
 
+impl<M> RecipientProxy<M>
+where
+    M: Message<Result = ()>,
+{
+    const fn index(&self) -> ActorId {
+        ActorId::new(self.index)
+    }
+}
+
 impl<M> SenderId for RecipientProxy<M>
 where
     M: Message<Result = ()>,
 {
     fn index(&self) -> ActorId {
-        self.index
+        self.index()
     }
 }
 
@@ -224,7 +232,7 @@ impl<M> Sender<M> for RecipientProxy<M>
 where
     M: Message<Result = ()>,
 {
-    fn closed(&self) -> ClosedResultFuture<'_> {
+    fn closed(&self) -> EmptyFuture<'_> {
         self.tx.closed().boxed()
     }
 
@@ -330,7 +338,7 @@ mod tests {
     fn test_recipient_proxy() {
         let (tx, _rx) = mpsc::channel::<Ping>(1);
         let proxy = RecipientProxy {
-            index: create_actor_id(),
+            index: next_actor_id(),
             tx,
         };
 
@@ -343,7 +351,7 @@ mod tests {
         // distinct proxies with different indices are not equal
         let (tx2, _rx2) = mpsc::channel::<Ping>(1);
         let other = RecipientProxy {
-            index: create_actor_id(),
+            index: next_actor_id(),
             tx: tx2,
         };
         assert_ne!(proxy, other);

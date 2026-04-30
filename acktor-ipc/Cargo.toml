@@ -27,10 +27,6 @@ pipe = [
     "tokio/io-util",
 ]
 websocket = ["dep:tokio-tungstenite", "tokio/net"]
-# codec for primitive types
-# the default codec use zerocopy for some primitive types for efficiency, assuming a Rust-to-Rust
-# communication scenario
-prost-codec = [] # use prost for all types
 
 [dependencies]
 ahash.workspace = true

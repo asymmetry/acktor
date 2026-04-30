@@ -13,6 +13,10 @@ use tokio::sync::{
     oneshot::error::{RecvError as OneshotRecvError, TryRecvError as OneshotTryRecvError},
 };
 
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use crate::codec::{DecodeError, EncodeError};
+
 mod report;
 pub use report::ErrorReport;
 
@@ -24,17 +28,34 @@ pub enum SendError<M> {
     Closed(M),
     Full(M),
     Timeout(M),
+    #[cfg(feature = "ipc")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+    NoEncodeFn(M),
     // the behavior is similar to the #[transparent] attribute of this error
     Other(BoxError, M),
 }
 
 impl<M> SendError<M> {
-    /// Constructs a new [`SendError`] from an arbitrary error and the message that failed to be sent.
-    pub fn other<E>(error: E, message: M) -> Self
+    /// Constructs a new [`SendError`] from an arbitrary error and the message that failed to be
+    /// sent.
+    pub fn other<E>(err: E, msg: M) -> Self
     where
         E: Into<BoxError>,
     {
-        Self::Other(error.into(), message)
+        Self::Other(err.into(), msg)
+    }
+}
+
+#[cfg(feature = "ipc")]
+impl SendError<()> {
+    pub(crate) fn with_msg<M>(self, msg: M) -> SendError<M> {
+        match self {
+            SendError::Closed(_) => SendError::Closed(msg),
+            SendError::Full(_) => SendError::Full(msg),
+            SendError::Timeout(_) => SendError::Timeout(msg),
+            SendError::NoEncodeFn(_) => SendError::NoEncodeFn(msg),
+            SendError::Other(e, _) => SendError::Other(e, msg),
+        }
     }
 }
 
@@ -44,7 +65,9 @@ impl<M> Debug for SendError<M> {
             SendError::Closed(_) => fmt.write_str("Closed(..)"),
             SendError::Full(_) => fmt.write_str("Full(..)"),
             SendError::Timeout(_) => fmt.write_str("Timeout(..)"),
-            SendError::Other(transparent, _) => Debug::fmt(transparent, fmt),
+            #[cfg(feature = "ipc")]
+            SendError::NoEncodeFn(_) => fmt.write_str("NoEncodeFn(..)"),
+            SendError::Other(trans, _) => Debug::fmt(trans, fmt),
         }
     }
 }
@@ -55,7 +78,12 @@ impl<M> Display for SendError<M> {
             SendError::Closed(_) => fmt.write_str("sending on a closed channel"),
             SendError::Full(_) => fmt.write_str("sending on a full channel"),
             SendError::Timeout(_) => fmt.write_str("timed out waiting on sending"),
-            SendError::Other(transparent, _) => Display::fmt(transparent, fmt),
+            #[cfg(feature = "ipc")]
+            SendError::NoEncodeFn(_) => fmt.write_str(&format!(
+                "no encode function for message type {}",
+                crate::utils::ShortName::of::<M>()
+            )),
+            SendError::Other(trans, _) => Display::fmt(trans, fmt),
         }
     }
 }
@@ -66,7 +94,9 @@ impl<M> StdError for SendError<M> {
             SendError::Closed(_) => Option::None,
             SendError::Full(_) => Option::None,
             SendError::Timeout(_) => Option::None,
-            SendError::Other(transparent, _) => transparent.source(),
+            #[cfg(feature = "ipc")]
+            SendError::NoEncodeFn(_) => Option::None,
+            SendError::Other(trans, _) => trans.source(),
         }
     }
 }
@@ -113,11 +143,11 @@ pub enum RecvError {
 
 impl RecvError {
     /// Constructs a new [`RecvError`] from an arbitrary error.
-    pub fn other<E>(error: E) -> Self
+    pub fn other<E>(err: E) -> Self
     where
         E: Into<BoxError>,
     {
-        Self::Other(error.into())
+        Self::Other(err.into())
     }
 }
 

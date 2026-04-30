@@ -47,8 +47,7 @@ macro_rules! __try_notify_observers {
             if observer.capacity() == 0 {
                 tracing::debug!("Actor {} is full", observer.index());
             }
-            if let Err($crate::errors::SendError::Closed(_)) = observer.try_do_send($event.clone())
-            {
+            if let Err($crate::error::SendError::Closed(_)) = observer.try_do_send($event.clone()) {
                 should_clean = true;
             }
         }

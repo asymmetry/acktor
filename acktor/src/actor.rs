@@ -9,15 +9,21 @@ use std::fmt::Display;
 use std::panic::{self, AssertUnwindSafe};
 
 use futures_util::FutureExt;
-use tracing::{Instrument, Span, debug, error, error_span, warn};
+use tracing::{Instrument, Span, debug, error, error_span, field, warn};
 
 use crate::address::{Address, Mailbox, Recipient, Sender};
-use crate::errors::{BoxError, ErrorReport};
+use crate::error::{BoxError, ErrorReport};
 use crate::supervisor::SupervisionEvent;
 use crate::utils::panic_info_to_string;
 
-/// Actor index type.
-pub type ActorId = u64;
+mod index;
+pub use index::ActorId;
+
+#[cfg(feature = "type-erased-recipient-hook")]
+mod erased;
+#[cfg(feature = "type-erased-recipient-hook")]
+#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
+pub use erased::{AddressToTypeErasedRecipientFn, ToTypeErasedRecipient, TypeErasedRecipient};
 
 pub use tokio::task::JoinHandle;
 
@@ -131,7 +137,11 @@ pub trait Actor: Sized + Send + 'static {
         S: AsRef<str>,
     {
         let ctx = Self::Context::new(label.as_ref().to_string());
-        let span = error_span!("Actor", id = ctx.address().index(), label = ctx.label());
+        let span = error_span!(
+            "Actor",
+            id = field::display(ctx.index()),
+            label = ctx.label()
+        );
         ctx.run(self, span)
     }
 
@@ -143,7 +153,11 @@ pub trait Actor: Sized + Send + 'static {
         F: FnOnce(&mut Self::Context) -> Result<Self, Self::Error>,
     {
         let mut ctx = Self::Context::new(label.as_ref().to_string());
-        let span = error_span!("Actor", id = ctx.address().index(), label = ctx.label());
+        let span = error_span!(
+            "Actor",
+            id = field::display(ctx.index()),
+            label = ctx.label()
+        );
         let actor = {
             let _enter = span.enter();
             f(&mut ctx)?
@@ -172,7 +186,7 @@ pub trait Actor: Sized + Send + 'static {
         let span = error_span!(
             parent: parent_span,
             "Actor",
-            id = ctx.address().index(),
+            id = field::display(ctx.index()),
             label = ctx.label(),
         );
         let actor = {
@@ -182,30 +196,34 @@ pub trait Actor: Sized + Send + 'static {
         ctx.run(actor, span)
     }
 
-    /// Opt-in hook that turns an [`Address<A>`] into a type-erased trait object which can be
-    /// downcast into a concrete [`Recipient<M>`], where `M` is a specific message type
-    /// chosen in the overridden implementation of this method.
+    /// Opt-in hook which turns an [`Address`] into a [`TypeErasedRecipient`] that can be downcast
+    /// into a concrete [`Recipient<M>`], where `M` is a specific message type picked by the user
+    /// in the overridden implementation of this method.
     ///
     /// Sometimes users may need to convert a `Recipient<N>` backed by an `Address<A>` into a
     /// `Recipient<M>`. If the actor type `A` is known, users can retrieve the `Address<A>` by
-    /// downcasting the trait object in the `Recipient<N>`, and then the `Address<A>` can be
-    /// converted into a `Recipient<M>`. However, if the concrete actor type `A` is not known
-    /// (e.g., in a function receives a `Recipient<N>` backed by several different actor types),
-    /// this approach does not work.
+    /// downcasting the trait object in `Recipient<N>`, and then convert it to `Recipient<M>`.
+    /// However, if the concrete actor type `A` is not known by the user, this approach does not
+    /// work.
     ///
-    /// This hook allows users to provide a function `f`, which defines a two-step conversion from
-    /// an `Address<A>` to a `Recipient<M>` first, with `M` being a specific message type chosen
-    /// by the user, and then to a type-erased `Box<dyn Any + Send + Sync>`. Returning `Some(f)`
-    /// causes [`Address::new`] to bake `f` into every address for this actor. To convert a
-    /// `Recipient<N>` into a `Recipient<M>`, users can use the [`Sender::type_erased_recipient`]
-    /// method, which will invoke the function `f` and return the type-erased trait object, and
-    /// convert the type-erased trait object back into a `Recipient<M>` by downcasting.
+    /// This method allows users to hook in a function `f`, which defines a two-step conversion:
+    /// first, convert an `Address<A>` to a `Recipient<M>`, with `M` being a specific message type
+    /// chosen by the user; and second, convert `Recipient<M>` to a type-erased
+    /// [`TypeErasedRecipient`]. Returning `Some` from this method will trigger [`Address::new`]
+    /// to bake this function `f` into every address of this actor.
     ///
-    /// Crates that extend actors with extra capabilities based on this feature can provide a
-    /// macro which overrides this method automatically for their users to avoid boilerplate.
+    /// Once this hook is in place, to convert an arbitrary `Recipient<N>` to a `Recipient<M>`,
+    /// users can call [`Sender::type_erased_recipient`] method, which invokes the function `f`
+    /// internally and returns the generated [`TypeErasedRecipient`]. Users can then call the
+    /// [`downcast`][TypeErasedRecipient::downcast] method on it to convert it back into a
+    /// `Recipient<M>`.
+    ///
+    /// Downstream crates which plan to extend the capabilities of the actors with this feature
+    /// should provide a macro to override this method programmatically, this can help users to
+    /// reduce boilerplate.
     #[cfg(feature = "type-erased-recipient-hook")]
     #[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-    fn type_erased_recipient_fn() -> Option<TypeErasedRecipientFn<Self>> {
+    fn type_erased_recipient_hook() -> Option<AddressToTypeErasedRecipientFn<Self>> {
         None
     }
 }
@@ -505,59 +523,6 @@ where
     }
 }
 
-/// Return type of [`Sender::type_erased_recipient`] and [`TypeErasedRecipientFn`].
-///
-/// It wraps a type-erased trait object with its original type name for better error messages when
-/// downcasting fails.
-#[cfg(feature = "type-erased-recipient-hook")]
-#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-pub struct TypeErasedRecipient {
-    inner: Box<dyn Any + Send + Sync>,
-    type_name: &'static str,
-}
-
-#[cfg(feature = "type-erased-recipient-hook")]
-impl TypeErasedRecipient {
-    /// Constructs a new [`TypeErasedRecipient`] from a concrete value.
-    pub fn new<T>(value: T) -> Self
-    where
-        T: Any + Send + Sync,
-    {
-        Self {
-            inner: Box::new(value),
-            type_name: std::any::type_name::<T>(),
-        }
-    }
-
-    /// Attempts to downcast the type-erased recipient to a concrete type.
-    pub fn downcast<T>(self) -> Result<Box<T>, (Self, String)>
-    where
-        T: Any + Send + Sync,
-    {
-        self.inner.downcast::<T>().map_err(|inner| {
-            let error_msg = format!(
-                "Could not downcast TypeErasedRecipient: expected type {}, actual type {}",
-                crate::utils::ShortName::of::<T>(),
-                crate::utils::ShortName(self.type_name),
-            );
-            (
-                Self {
-                    inner,
-                    type_name: self.type_name,
-                },
-                error_msg,
-            )
-        })
-    }
-}
-
-/// Function-pointer type returned by [`Actor::type_erased_recipient_fn`], which converts an
-/// [`Address<A>`] into a type-erased trait object that can be downcast into a concrete
-/// [`Recipient<M>`].
-#[cfg(feature = "type-erased-recipient-hook")]
-#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-pub type TypeErasedRecipientFn<A> = fn(&Address<A>) -> TypeErasedRecipient;
-
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
@@ -572,39 +537,5 @@ mod tests {
         assert_eq!(ActorState::try_from(3), Ok(ActorState::Stopping));
         assert_eq!(ActorState::try_from(4), Ok(ActorState::Stopped));
         assert_eq!(ActorState::try_from(5), Err(()));
-    }
-
-    #[cfg(feature = "type-erased-recipient-hook")]
-    #[test]
-    fn test_type_erased_recipient() -> anyhow::Result<()> {
-        // downcast to the original type succeeds
-        let erased = TypeErasedRecipient::new(42_u32);
-        let value = erased
-            .downcast::<u32>()
-            .map_err(|(_, e)| anyhow::anyhow!(e))?;
-        assert_eq!(*value, 42);
-
-        // downcast to a wrong type returns the original recipient and a descriptive error
-        let erased = TypeErasedRecipient::new(42_u32);
-        let (recovered, error_msg) = erased
-            .downcast::<String>()
-            .err()
-            .ok_or(anyhow::anyhow!("downcast to wrong type should have failed"))?;
-        assert!(
-            error_msg.contains("expected type String"),
-            "missing expected type in error: {error_msg}"
-        );
-        assert!(
-            error_msg.contains("actual type u32"),
-            "missing actual type in error: {error_msg}"
-        );
-
-        // the recovered recipient still holds the original value
-        let value = recovered
-            .downcast::<u32>()
-            .map_err(|(_, e)| anyhow::anyhow!(e))?;
-        assert_eq!(*value, 42);
-
-        Ok(())
     }
 }

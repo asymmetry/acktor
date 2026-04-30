@@ -10,7 +10,7 @@ use tracing::Instrument;
 
 use acktor::{
     Address, Message, MessageId, Recipient, SendError, Sender, SenderId,
-    address::{ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture},
+    address::{DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture},
     channel::oneshot,
 };
 
@@ -174,7 +174,7 @@ where
     M: Message + MessageId + Encode,
     M::Result: Decode,
 {
-    fn closed(&self) -> ClosedResultFuture<'_> {
+    fn closed(&self) -> EmptyFuture<'_> {
         self.closed().boxed()
     }
 

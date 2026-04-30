@@ -13,7 +13,7 @@ use tracing::debug;
 
 use crate::actor::Actor;
 use crate::channel::oneshot;
-use crate::errors::{BoxError, ErrorReport, SendError};
+use crate::error::{BoxError, ErrorReport, SendError};
 
 mod result;
 pub use result::MessageResult;

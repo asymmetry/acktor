@@ -13,9 +13,9 @@ use tokio::{
     time::{self, Duration},
 };
 
-pub use tokio::sync::mpsc::{OwnedPermit, Permit, Sender, WeakSender, error};
+use crate::error::RecvError;
 
-use crate::errors::RecvError;
+pub use tokio::sync::mpsc::{OwnedPermit, Permit, Sender, WeakSender, error};
 
 /// Receives values from the associated [`Sender`].
 ///

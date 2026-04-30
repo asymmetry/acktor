@@ -39,6 +39,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # workspace
 acktor = { version = "1.0", path = "./acktor", default-features = false }
-acktor-derive = { version = "1.0", path = "./acktor-derive" }
+acktor-derive = { version = "1.0", path = "./acktor-derive", default-features = false }
 acktor-ipc = { version = "1.0", path = "./acktor-ipc", default-features = false }
-acktor-ipc-proto = { version = "1.0", path = "./acktor-ipc-proto" }
+acktor-ipc-proto = { version = "1.0", path = "./acktor-ipc-proto", default-features = false }

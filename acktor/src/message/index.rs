@@ -1,14 +1,12 @@
 use super::Message;
-use crate::StableTypeId;
 use crate::actor::Actor;
-use crate::signal::Signal;
-use crate::stable_type_id::HasStableTypeId;
-use crate::supervisor::{SupervisionEvent, Supervisor};
-
 #[cfg(feature = "cron")]
 use crate::cron::CronSignal;
 #[cfg(feature = "observer")]
 use crate::observer::Observer;
+use crate::signal::Signal;
+use crate::stable_type_id::HasStableTypeId;
+use crate::supervisor::{SupervisionEvent, Supervisor};
 
 /// Message identifier.
 ///
@@ -42,8 +40,7 @@ impl<A> MessageId for SupervisionEvent<A>
 where
     A: Actor + HasStableTypeId,
 {
-    const ID: u64 =
-        StableTypeId::from_stable_type_name("acktor::supervisor::SupervisionEvent").as_u64();
+    const ID: u64 = Self::STABLE_TYPE_ID.as_u64();
 }
 
 #[cfg(feature = "observer")]

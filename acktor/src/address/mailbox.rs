@@ -3,7 +3,7 @@ use std::fmt::{self, Debug};
 use crate::actor::Actor;
 use crate::channel::mpsc;
 use crate::envelope::Envelope;
-use crate::errors::RecvError;
+use crate::error::RecvError;
 
 /// The mailbox of an actor, which holds a queue of messages to be processed by the actor.
 #[repr(transparent)]

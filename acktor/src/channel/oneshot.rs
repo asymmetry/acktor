@@ -15,7 +15,7 @@ use tokio::{
     time::{self, Duration},
 };
 
-use crate::errors::{BoxError, RecvError, SendError};
+use crate::error::{BoxError, RecvError, SendError};
 
 /// Sends a value to the associated [`Receiver`].
 ///
@@ -145,7 +145,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::*;
-    use crate::errors::SendError;
+    use crate::error::SendError;
 
     #[tokio::test]
     async fn test_send_recv() -> Result<()> {

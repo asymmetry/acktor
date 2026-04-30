@@ -70,12 +70,22 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-mod errors;
-pub use errors::{BoxError, ErrorReport, RecvError, SendError};
+pub mod error;
+pub use error::{ErrorReport, RecvError, SendError};
 
 pub mod channel;
-
 pub mod utils;
+
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub mod codec;
+
+#[cfg(feature = "identifier")]
+#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
+pub mod stable_type_id;
+#[cfg(feature = "identifier")]
+#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
+pub use stable_type_id::{HasStableTypeId, StableTypeId};
 
 pub mod actor;
 pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
@@ -87,18 +97,10 @@ pub mod address;
 pub use address::{Address, Recipient, Sender, SenderId};
 
 pub mod message;
-pub use message::{Handler, Message, MessageResponse};
-
 #[cfg(feature = "identifier")]
 #[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
 pub use message::MessageId;
-
-#[cfg(feature = "identifier")]
-#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
-pub mod stable_type_id;
-#[cfg(feature = "identifier")]
-#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
-pub use stable_type_id::{HasStableTypeId, StableTypeId};
+pub use message::{Handler, Message, MessageResponse};
 
 pub mod envelope;
 
@@ -123,6 +125,10 @@ pub use acktor_derive::{HasStableTypeId, MessageId};
 pub use acktor_derive::{Message, MessageResponse};
 
 // re-export for use in derived code
+
+#[doc(hidden)]
+#[cfg(feature = "ipc")]
+pub use bytes;
 #[doc(hidden)]
 #[cfg(feature = "identifier")]
 pub use sha2_const;

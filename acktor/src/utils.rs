@@ -2,13 +2,15 @@
 //!
 
 use std::any::Any;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use tracing::{debug, warn};
 
-use crate::actor::{ActorId, JoinHandle};
+use crate::actor::JoinHandle;
 use crate::address::{Recipient, Sender, SenderId};
 use crate::signal::Signal;
+
+mod type_map;
+pub use type_map::TypeMap;
 
 pub use disqualified::ShortName;
 
@@ -36,24 +38,6 @@ macro_rules! __debug_trace {
 pub use crate::__debug_info as debug_info;
 #[doc(inline)]
 pub use crate::__debug_trace as debug_trace;
-
-static ACTOR_ID_ALLOCATOR: AtomicU64 = AtomicU64::new(0);
-
-/// Maximum value `create_actor_id` may return. The MSB of the u64 actor id is reserved.
-#[doc(hidden)]
-pub const MAX_ACTOR_ID: u64 = (1 << 63) - 1;
-
-#[inline]
-pub(crate) fn create_actor_id() -> ActorId {
-    let id = ACTOR_ID_ALLOCATOR.fetch_add(1, Ordering::Relaxed);
-    // in practice 2^63 actors is impossible to reach, so only a debug assertion here
-    debug_assert!(
-        id <= MAX_ACTOR_ID,
-        "actor id space exhausted (more than {} actors allocated in the current process)",
-        MAX_ACTOR_ID
-    );
-    id
-}
 
 /// Terminates an actor by sending it a [`Signal::Terminate`] message and awaiting its
 /// [`JoinHandle`].

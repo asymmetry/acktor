@@ -1,40 +1,86 @@
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
+#[cfg(feature = "ipc")]
+use std::num::NonZeroU64;
 use std::sync::Arc;
 
-use futures_util::{FutureExt, TryFutureExt};
+use futures_util::FutureExt;
 use tokio::time::Duration;
 
+use super::next_actor_id;
 use super::permit::{OwnedSendPermit, SendPermit};
 use super::recipient::Recipient;
+#[cfg(feature = "ipc")]
+use super::remote::RemoteAddress;
+#[cfg(feature = "ipc")]
+use super::remote_proxy::RemoteProxy;
 use super::sender::{
-    ClosedResultFuture, DoSendResult, DoSendResultFuture, SendResult, SendResultFuture, Sender,
-    SenderId,
+    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderId,
 };
 use crate::actor::{Actor, ActorId};
-use crate::channel::{mpsc, oneshot};
-use crate::envelope::{Envelope, FromEnvelope, IntoEnvelope};
-use crate::errors::SendError;
-use crate::message::Message;
-use crate::utils::{ShortName, create_actor_id};
-
 #[cfg(feature = "type-erased-recipient-hook")]
-use crate::actor::{TypeErasedRecipient, TypeErasedRecipientFn};
+use crate::actor::{AddressToTypeErasedRecipientFn, TypeErasedRecipient};
+use crate::channel::{mpsc, oneshot};
+#[cfg(feature = "ipc")]
+use crate::codec::HasCodecTable;
+use crate::envelope::{Envelope, FromEnvelope, IntoEnvelope};
+use crate::error::SendError;
+use crate::message::Message;
+use crate::utils::ShortName;
+
+pub struct LocalAddress<A>
+where
+    A: Actor,
+{
+    index: u64,
+    tx: mpsc::Sender<Envelope<A>>,
+    #[cfg(feature = "type-erased-recipient-hook")]
+    into_type_erased_recipient: Option<AddressToTypeErasedRecipientFn<A>>,
+}
+
+impl<A> Clone for LocalAddress<A>
+where
+    A: Actor,
+{
+    fn clone(&self) -> Self {
+        Self {
+            index: self.index,
+            tx: self.tx.clone(),
+            #[cfg(feature = "type-erased-recipient-hook")]
+            into_type_erased_recipient: self.into_type_erased_recipient,
+        }
+    }
+}
+
+enum Inner<A>
+where
+    A: Actor,
+{
+    Local(LocalAddress<A>),
+    #[cfg(feature = "ipc")]
+    Remote(RemoteAddress),
+}
+
+impl<A> Clone for Inner<A>
+where
+    A: Actor,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Local(address) => Self::Local(address.clone()),
+            #[cfg(feature = "ipc")]
+            Self::Remote(address) => Self::Remote(address.clone()),
+        }
+    }
+}
 
 /// The address of an actor.
 ///
 /// It is used to send messages to an actor.
-pub struct Address<A>
+#[repr(transparent)]
+pub struct Address<A>(Inner<A>)
 where
-    A: Actor,
-{
-    index: ActorId,
-    tx: mpsc::Sender<Envelope<A>>,
-    /// Opt-in conversion hook baked in at construction, see [`Actor::type_erased_recipient_fn`]
-    /// for details.
-    #[cfg(feature = "type-erased-recipient-hook")]
-    type_erased_recipient_fn: Option<TypeErasedRecipientFn<A>>,
-}
+    A: Actor;
 
 impl<A> Debug for Address<A>
 where
@@ -42,7 +88,7 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple(&format!("{}", ShortName::of::<Self>()))
-            .field(&self.index)
+            .field(&self.index())
             .finish()
     }
 }
@@ -52,12 +98,7 @@ where
     A: Actor,
 {
     fn clone(&self) -> Self {
-        Self {
-            index: self.index,
-            tx: self.tx.clone(),
-            #[cfg(feature = "type-erased-recipient-hook")]
-            type_erased_recipient_fn: self.type_erased_recipient_fn,
-        }
+        Self(self.0.clone())
     }
 }
 
@@ -66,7 +107,7 @@ where
     A: Actor,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.index.eq(&other.index)
+        self.index().eq(&other.index())
     }
 }
 
@@ -80,7 +121,7 @@ where
     where
         H: Hasher,
     {
-        self.index.hash(state);
+        self.index().hash(state);
     }
 }
 
@@ -90,74 +131,143 @@ where
 {
     /// Constructs a new [`Address`] from a [`mpsc::Sender`].
     ///
-    /// Triggers [`Actor::type_erased_recipient_fn`] once (if the feature
+    /// Triggers [`Actor::type_erased_recipient_hook`] once (if the feature
     /// `type-erased-recipient-hook` is enabled) and stores the result.
     pub fn new(tx: mpsc::Sender<Envelope<A>>) -> Self {
-        Self {
-            index: create_actor_id(),
+        Self(Inner::Local(LocalAddress {
+            index: next_actor_id(),
             tx,
             #[cfg(feature = "type-erased-recipient-hook")]
-            type_erased_recipient_fn: A::type_erased_recipient_fn(),
-        }
+            into_type_erased_recipient: A::type_erased_recipient_hook(),
+        }))
+    }
+
+    /// Constructs a new [`Address`] of a remote actor.
+    ///
+    /// The `index` parameter is used to identify the remote actor, which is usually the local
+    /// actor id of the remote actor in the remote process. The `remote_index` parameter is used
+    /// to identify the remote session which the remote actor belongs to.
+    #[cfg(feature = "ipc")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+    pub fn new_remote(
+        index: u64,
+        remote_index: NonZeroU64,
+        proxy: Arc<dyn RemoteProxy + Send + Sync>,
+    ) -> Self
+    where
+        A: HasCodecTable,
+    {
+        Self(Inner::Remote(RemoteAddress::new(
+            ActorId::new_remote(index, remote_index),
+            proxy,
+            <A as HasCodecTable>::codec_table(),
+        )))
     }
 
     /// Returns the index of the address.
-    pub fn index(&self) -> ActorId {
-        self.index
+    pub const fn index(&self) -> ActorId {
+        match &self.0 {
+            Inner::Local(address) => ActorId::new(address.index),
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.index(),
+        }
     }
 
     /// Completes when the mailbox of the actor has been closed.
-    pub fn closed(&self) -> impl Future<Output = ()> + Send {
-        self.tx.closed()
+    pub async fn closed(&self) {
+        match &self.0 {
+            Inner::Local(address) => address.tx.closed().await,
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.closed().await,
+        }
     }
 
     /// Checks if the mailbox of the actor is closed.
     pub fn is_closed(&self) -> bool {
-        self.tx.is_closed()
+        match &self.0 {
+            Inner::Local(address) => address.tx.is_closed(),
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.is_closed(),
+        }
     }
 
     /// Returns the current capacity of the mailbox of the actor.
     pub fn capacity(&self) -> usize {
-        self.tx.capacity()
+        match &self.0 {
+            Inner::Local(address) => address.tx.capacity(),
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.capacity(),
+        }
     }
 
     /// Sends a message, waiting until there is capacity, and returns a
-    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
-    ///  response.
-    pub fn send<M, EP>(&self, msg: M) -> impl Future<Output = SendResult<M>> + Send + '_
+    /// [`Receiver`][oneshot::Receiver] which can be used to receive the message response.
+    pub async fn send<M, EP>(&self, msg: M) -> SendResult<M>
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
-        let (tx, rx) = oneshot::channel();
-        self.tx
-            .send(msg.pack(Some(tx)))
-            .map_ok(|_| rx)
-            .map_err(|e| SendError::Closed(M::unpack(e.0)))
+        match &self.0 {
+            Inner::Local(address) => {
+                let (result_tx, result_rx) = oneshot::channel();
+
+                address
+                    .tx
+                    .send(msg.pack(Some(result_tx)))
+                    .await
+                    .map_err(|e| SendError::Closed(M::unpack(e.0)))?;
+
+                Ok(result_rx)
+            }
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.send(msg).await,
+        }
     }
 
     /// Sends a message, waiting until there is capacity, without expecting a response.
-    pub fn do_send<M, EP>(&self, msg: M) -> impl Future<Output = DoSendResult<M>> + Send + '_
+    pub async fn do_send<M, EP>(&self, msg: M) -> DoSendResult<M>
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
-        self.tx
-            .send(msg.pack(None))
-            .map_err(|e| SendError::Closed(M::unpack(e.0)))
+        match &self.0 {
+            Inner::Local(address) => address
+                .tx
+                .send(msg.pack(None))
+                .await
+                .map_err(|e| SendError::Closed(M::unpack(e.0))),
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.do_send(msg).await,
+        }
     }
 
     /// Attempts to immediately send a message and returns a
-    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
-    /// response.
+    /// [`Receiver`][oneshot::Receiver] which can be used to receive the message response.
     pub fn try_send<M, EP>(&self, msg: M) -> SendResult<M>
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
-        let (tx, rx) = oneshot::channel();
-        let envelope = msg.pack(Some(tx));
-        self.tx.try_send(envelope).map(|_| rx).map_err(|e| match e {
-            mpsc::error::TrySendError::Closed(envelope) => SendError::Closed(M::unpack(envelope)),
-            mpsc::error::TrySendError::Full(envelope) => SendError::Full(M::unpack(envelope)),
-        })
+        match &self.0 {
+            Inner::Local(address) => {
+                let (result_tx, result_rx) = oneshot::channel();
+
+                address
+                    .tx
+                    .try_send(msg.pack(Some(result_tx)))
+                    .map(|_| result_rx)
+                    .map_err(|e| match e {
+                        mpsc::error::TrySendError::Closed(envelope) => {
+                            SendError::Closed(M::unpack(envelope))
+                        }
+                        mpsc::error::TrySendError::Full(envelope) => {
+                            SendError::Full(M::unpack(envelope))
+                        }
+                    })
+            }
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.try_send(msg),
+        }
     }
 
     /// Attempts to immediately send a message without expecting a response.
@@ -165,58 +275,73 @@ where
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
-        let envelope = msg.pack(None);
-        self.tx.try_send(envelope).map_err(|e| match e {
-            mpsc::error::TrySendError::Closed(envelope) => SendError::Closed(M::unpack(envelope)),
-            mpsc::error::TrySendError::Full(envelope) => SendError::Full(M::unpack(envelope)),
-        })
+        match &self.0 {
+            Inner::Local(address) => address.tx.try_send(msg.pack(None)).map_err(|e| match e {
+                mpsc::error::TrySendError::Closed(envelope) => {
+                    SendError::Closed(M::unpack(envelope))
+                }
+                mpsc::error::TrySendError::Full(envelope) => SendError::Full(M::unpack(envelope)),
+            }),
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.try_do_send(msg),
+        }
     }
 
     /// Sends a message, waiting until there is capacity, but only for a limited time, and returns
-    /// a [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
-    /// response.
-    pub fn send_timeout<M, EP>(
-        &self,
-        msg: M,
-        timeout: Duration,
-    ) -> impl Future<Output = SendResult<M>> + Send + '_
+    /// a [`Receiver`][oneshot::Receiver] which can be used to receive the message response.
+    pub async fn send_timeout<M, EP>(&self, msg: M, timeout: Duration) -> SendResult<M>
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
-        let (tx, rx) = oneshot::channel();
-        self.tx
-            .send_timeout(msg.pack(Some(tx)), timeout)
-            .map_ok(|_| rx)
-            .map_err(|e| match e {
-                mpsc::error::SendTimeoutError::Closed(envelope) => {
-                    SendError::Closed(M::unpack(envelope))
-                }
-                mpsc::error::SendTimeoutError::Timeout(envelope) => {
-                    SendError::Timeout(M::unpack(envelope))
-                }
-            })
+        match &self.0 {
+            Inner::Local(address) => {
+                let (result_tx, result_rx) = oneshot::channel();
+
+                address
+                    .tx
+                    .send_timeout(msg.pack(Some(result_tx)), timeout)
+                    .await
+                    .map_err(|e| match e {
+                        mpsc::error::SendTimeoutError::Closed(envelope) => {
+                            SendError::Closed(M::unpack(envelope))
+                        }
+                        mpsc::error::SendTimeoutError::Timeout(envelope) => {
+                            SendError::Timeout(M::unpack(envelope))
+                        }
+                    })?;
+
+                Ok(result_rx)
+            }
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.send_timeout(msg, timeout).await,
+        }
     }
 
     /// Sends a message, waiting until there is capacity, but only for a limited time, without
     /// expecting a response.
-    pub fn do_send_timeout<M, EP>(
-        &self,
-        msg: M,
-        timeout: Duration,
-    ) -> impl Future<Output = DoSendResult<M>> + Send + '_
+    pub async fn do_send_timeout<M, EP>(&self, msg: M, timeout: Duration) -> DoSendResult<M>
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
-        self.tx
-            .send_timeout(msg.pack(None), timeout)
-            .map_err(|e| match e {
-                mpsc::error::SendTimeoutError::Closed(envelope) => {
-                    SendError::Closed(M::unpack(envelope))
-                }
-                mpsc::error::SendTimeoutError::Timeout(envelope) => {
-                    SendError::Timeout(M::unpack(envelope))
-                }
-            })
+        match &self.0 {
+            Inner::Local(address) => address
+                .tx
+                .send_timeout(msg.pack(None), timeout)
+                .await
+                .map_err(|e| match e {
+                    mpsc::error::SendTimeoutError::Closed(envelope) => {
+                        SendError::Closed(M::unpack(envelope))
+                    }
+                    mpsc::error::SendTimeoutError::Timeout(envelope) => {
+                        SendError::Timeout(M::unpack(envelope))
+                    }
+                }),
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.do_send_timeout(msg, timeout).await,
+        }
     }
 
     /// Blocking send to call outside of asynchronous contexts.
@@ -231,11 +356,21 @@ where
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
-        let (tx, rx) = oneshot::channel();
-        self.tx
-            .blocking_send(msg.pack(Some(tx)))
-            .map(|_| rx)
-            .map_err(|e| SendError::Closed(M::unpack(e.0)))
+        match &self.0 {
+            Inner::Local(address) => {
+                let (result_tx, result_rx) = oneshot::channel();
+
+                address
+                    .tx
+                    .blocking_send(msg.pack(Some(result_tx)))
+                    .map_err(|e| SendError::Closed(M::unpack(e.0)))?;
+
+                Ok(result_rx)
+            }
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.blocking_send(msg),
+        }
     }
 
     /// Blocking do_send to call outside of asynchronous contexts.
@@ -250,68 +385,116 @@ where
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
     {
-        self.tx
-            .blocking_send(msg.pack(None))
-            .map_err(|e| SendError::Closed(M::unpack(e.0)))
+        match &self.0 {
+            Inner::Local(address) => address
+                .tx
+                .blocking_send(msg.pack(None))
+                .map_err(|e| SendError::Closed(M::unpack(e.0))),
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(address) => address.blocking_do_send(msg),
+        }
     }
 
     /// Reserves channel capacity to send one message.
     ///
     /// This method borrows the internal [`mpsc::Sender`] and returns a [`SendPermit`].
-    pub fn reserve(&self) -> impl Future<Output = Result<SendPermit<'_, A>, SendError<()>>> + Send {
-        self.tx
-            .reserve()
-            .map_ok(|permit| SendPermit { permit })
-            .map_err(Into::into)
+    pub async fn reserve(&self) -> Result<SendPermit<'_, A>, SendError<()>> {
+        match &self.0 {
+            Inner::Local(address) => address
+                .tx
+                .reserve()
+                .await
+                .map(|permit| SendPermit { permit })
+                .map_err(Into::into),
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(_) => Err(SendError::other(
+                "remote address does not support reserve",
+                (),
+            )),
+        }
     }
 
     /// Attempts to reserve channel capacity to send one message.
     ///
     /// This method borrows the internal [`mpsc::Sender`] and returns a [`SendPermit`].
     pub fn try_reserve(&self) -> Result<SendPermit<'_, A>, SendError<()>> {
-        self.tx
-            .try_reserve()
-            .map(|permit| SendPermit { permit })
-            .map_err(Into::into)
+        match &self.0 {
+            Inner::Local(address) => address
+                .tx
+                .try_reserve()
+                .map(|permit| SendPermit { permit })
+                .map_err(|e| match e {
+                    mpsc::error::TrySendError::Closed(_) => SendError::Closed(()),
+                    mpsc::error::TrySendError::Full(_) => SendError::Full(()),
+                }),
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(_) => Err(SendError::other(
+                "remote address does not support reserve",
+                (),
+            )),
+        }
     }
 
     /// Reserves channel capacity to send one message.
     ///
     /// This method clones the internal [`mpsc::Sender`] and returns a [`OwnedSendPermit`].
-    pub fn reserve_owned(
-        &self,
-    ) -> impl Future<Output = Result<OwnedSendPermit<A>, SendError<()>>> + Send {
-        self.tx
-            .clone()
-            .reserve_owned()
-            .map_ok(|permit| OwnedSendPermit { permit })
-            .map_err(Into::into)
+    pub async fn reserve_owned(&self) -> Result<OwnedSendPermit<A>, SendError<()>> {
+        match &self.0 {
+            Inner::Local(address) => address
+                .tx
+                .clone()
+                .reserve_owned()
+                .await
+                .map(|permit| OwnedSendPermit { permit })
+                .map_err(Into::into),
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(_) => Err(SendError::other(
+                "remote address does not support reserve",
+                (),
+            )),
+        }
     }
 
     /// Attempts to reserve channel capacity to send one message.
     ///
     /// This method clones the internal [`mpsc::Sender`] and returns a [`OwnedSendPermit`].
     pub fn try_reserve_owned(&self) -> Result<OwnedSendPermit<A>, SendError<()>> {
-        self.tx
-            .clone()
-            .try_reserve_owned()
-            .map(|permit| OwnedSendPermit { permit })
-            .map_err(|e| match e {
-                mpsc::error::TrySendError::Closed(_) => SendError::Closed(()),
-                mpsc::error::TrySendError::Full(_) => SendError::Full(()),
-            })
+        match &self.0 {
+            Inner::Local(address) => address
+                .tx
+                .clone()
+                .try_reserve_owned()
+                .map(|permit| OwnedSendPermit { permit })
+                .map_err(|e| match e {
+                    mpsc::error::TrySendError::Closed(_) => SendError::Closed(()),
+                    mpsc::error::TrySendError::Full(_) => SendError::Full(()),
+                }),
+
+            #[cfg(feature = "ipc")]
+            Inner::Remote(_) => Err(SendError::other(
+                "remote address does not support reserve",
+                (),
+            )),
+        }
     }
 
-    /// Returns a type-erased trait object which can be downcast into a concrete
-    /// [`Recipient<M>`][super::recipient::Recipient], where `M` is a specific message type chosen
-    /// by the user who overrides the
-    /// [`Actor::type_erased_recipient_fn`][Actor::type_erased_recipient_fn] method.
+    /// Returns a [`TypeErasedRecipient`] which can be downcast to a concrete
+    /// [`Recipient<M>`][super::recipient::Recipient], where `M` is a specific message type picked
+    /// by the user who overrides the [`Actor::type_erased_recipient_hook`] method.
     ///
-    /// This method triggers the conversion function baked in this address at construction, and
-    /// returns the resulting type-erased trait object.
+    /// See [`Actor::type_erased_recipient_hook`] for more details.
     #[cfg(feature = "type-erased-recipient-hook")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
     pub fn type_erased_recipient(&self) -> Option<TypeErasedRecipient> {
-        self.type_erased_recipient_fn.map(|f| f(self))
+        match &self.0 {
+            Inner::Local(address) => address.into_type_erased_recipient.map(|f| f(self)),
+            #[cfg(feature = "ipc")]
+            Inner::Remote(_) => None,
+        }
     }
 }
 
@@ -320,7 +503,7 @@ where
     A: Actor,
 {
     fn index(&self) -> ActorId {
-        self.index
+        self.index()
     }
 }
 
@@ -328,17 +511,18 @@ impl<A, M, EP> Sender<M, EP> for Address<A>
 where
     A: Actor,
     M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
+    EP: 'static,
 {
-    fn closed(&self) -> ClosedResultFuture<'_> {
+    fn closed(&self) -> EmptyFuture<'_> {
         self.closed().boxed()
     }
 
     fn is_closed(&self) -> bool {
-        self.tx.is_closed()
+        self.is_closed()
     }
 
     fn capacity(&self) -> usize {
-        self.tx.capacity()
+        self.capacity()
     }
 
     fn send(&self, msg: M) -> SendResultFuture<'_, M> {
@@ -383,8 +567,19 @@ impl<A, M, EP> From<Address<A>> for Recipient<M, EP>
 where
     A: Actor,
     M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
+    EP: 'static,
 {
     fn from(addr: Address<A>) -> Self {
         Self::new(Arc::new(addr))
+    }
+}
+
+#[cfg(feature = "ipc")]
+impl<A> From<RemoteAddress> for Address<A>
+where
+    A: Actor + HasCodecTable,
+{
+    fn from(addr: RemoteAddress) -> Self {
+        Self(Inner::Remote(addr))
     }
 }
