@@ -7,12 +7,12 @@ use acktor_ipc_proto::control_message as proto;
 
 use super::error::{DecodeError, EncodeError};
 use super::table::HasCodecTable;
-use super::{Decode, DecodeContext, Encode, EncodeContext, register_address};
-use crate::actor::{Actor, ActorState};
-use crate::address::{Address, SenderId};
+use super::{Decode, DecodeContext, Encode, EncodeContext};
+use crate::actor::{Actor, ActorState, RemoteAccessible};
+use crate::address::{Address, Recipient, SenderMeta};
 #[cfg(feature = "cron")]
 use crate::cron::CronSignal;
-use crate::message::Message;
+use crate::message::{Message, MessageId};
 #[cfg(feature = "observer")]
 use crate::observer::Observer;
 use crate::signal::Signal;
@@ -47,11 +47,11 @@ impl Decode for Signal {
 
 impl<A> Encode for Supervisor<A>
 where
-    A: Actor + HasCodecTable,
+    A: Actor + RemoteAccessible,
 {
     fn encoded_len(&self) -> usize {
         let supervisor = match self {
-            Supervisor::Set(recipient) => proto::Supervisor::set(recipient.index().as_u64()),
+            Supervisor::Set(recipient) => proto::Supervisor::set(recipient.index().as_local()),
             Supervisor::Unset => proto::Supervisor::unset(),
         };
         supervisor.encoded_len()
@@ -64,8 +64,8 @@ where
     ) -> Result<(), EncodeError> {
         let supervisor = match self {
             Supervisor::Set(recipient) => {
-                register_address(ctx.ok_or(EncodeError::MissingEncodeContext)?, recipient)?;
-                proto::Supervisor::set(recipient.index().as_u64())
+                recipient.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
+                proto::Supervisor::set(recipient.index().as_local())
             }
 
             Supervisor::Unset => proto::Supervisor::unset(),
@@ -76,14 +76,14 @@ where
 
 impl<A> Decode for Supervisor<A>
 where
-    A: Actor + HasCodecTable,
+    A: Actor + RemoteAccessible,
 {
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
-        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
+        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
         let supervisor = proto::Supervisor::decode(buf)?;
         match supervisor.supervisor {
             Some(proto::SupervisorType::Set(actor_id)) => {
-                Ok(Supervisor::Set(ctx.create_remote_address(actor_id)?.into()))
+                Ok(Supervisor::Set(Recipient::new_remote(actor_id, proxy)))
             }
             Some(proto::SupervisorType::Unset(())) => Ok(Supervisor::Unset),
             None => Err("missing field `supervisor` in the `Supervisor` message".into()),
@@ -94,13 +94,16 @@ where
 #[cfg(feature = "observer")]
 impl<M> Encode for Observer<M>
 where
-    M: Message,
+    M: Message + MessageId + Encode,
+    M::Result: Decode,
 {
     fn encoded_len(&self) -> usize {
         let observer = match self {
-            Observer::Register(recipient) => proto::Observer::register(recipient.index().as_u64()),
+            Observer::Register(recipient) => {
+                proto::Observer::register(recipient.index().as_local())
+            }
             Observer::Unregister(recipient) => {
-                proto::Observer::unregister(recipient.index().as_u64())
+                proto::Observer::unregister(recipient.index().as_local())
             }
         };
         observer.encoded_len()
@@ -113,13 +116,13 @@ where
     ) -> Result<(), EncodeError> {
         let observer = match self {
             Observer::Register(recipient) => {
-                register_address(ctx.ok_or(EncodeError::MissingEncodeContext)?, recipient)?;
-                proto::Observer::register(recipient.index().as_u64())
+                recipient.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
+                proto::Observer::register(recipient.index().as_local())
             }
 
             Observer::Unregister(recipient) => {
-                register_address(ctx.ok_or(EncodeError::MissingEncodeContext)?, recipient)?;
-                proto::Observer::unregister(recipient.index().as_u64())
+                recipient.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
+                proto::Observer::unregister(recipient.index().as_local())
             }
         };
         observer.encode(buf).map_err(Into::into)
@@ -129,18 +132,19 @@ where
 #[cfg(feature = "observer")]
 impl<M> Decode for Observer<M>
 where
-    M: Message,
+    M: Message + MessageId + Encode,
+    M::Result: Decode,
 {
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
-        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
+        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
         let observer = proto::Observer::decode(buf)?;
         match observer.observer {
-            Some(proto::ObserverType::Register(actor_id)) => Ok(Observer::Register(
-                ctx.create_remote_address(actor_id)?.into(),
-            )),
-            Some(proto::ObserverType::Unregister(actor_id)) => Ok(Observer::Unregister(
-                ctx.create_remote_address(actor_id)?.into(),
-            )),
+            Some(proto::ObserverType::Register(actor_id)) => {
+                Ok(Observer::Register(Recipient::new_remote(actor_id, proxy)))
+            }
+            Some(proto::ObserverType::Unregister(actor_id)) => {
+                Ok(Observer::Unregister(Recipient::new_remote(actor_id, proxy)))
+            }
             None => Err("missing field `observer` in the `Observer` message".into()),
         }
     }
@@ -155,22 +159,22 @@ where
 {
     match event {
         SupervisionEvent::Warn(address, error) => (
-            proto::SupervisionEvent::warn(address.index().as_u64(), error.to_string()),
+            proto::SupervisionEvent::warn(address.index().as_local(), error.to_string()),
             address,
         ),
         SupervisionEvent::Terminated(address, error) => (
             proto::SupervisionEvent::terminated(
-                address.index().as_u64(),
+                address.index().as_local(),
                 error.as_ref().map(|e| e.to_string()),
             ),
             address,
         ),
         SupervisionEvent::Panicked(address, info) => (
-            proto::SupervisionEvent::panicked(address.index().as_u64(), info.to_string()),
+            proto::SupervisionEvent::panicked(address.index().as_local(), info.to_string()),
             address,
         ),
         SupervisionEvent::State(address, state) => (
-            proto::SupervisionEvent::state(address.index().as_u64(), *state as i32),
+            proto::SupervisionEvent::state(address.index().as_local(), *state as i32),
             address,
         ),
     }
@@ -178,7 +182,7 @@ where
 
 impl<A> Encode for SupervisionEvent<A>
 where
-    A: Actor + HasCodecTable,
+    A: Actor + RemoteAccessible,
     A::Error: Display,
 {
     fn encoded_len(&self) -> usize {
@@ -192,13 +196,13 @@ where
         ctx: Option<&dyn EncodeContext>,
     ) -> Result<(), EncodeError> {
         let (event, address) = build_supervision_event_message(self);
-        register_address(ctx.ok_or(EncodeError::MissingEncodeContext)?, address)?;
+        address.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
         event.encode(buf).map_err(Into::into)
     }
 
     fn encode_to_bytes(&self, ctx: Option<&dyn EncodeContext>) -> Result<Bytes, EncodeError> {
         let (event, address) = build_supervision_event_message(self);
-        register_address(ctx.ok_or(EncodeError::MissingEncodeContext)?, address)?;
+        address.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
         let mut buf = BytesMut::with_capacity(event.encoded_len());
         event.encode(&mut buf)?;
         Ok(buf.freeze())
@@ -207,35 +211,35 @@ where
 
 impl<A> Decode for SupervisionEvent<A>
 where
-    A: Actor + HasCodecTable,
+    A: Actor + RemoteAccessible,
     A::Error: From<String>,
 {
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
-        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
+        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
         let event = proto::SupervisionEvent::decode(buf)?;
         match event.event {
             Some(proto::SupervisionEventType::Warn(warn)) => Ok(SupervisionEvent::<A>::Warn(
-                ctx.create_remote_address(warn.actor_id)?.into(),
+                Address::new_remote(warn.actor_id, proxy),
                 warn.err.into(),
             )),
 
             Some(proto::SupervisionEventType::Terminated(terminated)) => {
                 Ok(SupervisionEvent::<A>::Terminated(
-                    ctx.create_remote_address(terminated.actor_id)?.into(),
+                    Address::new_remote(terminated.actor_id, proxy),
                     terminated.err.map(|e| e.into()),
                 ))
             }
 
             Some(proto::SupervisionEventType::Panicked(panicked)) => {
                 Ok(SupervisionEvent::<A>::Panicked(
-                    ctx.create_remote_address(panicked.actor_id)?.into(),
+                    Address::new_remote(panicked.actor_id, proxy),
                     panicked.info,
                 ))
             }
 
             Some(proto::SupervisionEventType::State(state)) => Ok(SupervisionEvent::<A>::State(
-                ctx.create_remote_address(state.actor_id)?.into(),
+                Address::new_remote(state.actor_id, proxy),
                 ActorState::try_from(state.state as u8).map_err(|_| {
                     DecodeError::from("invalid actor state value in the `SupervisionEvent` message")
                 })?,

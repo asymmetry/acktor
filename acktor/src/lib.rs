@@ -71,7 +71,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod error;
-pub use error::{ErrorReport, RecvError, SendError};
+pub use error::{BoxError, ErrorReport, RecvError, SendError};
 
 pub mod channel;
 pub mod utils;
@@ -94,7 +94,7 @@ mod context;
 pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
 
 pub mod address;
-pub use address::{Address, Recipient, Sender, SenderId};
+pub use address::{Address, Recipient, Sender, SenderMeta};
 
 pub mod message;
 #[cfg(feature = "identifier")]
@@ -134,29 +134,4 @@ pub use bytes;
 pub use sha2_const;
 
 #[cfg(test)]
-mod test_utils {
-    use crate::actor::Actor;
-    use crate::context::Context;
-    use crate::message::{Handler, Message};
-
-    #[derive(Debug)]
-    pub struct Dummy;
-
-    impl Actor for Dummy {
-        type Context = Context<Self>;
-        type Error = anyhow::Error;
-    }
-
-    #[derive(Debug)]
-    pub struct Ping(pub u32);
-
-    impl Message for Ping {
-        type Result = ();
-    }
-
-    impl Handler<Ping> for Dummy {
-        type Result = ();
-
-        async fn handle(&mut self, _msg: Ping, _ctx: &mut Self::Context) {}
-    }
-}
+pub(crate) use utils::test_utils;

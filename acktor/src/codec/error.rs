@@ -15,6 +15,9 @@ pub enum EncodeError {
     #[error("remote address should not be encoded into a message")]
     EncodeRemoteAddress,
 
+    #[error("the actor is not remote accessible")]
+    NotRemoteAccessible,
+
     #[error(transparent)]
     ProstEncodeError(#[from] prost::EncodeError),
 

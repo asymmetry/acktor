@@ -10,7 +10,7 @@ use tokio::time;
 use tracing::{Instrument, debug, warn};
 
 use crate::actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
-use crate::address::{Address, Mailbox, Recipient, SenderId};
+use crate::address::{Address, Mailbox, Recipient, SenderMeta};
 use crate::channel::mpsc;
 use crate::context::DEFAULT_MAILBOX_CAPACITY;
 use crate::envelope::EnvelopeProxy;

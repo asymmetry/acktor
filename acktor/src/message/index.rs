@@ -10,17 +10,18 @@ use crate::supervisor::{SupervisionEvent, Supervisor};
 
 /// Message identifier.
 ///
-/// It is used to identify the type of a message in IPC communication.
-///
 /// # Implementation
 ///
 /// **Do not implement this trait yourself!** Instead, use
-/// [`#[derive(MessageId)]`][acktor_derive::MessageId]. By default, the derive macro will emit an
-/// implementation of `HasStableTypeId` for the type, and then set the `ID` with
-/// `STABLE_TYPE_ID.as_u64()`. If users would like to use a different value for `ID`, they can use
-/// the attribute `#[custom_id(<value>)]` to specify one. In this case, it is the users'
-/// responsibility to ensure the message identifier is unique across all messages that can be
-/// handled by the same actor.
+/// [`#[derive(MessageId)]`][acktor_derive::MessageId].
+///
+/// By default, the derive macro will emit an implementation of [`HasStableTypeId`] for the type,
+/// and set the `ID` with [`HasStableTypeId::STABLE_TYPE_ID`] by calling
+/// [`as_u64`][crate::stable_type_id::StableTypeId::as_u64] on it.
+///
+/// If you need to use a different id value, use the attribute `#[custom_id(<value>)]` to specify
+/// one. In this case, it is your responsibility to ensure the message identifier is unique across
+/// all messages that can be handled by the same actor.
 pub trait MessageId: Message {
     const ID: u64;
 }

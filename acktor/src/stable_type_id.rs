@@ -53,7 +53,7 @@ impl StableTypeId {
 /// # Implementation
 ///
 /// **Do not implement this trait yourself!** Instead, use
-/// [`#[derive(HasStableTypeId)`][acktor_derive::HasStableTypeId].
+/// [`#[derive(HasStableTypeId)]`][acktor_derive::HasStableTypeId].
 pub trait HasStableTypeId {
     const STABLE_TYPE_ID: StableTypeId;
 }

@@ -167,7 +167,7 @@ mod tests {
         assert!(matches!(rx.recv().await, Err(RecvError::Closed)));
         assert!(matches!(rx.try_recv(), Err(RecvError::Closed)));
 
-        // `blocking_recv` must run off the async runtime
+        // blocking_recv works
         let (tx, mut rx) = channel::<u32>(4);
         let join_handle = tokio::task::spawn_blocking(move || {
             let result = rx.blocking_recv();
@@ -214,19 +214,19 @@ mod tests {
             tx.send(i).await?;
         }
 
-        // `recv_many` drains up to `limit` messages already buffered
+        // recv_many pulls 3 messages
         let mut buf = Vec::new();
         let n = rx.recv_many(&mut buf, 3).await;
         assert_eq!(n, 3);
         assert_eq!(buf, vec![0, 1, 2]);
 
-        // `poll_recv_many` also works
+        // poll_recv_many also pulls 3
         let mut buf = Vec::new();
         let n = poll_fn(|cx| rx.poll_recv_many(cx, &mut buf, 3)).await;
         assert_eq!(n, 3);
         assert_eq!(buf, vec![3, 4, 5]);
 
-        // `blocking_recv_many` pulls the rest off the async runtime
+        // blocking_recv_many pulls the rest
         let rx_handle = tokio::task::spawn_blocking(move || {
             let mut buf = Vec::new();
             let n = rx.blocking_recv_many(&mut buf, 10);
@@ -241,7 +241,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_channel_state_and_close() -> Result<()> {
+    async fn test_misc() -> Result<()> {
         let (tx, mut rx) = channel::<u32>(4);
 
         // fresh channel: empty, open, full capacity available
@@ -251,6 +251,7 @@ mod tests {
         assert_eq!(rx.capacity(), 4);
         assert_eq!(rx.max_capacity(), 4);
 
+        // send some messages
         tx.send(1).await?;
         tx.send(2).await?;
         assert_eq!(rx.len(), 2);
@@ -268,9 +269,10 @@ mod tests {
         assert_eq!(rx.sender_strong_count(), 1);
         assert_eq!(rx.sender_weak_count(), 0);
 
-        // `close()` closes the receiver without dropping it; pending messages remain drainable
+        // close closes the receiver without dropping it; pending messages remain drainable
         rx.close();
         assert!(rx.is_closed());
+        assert!(tx.is_closed());
         assert!(matches!(tx.send(3).await, Err(error::SendError(3))));
         assert_eq!(rx.recv().await?, 1);
         assert_eq!(rx.recv().await?, 2);

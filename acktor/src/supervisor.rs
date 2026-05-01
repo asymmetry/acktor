@@ -7,7 +7,7 @@ use std::fmt::{self, Debug, Display};
 use std::future::{self, Future};
 
 use crate::actor::{Actor, ActorContext, ActorState};
-use crate::address::{Address, Recipient, SenderId};
+use crate::address::{Address, Recipient, SenderMeta};
 use crate::message::{Handler, Message};
 use crate::utils::{ShortName, debug_trace};
 
@@ -156,7 +156,7 @@ where
         crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
             module_path!(),
             "::",
-            "Supervisor"
+            "SupervisionEvent"
         ))
         .combine(A::STABLE_TYPE_ID.as_bytes());
 }

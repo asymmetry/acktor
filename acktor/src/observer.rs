@@ -11,7 +11,7 @@ use ahash::HashSet;
 use tracing::{debug, warn};
 
 use crate::actor::{Actor, ActorContext};
-use crate::address::{Recipient, Sender, SenderId};
+use crate::address::{Recipient, Sender, SenderMeta};
 use crate::message::{Handler, Message};
 use crate::utils::{ShortName, debug_trace};
 

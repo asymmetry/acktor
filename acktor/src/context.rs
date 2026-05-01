@@ -1,7 +1,7 @@
 use tracing::{debug, warn};
 
 use crate::actor::{Actor, ActorContext, ActorId, ActorState, Stopping};
-use crate::address::{Address, Mailbox, Recipient, SenderId};
+use crate::address::{Address, Mailbox, Recipient, SenderMeta};
 use crate::channel::mpsc;
 use crate::envelope::EnvelopeProxy;
 use crate::supervisor::SupervisionEvent;

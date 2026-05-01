@@ -19,11 +19,11 @@ use crate::utils::panic_info_to_string;
 mod index;
 pub use index::ActorId;
 
-#[cfg(feature = "type-erased-recipient-hook")]
-mod erased;
-#[cfg(feature = "type-erased-recipient-hook")]
-#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-pub use erased::{AddressToTypeErasedRecipientFn, ToTypeErasedRecipient, TypeErasedRecipient};
+#[cfg(feature = "ipc")]
+mod remote;
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use remote::{RemoteAccessible, RemoteAccessibleActorHandle};
 
 pub use tokio::task::JoinHandle;
 
@@ -196,34 +196,9 @@ pub trait Actor: Sized + Send + 'static {
         ctx.run(actor, span)
     }
 
-    /// Opt-in hook which turns an [`Address`] into a [`TypeErasedRecipient`] that can be downcast
-    /// into a concrete [`Recipient<M>`], where `M` is a specific message type picked by the user
-    /// in the overridden implementation of this method.
-    ///
-    /// Sometimes users may need to convert a `Recipient<N>` backed by an `Address<A>` into a
-    /// `Recipient<M>`. If the actor type `A` is known, users can retrieve the `Address<A>` by
-    /// downcasting the trait object in `Recipient<N>`, and then convert it to `Recipient<M>`.
-    /// However, if the concrete actor type `A` is not known by the user, this approach does not
-    /// work.
-    ///
-    /// This method allows users to hook in a function `f`, which defines a two-step conversion:
-    /// first, convert an `Address<A>` to a `Recipient<M>`, with `M` being a specific message type
-    /// chosen by the user; and second, convert `Recipient<M>` to a type-erased
-    /// [`TypeErasedRecipient`]. Returning `Some` from this method will trigger [`Address::new`]
-    /// to bake this function `f` into every address of this actor.
-    ///
-    /// Once this hook is in place, to convert an arbitrary `Recipient<N>` to a `Recipient<M>`,
-    /// users can call [`Sender::type_erased_recipient`] method, which invokes the function `f`
-    /// internally and returns the generated [`TypeErasedRecipient`]. Users can then call the
-    /// [`downcast`][TypeErasedRecipient::downcast] method on it to convert it back into a
-    /// `Recipient<M>`.
-    ///
-    /// Downstream crates which plan to extend the capabilities of the actors with this feature
-    /// should provide a macro to override this method programmatically, this can help users to
-    /// reduce boilerplate.
-    #[cfg(feature = "type-erased-recipient-hook")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-    fn type_erased_recipient_hook() -> Option<AddressToTypeErasedRecipientFn<Self>> {
+    #[doc(hidden)]
+    #[cfg(feature = "ipc")]
+    fn remote_accessible_actor_handle() -> Option<RemoteAccessibleActorHandle> {
         None
     }
 }

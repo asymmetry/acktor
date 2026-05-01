@@ -3,8 +3,8 @@ use std::pin::Pin;
 use tokio::time::Duration;
 
 use crate::actor::ActorId;
-#[cfg(feature = "type-erased-recipient-hook")]
-use crate::actor::TypeErasedRecipient;
+#[cfg(feature = "ipc")]
+use crate::actor::RemoteAccessibleActorHandle;
 use crate::channel::oneshot::Receiver;
 use crate::envelope::DefaultEnvelopeProxy;
 use crate::error::SendError;
@@ -22,32 +22,20 @@ pub type DoSendResultFuture<'a, M> =
 pub type EmptyFuture<'a> = Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
 
 /// Describes how to retrieve the index of a sender.
-pub trait SenderId {
+pub trait SenderMeta {
     /// Returns the index of the sender.
     fn index(&self) -> ActorId;
 
-    /// Returns `true` if this sender is backed by aremote address.
+    /// Returns `true` if this sender is a remote address, which means the receiver is located in
+    /// another process.
     #[cfg(feature = "ipc")]
     #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
     #[inline]
     fn is_remote(&self) -> bool {
         self.index().is_remote()
     }
-}
 
-impl SenderId for ActorId {
-    #[inline]
-    fn index(&self) -> ActorId {
-        *self
-    }
-}
-
-/// Describes how to send a message.
-pub trait Sender<M, EP = DefaultEnvelopeProxy<M>>: SenderId
-where
-    M: Message,
-{
-    /// Completes when the receiver has been closed.
+    /// Completes when the channel has been closed.
     fn closed(&self) -> EmptyFuture<'_>;
 
     /// Checks if the channel has been closed.
@@ -56,6 +44,20 @@ where
     /// Returns the current capacity of the channel.
     fn capacity(&self) -> usize;
 
+    /// Returns a [`RemoteAccessibleActorHandle`], if the receiver is a remote accessible actor,
+    /// and is running at the same process as the sender.
+    #[cfg(feature = "ipc")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+    fn remote_accessible_actor_handle(&self) -> Option<RemoteAccessibleActorHandle> {
+        None
+    }
+}
+
+/// Describes how to send a message.
+pub trait Sender<M, EP = DefaultEnvelopeProxy<M>>: SenderMeta
+where
+    M: Message,
+{
     /// Sends a message, waiting until there is capacity, and returns a [`Receiver`] which can be
     /// used to receive the message response.
     fn send(&self, msg: M) -> SendResultFuture<'_, M>;
@@ -97,18 +99,4 @@ where
     ///
     /// This function panics if called within an asynchronous execution context.
     fn blocking_do_send(&self, msg: M) -> DoSendResult<M>;
-
-    /// Returns a [`TypeErasedRecipient`] which can be downcast to a concrete
-    /// [`Recipient<M>`][super::recipient::Recipient], where `M` is a specific message type picked
-    /// by the user who overrides the
-    /// [`Actor::type_erased_recipient_hook`][crate::actor::Actor::type_erased_recipient_hook]
-    /// method.
-    ///
-    /// See [`Actor::type_erased_recipient_hook`][crate::actor::Actor::type_erased_recipient_hook]
-    /// for more details.
-    #[cfg(feature = "type-erased-recipient-hook")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-    fn type_erased_recipient(&self) -> Option<TypeErasedRecipient> {
-        None
-    }
 }

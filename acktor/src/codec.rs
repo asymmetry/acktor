@@ -4,17 +4,19 @@
 //! primitive types, standard library containers, and acktor types.
 //!
 
+use std::sync::Arc;
+
 use bytes::{Bytes, BytesMut};
 
-use crate::actor::{Actor, ActorId, ToTypeErasedRecipient, TypeErasedRecipient};
-use crate::address::{Address, Recipient, RemoteAddress, SenderId};
-use crate::message::Message;
+use crate::actor::{Actor, ActorId, RemoteAccessible, RemoteAccessibleActorHandle};
+use crate::address::{Address, Recipient, RemoteProxy, SenderMeta};
+use crate::message::{Message, MessageId};
 
 mod error;
 pub use error::{DecodeError, EncodeError};
 
 mod table;
-pub use table::{CodecTable, HasCodecTable, MessageCodec};
+pub use table::{CodecItem, CodecTable, HasCodecTable};
 
 mod control_message;
 mod ipc_message;
@@ -29,30 +31,20 @@ mod prost_codec;
 
 /// Context for encoding messages.
 pub trait EncodeContext {
-    /// Registers an actor by its [`TypeErasedRecipient`].
+    /// Registers an actor with its [`RemoteAccessibleActorHandle`].
     ///
     /// The actor becomes reachable from other processes after registration.
-    fn register(&self, actor_id: ActorId, actor: TypeErasedRecipient) -> Result<(), EncodeError>;
-}
-
-/// Registers an actor by its [`Address`] or [`Recipient`].
-pub fn register_address<A>(ctx: &dyn EncodeContext, address: &A) -> Result<(), EncodeError>
-where
-    A: SenderId + ToTypeErasedRecipient,
-{
-    let actor_id = address.index();
-
-    if actor_id.is_remote() {
-        Err(EncodeError::EncodeRemoteAddress)
-    } else {
-        ctx.register(actor_id, address.to_type_erased_recipient()?)
-    }
+    fn register(
+        &self,
+        actor_id: ActorId,
+        actor: RemoteAccessibleActorHandle,
+    ) -> Result<(), EncodeError>;
 }
 
 /// Context for decoding messages.
 pub trait DecodeContext {
-    /// Creates an remote address from an index, which is obtained from the decoded message.
-    fn create_remote_address(&self, index: u64) -> Result<RemoteAddress, DecodeError>;
+    /// Returns the [`RemoteProxy`] associated with this context.
+    fn remote_proxy(&self) -> Arc<dyn RemoteProxy + Send + Sync>;
 }
 
 /// Describes how to encode a message.
@@ -84,13 +76,32 @@ pub trait Decode {
         Self: Sized;
 }
 
+impl<A> Address<A>
+where
+    A: Actor + RemoteAccessible,
+{
+    pub fn register(&self, ctx: &dyn EncodeContext) -> Result<(), EncodeError> {
+        let actor_id = self.index();
+
+        if actor_id.is_remote() {
+            Err(EncodeError::EncodeRemoteAddress)
+        } else {
+            ctx.register(
+                actor_id,
+                self.remote_accessible_actor_handle()
+                    .ok_or(EncodeError::NotRemoteAccessible)?,
+            )
+        }
+    }
+}
+
 impl<A> Encode for Address<A>
 where
-    A: Actor + HasCodecTable,
+    A: Actor + RemoteAccessible,
 {
     #[inline]
     fn encoded_len(&self) -> usize {
-        prost::Message::encoded_len(&self.index().as_u64())
+        prost::Message::encoded_len(&self.index().as_local())
     }
 
     #[inline]
@@ -100,31 +111,50 @@ where
         ctx: Option<&dyn EncodeContext>,
     ) -> Result<(), EncodeError> {
         // auto-register the address if it is an local address
-        register_address(ctx.ok_or(EncodeError::MissingEncodeContext)?, self)?;
-        prost::Message::encode(&self.index().as_u64(), buf).map_err(Into::into)
+        self.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
+        prost::Message::encode(&self.index().as_local(), buf).map_err(Into::into)
     }
 }
 
 impl<A> Decode for Address<A>
 where
-    A: Actor + HasCodecTable,
+    A: Actor + RemoteAccessible,
 {
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
         let actor_id = <u64 as prost::Message>::decode(buf)?;
-        ctx.ok_or(DecodeError::MissingDecodeContext)?
-            .create_remote_address(actor_id)
-            .map(Into::into)
+        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
+        Ok(Address::new_remote(actor_id, proxy))
+    }
+}
+
+impl<M> Recipient<M>
+where
+    M: Message,
+{
+    pub fn register(&self, ctx: &dyn EncodeContext) -> Result<(), EncodeError> {
+        let actor_id = self.index();
+
+        if actor_id.is_remote() {
+            Err(EncodeError::EncodeRemoteAddress)
+        } else {
+            ctx.register(
+                actor_id,
+                self.remote_accessible_actor_handle()
+                    .ok_or(EncodeError::NotRemoteAccessible)?,
+            )
+        }
     }
 }
 
 impl<M> Encode for Recipient<M>
 where
-    M: Message,
+    M: Message + MessageId + Encode,
+    M::Result: Decode,
 {
     #[inline]
     fn encoded_len(&self) -> usize {
-        prost::Message::encoded_len(&self.index().as_u64())
+        prost::Message::encoded_len(&self.index().as_local())
     }
 
     #[inline]
@@ -134,21 +164,21 @@ where
         ctx: Option<&dyn EncodeContext>,
     ) -> Result<(), EncodeError> {
         // auto-register the recipient if it is an local address
-        register_address(ctx.ok_or(EncodeError::MissingEncodeContext)?, self)?;
-        prost::Message::encode(&self.index().as_u64(), buf).map_err(Into::into)
+        self.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
+        prost::Message::encode(&self.index().as_local(), buf).map_err(Into::into)
     }
 }
 
 impl<M> Decode for Recipient<M>
 where
-    M: Message,
+    M: Message + MessageId + Encode,
+    M::Result: Decode,
 {
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
         let actor_id = <u64 as prost::Message>::decode(buf)?;
-        ctx.ok_or(DecodeError::MissingDecodeContext)?
-            .create_remote_address(actor_id)
-            .map(Into::into)
+        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
+        Ok(Recipient::new_remote(actor_id, proxy))
     }
 }
 
