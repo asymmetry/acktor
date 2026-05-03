@@ -1,27 +1,31 @@
 use std::fmt::{self, Debug};
+use std::future;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use futures_util::{FutureExt, TryFutureExt};
 use tokio::time::Duration;
+#[cfg(feature = "ipc")]
+use tracing::{Instrument, debug};
 
 use super::next_actor_id;
 #[cfg(feature = "ipc")]
 use super::remote::{RemoteProxy, RemoteRecipient};
 use super::sender::{
-    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderMeta,
+    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderInfo,
 };
 use crate::actor::ActorId;
-#[cfg(feature = "ipc")]
-use crate::actor::RemoteAccessibleActorHandle;
-use crate::channel::{mpsc, oneshot};
-#[cfg(feature = "ipc")]
-use crate::codec::{Decode, Encode};
+use crate::channel::mpsc;
 use crate::envelope::DefaultEnvelopeProxy;
+use crate::error::SendError;
 use crate::message::Message;
-#[cfg(feature = "ipc")]
-use crate::message::MessageId;
 use crate::utils::ShortName;
+#[cfg(feature = "ipc")]
+use crate::{
+    actor::RemoteMailbox,
+    codec::{Decode, Encode},
+    message::{BinaryMessage, MessageId},
+};
 
 /// A type which is used to send a specific message type to an actor.
 ///
@@ -83,9 +87,22 @@ impl<M, EP> Recipient<M, EP>
 where
     M: Message,
 {
-    /// Constructs a recipient from a trait object of [`Sender`].
+    /// Constructs a recipient from a [`Sender`].
     pub fn new(tx: Arc<dyn Sender<M, EP> + Send + Sync>) -> Self {
         Self(tx)
+    }
+}
+
+#[cfg(feature = "ipc")]
+impl<M, EP> Recipient<M, EP>
+where
+    M: Message + MessageId + Encode,
+    M::Result: Decode,
+{
+    /// Constructs a recipient from an index and a [`RemoteProxy`].
+    #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+    pub fn new_remote(index: u64, proxy: Arc<dyn RemoteProxy + Send + Sync>) -> Self {
+        RemoteRecipient::new(index, proxy).into()
     }
 }
 
@@ -100,29 +117,34 @@ where
     pub fn create(capacity: usize) -> (Self, mpsc::Receiver<M>) {
         let (tx, rx) = mpsc::channel(capacity);
         (
-            Self(Arc::new(RecipientProxy {
-                index: next_actor_id(),
-                tx,
-            })),
+            Self::new(Arc::new(SenderProxy::new(next_actor_id(), tx))),
             rx,
         )
     }
 }
 
 #[cfg(feature = "ipc")]
-impl<M, EP> Recipient<M, EP>
+impl<M> Recipient<M>
 where
-    M: Message + MessageId + Encode,
-    M::Result: Decode,
+    M: Message<Result = ()> + MessageId + Decode,
 {
-    /// Constructs a recipient from a [`RemoteProxy`].
-    #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
-    pub fn new_remote(index: u64, proxy: Arc<dyn RemoteProxy + Send + Sync>) -> Self {
-        RemoteRecipient::new(index, proxy).into()
+    /// Creates a [`mpsc::channel`], use the sender to constructs a recipient.
+    ///
+    /// Since it can provide a [`RemoteMailbox`], This recipient can be sent to an
+    /// actor in another process and be used to receive messages from that actor.
+    ///
+    /// This recipient is not backed by any actor, so it can only be used to send messages with
+    /// empty [`Message::Result`].
+    pub fn create_remote(capacity: usize) -> (Self, mpsc::Receiver<M>) {
+        let (tx, rx) = mpsc::channel(capacity);
+        (
+            Self::new(Arc::new(RemoteAddressableProxy::new(next_actor_id(), tx))),
+            rx,
+        )
     }
 }
 
-impl<M, EP> SenderMeta for Recipient<M, EP>
+impl<M, EP> SenderInfo for Recipient<M, EP>
 where
     M: Message,
 {
@@ -143,8 +165,8 @@ where
     }
 
     #[cfg(feature = "ipc")]
-    fn remote_accessible_actor_handle(&self) -> Option<RemoteAccessibleActorHandle> {
-        self.0.remote_accessible_actor_handle()
+    fn remote_mailbox(&self) -> Option<RemoteMailbox> {
+        self.0.remote_mailbox()
     }
 }
 
@@ -185,7 +207,7 @@ where
     }
 }
 
-struct RecipientProxy<M>
+struct SenderProxy<M>
 where
     M: Message<Result = ()>,
 {
@@ -193,18 +215,7 @@ where
     tx: mpsc::Sender<M>,
 }
 
-impl<M> Debug for RecipientProxy<M>
-where
-    M: Message<Result = ()>,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(&ShortName::of::<Self>().to_string())
-            .field(&self.index())
-            .finish()
-    }
-}
-
-impl<M> Clone for RecipientProxy<M>
+impl<M> Clone for SenderProxy<M>
 where
     M: Message<Result = ()>,
 {
@@ -216,7 +227,7 @@ where
     }
 }
 
-impl<M> PartialEq for RecipientProxy<M>
+impl<M> PartialEq for SenderProxy<M>
 where
     M: Message<Result = ()>,
 {
@@ -225,9 +236,9 @@ where
     }
 }
 
-impl<M> Eq for RecipientProxy<M> where M: Message<Result = ()> {}
+impl<M> Eq for SenderProxy<M> where M: Message<Result = ()> {}
 
-impl<M> Hash for RecipientProxy<M>
+impl<M> Hash for SenderProxy<M>
 where
     M: Message<Result = ()>,
 {
@@ -239,16 +250,20 @@ where
     }
 }
 
-impl<M> RecipientProxy<M>
+impl<M> SenderProxy<M>
 where
     M: Message<Result = ()>,
 {
+    const fn new(index: u64, tx: mpsc::Sender<M>) -> Self {
+        Self { index, tx }
+    }
+
     const fn index(&self) -> ActorId {
         ActorId::new(self.index)
     }
 }
 
-impl<M> SenderMeta for RecipientProxy<M>
+impl<M> SenderInfo for SenderProxy<M>
 where
     M: Message<Result = ()>,
 {
@@ -269,22 +284,16 @@ where
     }
 }
 
-impl<M> Sender<M> for RecipientProxy<M>
+impl<M, EP> Sender<M, EP> for SenderProxy<M>
 where
     M: Message<Result = ()>,
 {
     fn send(&self, msg: M) -> SendResultFuture<'_, M> {
-        self.tx
-            .send(msg)
-            .map_ok(|_| {
-                // return a pre-resolved receiver to satisfy the FutureSendResult return type
-                // since M::Result is (), the response is immediately available
-                let (tx, rx) = oneshot::channel();
-                let _ = tx.send(());
-                rx
-            })
-            .map_err(Into::into)
-            .boxed()
+        future::ready(Err(SendError::other(
+            "Recipient created with Recipient::create does not support send",
+            msg,
+        )))
+        .boxed()
     }
 
     fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M> {
@@ -292,34 +301,22 @@ where
     }
 
     fn try_send(&self, msg: M) -> SendResult<M> {
-        self.tx
-            .try_send(msg)
-            .map(|_| {
-                // return a pre-resolved receiver to satisfy the SendResult return type
-                // since M::Result is (), the response is immediately available
-                let (tx, rx) = oneshot::channel();
-                let _ = tx.send(());
-                rx
-            })
-            .map_err(Into::into)
+        Err(SendError::other(
+            "Recipient created with Recipient::create does not support try_send",
+            msg,
+        ))
     }
 
     fn try_do_send(&self, msg: M) -> DoSendResult<M> {
         self.tx.try_send(msg).map_err(Into::into)
     }
 
-    fn send_timeout(&self, msg: M, timeout: Duration) -> SendResultFuture<'_, M> {
-        self.tx
-            .send_timeout(msg, timeout)
-            .map_ok(|_| {
-                // return a pre-resolved receiver to satisfy the FutureSendResult return type
-                // since M::Result is (), the response is immediately available
-                let (tx, rx) = oneshot::channel();
-                let _ = tx.send(());
-                rx
-            })
-            .map_err(Into::into)
-            .boxed()
+    fn send_timeout(&self, msg: M, _: Duration) -> SendResultFuture<'_, M> {
+        future::ready(Err(SendError::other(
+            "Recipient created with Recipient::create does not support send_timeout",
+            msg,
+        )))
+        .boxed()
     }
 
     fn do_send_timeout(&self, msg: M, timeout: Duration) -> DoSendResultFuture<'_, M> {
@@ -330,16 +327,207 @@ where
     }
 
     fn blocking_send(&self, msg: M) -> SendResult<M> {
+        Err(SendError::other(
+            "Recipient created with Recipient::create does not support blocking_send",
+            msg,
+        ))
+    }
+
+    fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
+        self.tx.blocking_send(msg).map_err(Into::into)
+    }
+}
+
+// RemoteAddressableProxy is exactly the same as SenderPorxy, except for the trait bounds
+// we can not merge them since specialization is not yet in stable Rust
+#[cfg(feature = "ipc")]
+struct RemoteAddressableProxy<M>
+where
+    M: Message<Result = ()> + MessageId + Decode,
+{
+    index: u64,
+    tx: mpsc::Sender<M>,
+}
+
+#[cfg(feature = "ipc")]
+impl<M> Clone for RemoteAddressableProxy<M>
+where
+    M: Message<Result = ()> + MessageId + Decode,
+{
+    fn clone(&self) -> Self {
+        Self {
+            index: self.index,
+            tx: self.tx.clone(),
+        }
+    }
+}
+
+#[cfg(feature = "ipc")]
+impl<M> PartialEq for RemoteAddressableProxy<M>
+where
+    M: Message<Result = ()> + MessageId + Decode,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.index().eq(&other.index())
+    }
+}
+
+#[cfg(feature = "ipc")]
+impl<M> Eq for RemoteAddressableProxy<M> where M: Message<Result = ()> + MessageId + Decode {}
+
+#[cfg(feature = "ipc")]
+impl<M> Hash for RemoteAddressableProxy<M>
+where
+    M: Message<Result = ()> + MessageId + Decode,
+{
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.index().hash(state)
+    }
+}
+
+#[cfg(feature = "ipc")]
+impl<M> RemoteAddressableProxy<M>
+where
+    M: Message<Result = ()> + MessageId + Decode,
+{
+    const fn new(index: u64, tx: mpsc::Sender<M>) -> Self {
+        Self { index, tx }
+    }
+
+    const fn index(&self) -> ActorId {
+        ActorId::new(self.index)
+    }
+}
+
+#[cfg(feature = "ipc")]
+impl<M> SenderInfo for RemoteAddressableProxy<M>
+where
+    M: Message<Result = ()> + MessageId + Decode,
+{
+    fn index(&self) -> ActorId {
+        self.index()
+    }
+
+    fn closed(&self) -> EmptyFuture<'_> {
+        self.tx.closed().boxed()
+    }
+
+    fn is_closed(&self) -> bool {
+        self.tx.is_closed()
+    }
+
+    fn capacity(&self) -> usize {
+        self.tx.capacity()
+    }
+
+    fn remote_mailbox(&self) -> Option<RemoteMailbox> {
+        let index = self.index;
+        let tx = self.tx.clone();
+        let (raw_tx, mut raw_rx) = mpsc::channel(self.tx.max_capacity());
+
+        tokio::spawn(
+            async move {
+                loop {
+                    let message = tokio::select! {
+                        result = raw_rx.recv() => match result {
+                            Ok(message) => message,
+                            Err(_) => {
+                                // inbound channel is closed
+                                break;
+                            }
+                        },
+                        _ = tx.closed() => {
+                            // outbound channel is closed
+                            break;
+                        }
+                    };
+
+                    let BinaryMessage {
+                        actor_id,
+                        message_id,
+                        bytes,
+                        result_tx,
+                        decode_msg_ctx,
+                        ..
+                    } = message;
+
+                    if actor_id != index || message_id != M::ID || result_tx.is_some() {
+                        // message is not for this recipient, ignore it
+                        continue;
+                    }
+
+                    match M::decode(bytes, decode_msg_ctx.as_deref().map(|c| c as _)) {
+                        Ok(message) => {
+                            if tx.send(message).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            debug!("Could not decode message: {:?}", e);
+                            continue;
+                        }
+                    }
+                }
+            }
+            .in_current_span(),
+        );
+
+        let proxy = SenderProxy::new(index, raw_tx);
+        Some(RemoteMailbox::new(Arc::new(proxy)))
+    }
+}
+
+#[cfg(feature = "ipc")]
+impl<M, EP> Sender<M, EP> for RemoteAddressableProxy<M>
+where
+    M: Message<Result = ()> + MessageId + Decode,
+{
+    fn send(&self, msg: M) -> SendResultFuture<'_, M> {
+        future::ready(Err(SendError::other(
+            "Recipient created with Recipient::create does not support send",
+            msg,
+        )))
+        .boxed()
+    }
+
+    fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M> {
+        self.tx.send(msg).map_err(Into::into).boxed()
+    }
+
+    fn try_send(&self, msg: M) -> SendResult<M> {
+        Err(SendError::other(
+            "Recipient created with Recipient::create does not support try_send",
+            msg,
+        ))
+    }
+
+    fn try_do_send(&self, msg: M) -> DoSendResult<M> {
+        self.tx.try_send(msg).map_err(Into::into)
+    }
+
+    fn send_timeout(&self, msg: M, _: Duration) -> SendResultFuture<'_, M> {
+        future::ready(Err(SendError::other(
+            "Recipient created with Recipient::create does not support send_timeout",
+            msg,
+        )))
+        .boxed()
+    }
+
+    fn do_send_timeout(&self, msg: M, timeout: Duration) -> DoSendResultFuture<'_, M> {
         self.tx
-            .blocking_send(msg)
-            .map(|_| {
-                // return a pre-resolved receiver to satisfy the SendResult return type
-                // since M::Result is (), the response is immediately available
-                let (tx, rx) = oneshot::channel();
-                let _ = tx.send(());
-                rx
-            })
+            .send_timeout(msg, timeout)
             .map_err(Into::into)
+            .boxed()
+    }
+
+    fn blocking_send(&self, msg: M) -> SendResult<M> {
+        Err(SendError::other(
+            "Recipient created with Recipient::create does not support blocking_send",
+            msg,
+        ))
     }
 
     fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
@@ -382,23 +570,26 @@ mod tests {
 
         // send functions
         let (recipient, rx) = Recipient::<Ping>::create(8);
-        recipient.send(Ping(2)).await?;
+        assert!(recipient.send(Ping(2)).await.is_err());
         recipient.do_send(Ping(3)).await?;
-        recipient.try_send(Ping(4))?;
+        assert!(recipient.try_send(Ping(4)).is_err());
         recipient.try_do_send(Ping(5))?;
-        recipient
-            .send_timeout(Ping(6), Duration::from_millis(10))
-            .await?;
+        assert!(
+            recipient
+                .send_timeout(Ping(6), Duration::from_millis(10))
+                .await
+                .is_err()
+        );
         recipient
             .do_send_timeout(Ping(7), Duration::from_millis(10))
             .await?;
         tokio::task::spawn_blocking(move || -> Result<()> {
-            recipient.blocking_send(Ping(8))?;
+            assert!(recipient.blocking_send(Ping(8)).is_err());
             recipient.blocking_do_send(Ping(9))?;
             Ok(())
         })
         .await??;
-        assert_eq!(rx.len(), 8);
+        assert_eq!(rx.len(), 4);
 
         // From<Address> delivers to the mailbox
         let (a1, m1) = make_address(4);
@@ -443,26 +634,35 @@ mod tests {
     }
 
     #[test]
-    fn test_recipient_proxy() {
+    fn test_proxy() {
         let (tx, _rx) = mpsc::channel::<Ping>(1);
-        let proxy = RecipientProxy {
-            index: next_actor_id(),
-            tx,
-        };
+        let proxy = SenderProxy::new(next_actor_id(), tx);
 
         // clone + eq + hash
         let clone = proxy.clone();
-        assert_eq!(proxy, clone);
         assert_eq!(proxy.index(), clone.index());
         assert_eq!(hash_of(&proxy), hash_of(&clone));
 
         // distinct proxies with different indices are not equal
         let (tx2, _rx2) = mpsc::channel::<Ping>(1);
-        let other = RecipientProxy {
-            index: next_actor_id(),
-            tx: tx2,
-        };
-        assert_ne!(proxy, other);
+        let other = SenderProxy::new(next_actor_id(), tx2);
+        assert_ne!(proxy.index(), other.index());
+    }
+
+    #[cfg(feature = "ipc")]
+    #[test]
+    fn test_remote_addressable_proxy() {
+        let (tx, _rx) = mpsc::channel::<Ping>(1);
+        let proxy = RemoteAddressableProxy::new(next_actor_id(), tx);
+
+        // clone + eq + hash
+        let clone = proxy.clone();
+        assert_eq!(proxy.index(), clone.index());
+        assert_eq!(hash_of(&proxy), hash_of(&clone));
+
+        // distinct proxies with different indices are not equal
+        let (tx2, _rx2) = mpsc::channel::<Ping>(1);
+        let other = RemoteAddressableProxy::new(next_actor_id(), tx2);
         assert_ne!(proxy.index(), other.index());
     }
 
@@ -472,16 +672,6 @@ mod tests {
         assert_eq!(
             format!("{:?}", recipient),
             format!("Recipient<Ping>({})", recipient.index())
-        );
-
-        let (tx, _rx) = mpsc::channel::<Ping>(1);
-        let proxy = RecipientProxy {
-            index: next_actor_id(),
-            tx,
-        };
-        assert_eq!(
-            format!("{:?}", proxy),
-            format!("RecipientProxy<Ping>({})", proxy.index())
         );
     }
 }

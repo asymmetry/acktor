@@ -2,10 +2,10 @@
 
 use proc_macro::TokenStream;
 
-mod has_stable_type_id;
 mod message;
 mod message_id;
 mod message_response;
+mod stable_id;
 
 #[cfg(feature = "ipc")]
 mod common;
@@ -14,9 +14,9 @@ mod decode;
 #[cfg(feature = "ipc")]
 mod encode;
 #[cfg(feature = "ipc")]
-mod remote_actor;
+mod remote;
 #[cfg(feature = "ipc")]
-mod remote_actor_attr;
+mod remote_actor;
 
 /// Derive the [`Message`] trait for a struct or enum.
 ///
@@ -70,48 +70,46 @@ pub fn message_response_derive(input: TokenStream) -> TokenStream {
     message_response::expand(&ast).into()
 }
 
-/// Derive the [`HasStableTypeId`] trait for a type.
+/// Derive the [`StableId`] trait for a type.
 ///
-/// The generated `STABLE_TYPE_ID` is a SHA-256 hash value of the type's fully-qualified path
-/// (`module_path!() + "::" + ident`).
+/// The generated `TYPE_ID` is the first 16 bytes of the SHA-256 digest of the type's
+/// fully-qualified path (`module_path!() + "::" + ident`).
 ///
-/// If the type contains type generic parameters, the generated `STABLE_TYPE_ID` is combined with
-/// each type generic parameter's `STABLE_TYPE_ID` with [`StableTypeId::combine`] in their
-/// declaration order.
+/// If the type contains type generic parameters, the generated `TYPE_ID` is combined with each
+/// type generic parameter's `TYPE_ID` with [`StableTypeId::combine`] in their declaration order.
 ///
-/// If the type contains const generic parameters, the generated `STABLE_TYPE_ID` is combined with
-/// the SHA-256 hash value of the little-endian byte form of each const generic parameter with
-/// [`StableTypeId::combine`] in their declaration order. Only const generics of integer
-/// primitives, `bool`, and `char` are supported.
+/// If the type contains const generic parameters, the generated `TYPE_ID` is combined with the
+/// first 16 bytes of the SHA-256 digest of the big-endian form of each const generic parameter
+/// with [`StableTypeId::combine`] in their declaration order.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use acktor_derive::HasStableTypeId;
+/// use acktor_derive::StableId;
 ///
-/// #[derive(HasStableTypeId)]
+/// #[derive(StableId)]
 /// struct Ping(u64);
 /// ```
 ///
-/// [`HasStableTypeId`]: https://docs.rs/acktor/latest/acktor/stable_type_id/trait.HasStableTypeId.html
+/// [`StableId`]: https://docs.rs/acktor/latest/acktor/stable_type_id/trait.StableId.html
 /// [`StableTypeId::combine`]: https://docs.rs/acktor/latest/acktor/stable_type_id/struct.StableTypeId.html#method.combine
-#[proc_macro_derive(HasStableTypeId)]
-pub fn has_stable_type_id_derive(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(StableId)]
+pub fn stable_id_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
 
-    has_stable_type_id::expand(&ast).into()
+    stable_id::expand(&ast).into()
 }
 
 /// Derive the [`MessageId`] trait for a [`Message`].
 ///
-/// By default, the derive also emits a [`HasStableTypeId`] impl and sets
-/// `MessageId::ID = STABLE_TYPE_ID.as_u64()`. In that case, do **not** also derive
-/// [`HasStableTypeId`] separately, as that would produce conflicting impls. See the
-/// [`HasStableTypeId`] derive for the hashing scheme and the rules around generic parameters.
+/// By default, the derive also emits a [`StableId`] impl and sets
+/// `MessageId::ID = StableId::TYPE_ID.as_u64()`. In this case, do **not** also derive
+/// [`StableId`] separately, as that would produce conflicting impls. See derive macro
+/// [`StableId`][StableId] for the hashing scheme and the rules around generic parameters.
 ///
 /// An optional `#[custom_id(<u64 value>)]` attribute lets the user supply the id directly. When
-/// present, no [`HasStableTypeId`] impl is emitted, and it is the user's responsibility to ensure
-/// the id is unique across all messages an actor can handle.
+/// present, no [`StableId`] impl is emitted, and it is the user's responsibility to ensure the
+/// id is unique across all messages an actor can handle.
 ///
 /// # Example
 ///
@@ -128,7 +126,7 @@ pub fn has_stable_type_id_derive(input: TokenStream) -> TokenStream {
 ///
 /// [`MessageId`]: https://docs.rs/acktor/latest/acktor/message/trait.MessageId.html
 /// [`Message`]: https://docs.rs/acktor/latest/acktor/message/trait.Message.html
-/// [`HasStableTypeId`]: https://docs.rs/acktor/latest/acktor/stable_type_id/trait.HasStableTypeId.html
+/// [`StableId`]: https://docs.rs/acktor/latest/acktor/stable_type_id/trait.StableId.html
 #[proc_macro_derive(MessageId, attributes(custom_id))]
 pub fn message_id_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
@@ -241,9 +239,9 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
 /// For each `Mi`, the actor must implement [`Handler<Mi>`] trait and the result type of the
 /// trait must implement [`Encode`] trait.
 ///
-/// This also emits the [`HasStableTypeId`] impl, so `#[derive(RemoteActor)]` alone is sufficient
-/// — do **not** also derive [`HasStableTypeId`] separately, as that would produce conflicting
-/// impls. See the [`HasStableTypeId`] derive for the hashing scheme and the rules around generic
+/// This also emits the [`StableId`] impl, so `#[derive(RemoteActor)]` alone is sufficient
+/// — do **not** also derive [`StableId`] separately, as that would produce conflicting
+/// impls. See the [`StableId`] derive for the hashing scheme and the rules around generic
 /// parameters.
 ///
 /// # Example
@@ -260,7 +258,7 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
 /// [`RemoteMessage`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/remote_message/struct.RemoteMessage.html
 /// [`Handler<Mi>`]: https://docs.rs/acktor/latest/acktor/message/trait.Handler.html
 /// [`Encode`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/codec/trait.Encode.html
-/// [`HasStableTypeId`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/stable_type_id/trait.HasStableTypeId.html
+/// [`StableId`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/stable_type_id/trait.StableId.html
 #[cfg(feature = "ipc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
 #[proc_macro_derive(RemoteActor, attributes(message))]
@@ -270,29 +268,27 @@ pub fn remote_actor_derive(input: TokenStream) -> TokenStream {
     remote_actor::expand(&ast).into()
 }
 
-/// Attribute macro applies to the `impl Actor for MyActor { ... }` block, which overrides the
-/// [`Actor::type_erased_recipient_fn`] used by `acktor-ipc` with a custom implementation that
-/// converts [`Address<Self>`] to `Recipient<RemoteMessage>` first and then erases the type.
+/// Attribute macro applies to the `impl Actor for MyActor` block, which overrides the internal
+/// method `Actor::remote_mailbox` to return a [`RemoteMailbox`] for a remote addressable actor.
 ///
-/// See the documentation of [`Actor::type_erased_recipient_fn`] for more details.
+/// This is a temporary workaround since specialization is not yet stable in Rust.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use acktor_derive::remote_actor;
+/// use acktor_derive::remote;
 ///
-/// #[remote_actor]
+/// #[remote]
 /// impl Actor for MyActor {
 ///     type Error = anyhow::Error;
 ///     type Context = Context<Self>;
 /// }
 /// ```
 ///
-/// [`Actor::type_erased_recipient_fn`]: https://docs.rs/acktor/latest/acktor/trait.Actor.html#method.type_erased_recipient_fn
-/// [`Address<Self>`]: https://docs.rs/acktor/latest/acktor/address/struct.Address.html
+/// [`RemoteMailbox`]: https://docs.rs/acktor/latest/acktor/actor/remote/type.RemoteMailbox.html
 #[cfg(feature = "ipc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
 #[proc_macro_attribute]
-pub fn remote_actor(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    remote_actor_attr::expand(item.into()).into()
+pub fn remote(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    remote::expand(item.into()).into()
 }

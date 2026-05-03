@@ -8,14 +8,21 @@ use crate::actor::ActorId;
 use crate::channel::oneshot;
 use crate::codec::{DecodeContext, EncodeContext};
 
-/// An encoded message which is used to communicate with actors in other processes.
+/// A binary message which is used to communicate with actors in other processes.
 ///
-/// It also carries optional encode and decode contexts which can be used to decode the message
-/// and encode the message response.
-pub struct EncodedMessage {
-    /// The index part of an [`ActorId`].
-    ///
-    /// Usually refers to an actor in another process
+/// This type has two use cases:
+///
+/// - The message sent via an [`Address`][crate::address::Address], if the address is a remote
+///   address, the message will be encoded to a `BinaryMessage` and the runtime will route the
+///   `bytes` part to the proper remote process.
+/// - The binary message recieved by the runtime will be parsed as a `BinaryMessage` and be routed
+///   to the proper local actor to handle it.
+///
+/// It carries optional encode and decode contexts which can be used to decode the message and
+/// encode the message response. They are only required by the second use case and runtime should
+/// take care of this automatically.
+pub struct BinaryMessage {
+    /// The local index part of an [`ActorId`].
     pub actor_id: u64,
     pub message_id: u64,
     pub bytes: Bytes,
@@ -24,11 +31,11 @@ pub struct EncodedMessage {
     pub encode_res_ctx: Option<Arc<dyn EncodeContext + Send + Sync>>,
 }
 
-impl Debug for EncodedMessage {
+impl Debug for BinaryMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(match &self.result_tx {
-            Some(_) => "EncodedMessage<Send>",
-            None => "EncodedMessage<DoSend>",
+            Some(_) => "BinaryMessage<Send>",
+            None => "BinaryMessage<DoSend>",
         })
         .field("actor_id", &self.actor_id)
         .field("message_id", &self.message_id)
@@ -37,11 +44,11 @@ impl Debug for EncodedMessage {
     }
 }
 
-impl Message for EncodedMessage {
+impl Message for BinaryMessage {
     type Result = ();
 }
 
-impl EncodedMessage {
+impl BinaryMessage {
     /// Constructs a new [`RemoteMessage`] which does not expect a response.
     pub fn do_send(actor_id: ActorId, message_id: u64, bytes: Bytes) -> Self {
         Self {
@@ -99,18 +106,18 @@ mod tests {
     #[test]
     fn test_debug_fmt() {
         // do_send variant: result_tx is None
-        let msg = EncodedMessage::do_send(ActorId::new(7), 99, Bytes::from_static(b"hello"));
+        let msg = BinaryMessage::do_send(ActorId::new(7), 99, Bytes::from_static(b"hello"));
         assert_eq!(
             format!("{:?}", msg),
-            "EncodedMessage<DoSend> { actor_id: 7, message_id: 99, bytes: Bytes(5) }"
+            "BinaryMessage<DoSend> { actor_id: 7, message_id: 99, bytes: Bytes(5) }"
         );
 
         // send variant: result_tx is Some
         let (tx, _rx) = oneshot::channel::<Bytes>();
-        let msg = EncodedMessage::send(ActorId::new(7), 99, Bytes::from_static(b"hi"), tx);
+        let msg = BinaryMessage::send(ActorId::new(7), 99, Bytes::from_static(b"hi"), tx);
         assert_eq!(
             format!("{:?}", msg),
-            "EncodedMessage<Send> { actor_id: 7, message_id: 99, bytes: Bytes(2) }"
+            "BinaryMessage<Send> { actor_id: 7, message_id: 99, bytes: Bytes(2) }"
         );
     }
 }

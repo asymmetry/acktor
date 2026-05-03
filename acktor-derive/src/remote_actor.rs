@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Token, Type, punctuated::Punctuated};
 
-use crate::has_stable_type_id;
+use crate::stable_id;
 
 fn parse_message_list(ast: &syn::DeriveInput) -> syn::Result<Option<Vec<Type>>> {
     let Some(attr) = ast.attrs.iter().find(|a| a.path().is_ident("message")) else {
@@ -30,7 +30,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
     // also emit the `HasStableTypeId` impl so `#[derive(RemoteActor)]` alone is enough
-    let has_stable_type_id_impl = has_stable_type_id::expand(ast);
+    let has_stable_type_id_impl = stable_id::expand(ast);
 
     let marker_impl = quote! {
         impl #impl_generics ::acktor_ipc::RemoteActor for #name #ty_generics #where_clause {}

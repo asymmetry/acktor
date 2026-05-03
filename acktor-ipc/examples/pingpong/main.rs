@@ -53,8 +53,8 @@ async fn server() -> Result<()> {
 
     let (address, join_handle) = Node::new()
         .with_listener(listener)
-        .with_actor_factory::<Server>()
-        .run(format!("node-{}", process::id()))?;
+        .with_remote_spawnable_actor::<Server>()
+        .start(format!("node-{}", process::id()))?;
 
     signal::ctrl_c().await?;
 
@@ -64,7 +64,7 @@ async fn server() -> Result<()> {
 }
 
 async fn client() -> Result<()> {
-    let (node_address, node_join_handle) = Node::new().run(format!("node-{}", process::id()))?;
+    let (node_address, node_join_handle) = Node::new().start(format!("node-{}", process::id()))?;
 
     let session_address = loop {
         if let Ok(session_address) = node_address

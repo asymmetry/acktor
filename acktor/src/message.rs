@@ -31,7 +31,7 @@ pub use index::MessageId;
 mod remote;
 #[cfg(feature = "ipc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
-pub use remote::EncodedMessage;
+pub use remote::BinaryMessage;
 
 /// Types that can be sent between actors.
 pub trait Message: Send + 'static {

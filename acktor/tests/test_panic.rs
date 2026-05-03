@@ -109,7 +109,7 @@ fn spawn_actors(
     acktor::Address<Watcher>,
     acktor::JoinHandle<()>,
 )> {
-    let (watcher_address, watcher_join_handle) = Watcher::default().run("watcher")?;
+    let (watcher_address, watcher_join_handle) = Watcher::default().start("watcher")?;
 
     let (panicker_address, panicker_join_handle) = Panicker::create("panicker", |ctx| {
         ctx.set_supervisor(Some(watcher_address.clone().into()));

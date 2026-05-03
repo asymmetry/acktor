@@ -4,13 +4,12 @@
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 
-use acktor::{ActorId, Address, Message};
+use acktor::{Actor, ActorId, Address, Message, actor::RemoteAddressable};
 
 use crate::actor_handle::ActorHandle;
-use crate::errors::NodeError;
+use crate::error::NodeError;
 use crate::ipc_method::{IpcConnection, IpcListener};
-use crate::remote_actor::RemoteActor;
-use crate::remote_address::RemoteAddress;
+use crate::remote::RemoteSpawnable;
 use crate::session::{Session, SessionHandle};
 
 type Result<T> = std::result::Result<T, NodeError>;
@@ -57,7 +56,7 @@ impl Message for RemoveListener {
 /// from a remote peer. Returns `false` if either the label or the actor is already registered.
 pub struct AddActor<A>
 where
-    A: RemoteActor,
+    A: Actor + RemoteAddressable,
 {
     pub label: String,
     pub address: Address<A>,
@@ -65,19 +64,19 @@ where
 
 impl<A> Debug for AddActor<A>
 where
-    A: RemoteActor,
+    A: Actor + RemoteAddressable,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple(&format!("{}", acktor::utils::ShortName::of::<Self>()))
             .field(&self.label)
-            .field(&format_args!("{}", self.address.index()))
+            .field(&self.address.index())
             .finish()
     }
 }
 
 impl<A> Message for AddActor<A>
 where
-    A: RemoteActor,
+    A: Actor + RemoteAddressable,
 {
     type Result = bool;
 }
@@ -149,24 +148,35 @@ where
 /// the operation is successful, the provided `label` will be used as the actor label of the
 /// new actor created in the remote node.
 #[derive(Debug)]
-pub struct CreateRemoteActor {
+pub struct CreateRemoteActor<A>
+where
+    A: Actor + RemoteSpawnable,
+{
     pub session: SessionHandle,
     pub label: String,
-    pub r#type: String,
     pub config: String,
 }
 
-impl Message for CreateRemoteActor {
-    type Result = Result<RemoteAddress>;
+impl<A> Message for CreateRemoteActor<A>
+where
+    A: Actor + RemoteSpawnable,
+{
+    type Result = Result<Address<A>>;
 }
 
 /// A command which is used to get the address of an actor in a remote node.
 #[derive(Debug)]
-pub struct GetRemoteActor {
+pub struct GetRemoteActor<A>
+where
+    A: Actor + RemoteAddressable,
+{
     pub session: SessionHandle,
     pub actor: ActorHandle,
 }
 
-impl Message for GetRemoteActor {
-    type Result = Result<RemoteAddress>;
+impl<A> Message for GetRemoteActor<A>
+where
+    A: Actor + RemoteAddressable,
+{
+    type Result = Result<Address<A>>;
 }

@@ -12,8 +12,8 @@ use crate::channel::oneshot;
 /// mailbox.
 ///
 /// Return [`FutureMessageResult`] from a handler when the work must be awaited but should not
-/// stall the actor. The inner future resolves to `M::Result`, which is what the caller of
-/// `Address::send` ultimately receives.
+/// stall the actor. The inner future resolves to `M::Result`, which is what the caller ultimately
+/// receives.
 ///
 /// The inner future is spawned into the Tokio runtime and is detached from the actor's
 /// lifecycle. It continues running even after the actor is stopped or terminated.

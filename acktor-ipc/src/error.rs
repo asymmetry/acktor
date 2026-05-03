@@ -4,11 +4,12 @@ use std::io;
 
 use thiserror::Error;
 
-use acktor::{BoxError, RecvError, SendError};
+use acktor::{
+    BoxError, RecvError, SendError,
+    codec::{DecodeError, EncodeError},
+};
 
-pub use crate::codec::{DecodeError, EncodeError};
 pub use crate::double_map::{KeyConflictError, TryReserveError};
-pub use crate::remote_message::ToRemoteMessageRecipientError;
 
 /// Error type used by [`Node`][crate::node::Node].
 #[derive(Debug, Error)]
@@ -72,7 +73,7 @@ pub enum SessionError {
     ForwardActorMessageResFailed,
 
     #[error("could not create the actor on behalf of the remote peer")]
-    RemoteActorFactoryError(#[source] BoxError),
+    CreateRemoteActorFailed(#[source] BoxError),
 
     #[error("could not find actor {0} in the current process")]
     ActorNotFound(String),

@@ -137,10 +137,10 @@ impl Handler<CheckB> for B {
 #[tokio::test]
 async fn test_observer() -> Result<()> {
     // the subject actor
-    let (a_address, _) = A::default().run("A")?;
+    let (a_address, _) = A::default().start("A")?;
 
     // use actor as observer
-    let (b_address, b_join_handle) = B { received: false }.run("B")?;
+    let (b_address, b_join_handle) = B { received: false }.start("B")?;
 
     // use none-actor backed recipientas observer
     let (recipient, mut rx) = Recipient::<M1>::create(8);

@@ -90,7 +90,7 @@ async fn main() {
             limit,
             next: ctx.address(),
         }
-        .run(format!("Node {}", n_nodes - 1))
+        .start(format!("Node {}", n_nodes - 1))
         .unwrap();
 
         for id in (1..n_nodes - 1).rev() {
@@ -99,7 +99,7 @@ async fn main() {
                 limit,
                 next: next_address,
             }
-            .run(format!("Node {id}"))
+            .start(format!("Node {id}"))
             .unwrap();
         }
 

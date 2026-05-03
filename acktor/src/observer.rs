@@ -11,7 +11,7 @@ use ahash::HashSet;
 use tracing::{debug, warn};
 
 use crate::actor::{Actor, ActorContext};
-use crate::address::{Recipient, Sender, SenderMeta};
+use crate::address::{Recipient, Sender, SenderInfo};
 use crate::message::{Handler, Message};
 use crate::utils::{ShortName, debug_trace};
 
@@ -224,17 +224,17 @@ where
 }
 
 #[cfg(feature = "identifier")]
-impl<M> crate::stable_type_id::HasStableTypeId for Observer<M>
+impl<M> crate::stable_type_id::StableId for Observer<M>
 where
-    M: Message + crate::stable_type_id::HasStableTypeId,
+    M: Message + crate::stable_type_id::StableId,
 {
-    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+    const TYPE_ID: crate::stable_type_id::StableTypeId =
         crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
             module_path!(),
             "::",
             "Observer"
         ))
-        .combine(M::STABLE_TYPE_ID.as_bytes());
+        .combine(M::TYPE_ID.as_bytes());
 }
 
 #[cfg(test)]

@@ -29,7 +29,7 @@ pub fn start_pipe_server(endpoint: &str) -> Result<(Address<Node>, JoinHandle<()
 }
 
 pub fn start_client() -> Result<(Address<Node>, JoinHandle<()>)> {
-    Ok(Node::new().run("client")?)
+    Ok(Node::new().start("client")?)
 }
 
 /// Sends `command::Connect::<C>` to `client` and retries until the server's accept loop is

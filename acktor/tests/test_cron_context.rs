@@ -179,7 +179,7 @@ fn spawn_actors(
     Address<Watcher>,
     JoinHandle<()>,
 )> {
-    let (watcher_address, watcher_join_handle) = Watcher::default().run("watcher")?;
+    let (watcher_address, watcher_join_handle) = Watcher::default().start("watcher")?;
 
     let (actor_address, actor_join_handle) = TestActor::create("actor", |ctx| {
         ctx.set_supervisor(Some(watcher_address.clone().into()));

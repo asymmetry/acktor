@@ -57,7 +57,7 @@ where
     type Result = M::Result;
 }
 
-/// [`EnvelopeProxy`] for [`Timed<M>`] that bounds the actor's handling of `M` by a time budget.
+/// [`EnvelopeProxy`] for [`Timed`] that bounds the actor's handling of `M` by a time budget.
 ///
 /// If `actor.handle(msg)` does not finish within `budget`, the handler future is dropped and the
 /// timeout error is forwarded to the result sender with [`oneshot::Sender::send_err`]; otherwise

@@ -4,7 +4,7 @@ use tokio::time::Duration;
 
 use crate::actor::ActorId;
 #[cfg(feature = "ipc")]
-use crate::actor::RemoteAccessibleActorHandle;
+use crate::actor::RemoteMailbox;
 use crate::channel::oneshot::Receiver;
 use crate::envelope::DefaultEnvelopeProxy;
 use crate::error::SendError;
@@ -21,8 +21,8 @@ pub type DoSendResultFuture<'a, M> =
 
 pub type EmptyFuture<'a> = Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
 
-/// Describes how to retrieve the index of a sender.
-pub trait SenderMeta {
+/// Describes some basic information of a sender.
+pub trait SenderInfo {
     /// Returns the index of the sender.
     fn index(&self) -> ActorId;
 
@@ -35,26 +35,26 @@ pub trait SenderMeta {
         self.index().is_remote()
     }
 
-    /// Completes when the channel has been closed.
+    /// Completes when the underlying channel has been closed.
     fn closed(&self) -> EmptyFuture<'_>;
 
-    /// Checks if the channel has been closed.
+    /// Checks if the underlying channel has been closed.
     fn is_closed(&self) -> bool;
 
-    /// Returns the current capacity of the channel.
+    /// Returns the current capacity of the underlying channel.
     fn capacity(&self) -> usize;
 
-    /// Returns a [`RemoteAccessibleActorHandle`], if the receiver is a remote accessible actor,
-    /// and is running at the same process as the sender.
+    /// Returns a [`RemoteMailbox`], if this sender is remote addressable and it is not a remote
+    /// address.
     #[cfg(feature = "ipc")]
     #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
-    fn remote_accessible_actor_handle(&self) -> Option<RemoteAccessibleActorHandle> {
+    fn remote_mailbox(&self) -> Option<RemoteMailbox> {
         None
     }
 }
 
-/// Describes how to send a message.
-pub trait Sender<M, EP = DefaultEnvelopeProxy<M>>: SenderMeta
+/// Describes how to send a message to a receiver.
+pub trait Sender<M, EP = DefaultEnvelopeProxy<M>>: SenderInfo
 where
     M: Message,
 {

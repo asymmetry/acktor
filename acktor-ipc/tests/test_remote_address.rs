@@ -3,10 +3,10 @@ use std::collections::HashSet;
 use tokio::time::{Duration, timeout};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{Actor, Context, Handler, Message, MessageId, Recipient, Sender, SenderId};
+use acktor::{Actor, Context, Handler, Message, MessageId, Recipient, Sender, SenderInfo};
 use acktor_ipc::{
     ActorHandle, Decode, Encode, RemoteActor, RemoteAddress,
-    ipc_method::websocket::WebSocketConnection, node::command, remote_actor,
+    ipc_method::websocket::WebSocketConnection, node::command, remote,
     session::command as session_command,
 };
 
@@ -60,7 +60,7 @@ async fn test_remote_address() -> anyhow::Result<()> {
 
     // spawn the echo actor and register it on the server node (clone the address so we can
     // terminate it explicitly at the end of the test)
-    let (address, join_handle) = EchoServer.run("echo")?;
+    let (address, join_handle) = EchoServer.start("echo")?;
     let (server, server_join_handle) = start_websocket_server(&bind_addr).await?;
     server
         .send(command::AddActor {

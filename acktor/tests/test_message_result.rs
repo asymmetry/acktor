@@ -54,7 +54,7 @@ impl Handler<GetCustomResAsync> for MyActor {
 
 #[tokio::test]
 async fn test_message_result() -> Result<()> {
-    let (addr, join_handle) = MyActor.run("actor")?;
+    let (addr, join_handle) = MyActor.start("actor")?;
 
     // MessageResult forwards the custom type as the message response
     let custom = addr.send(GetCustomRes).await?.await?;

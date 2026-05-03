@@ -28,7 +28,7 @@ impl Actor for A {
 
 impl CronActor for A {
     async fn task(&mut self, _ctx: &mut Self::Context) -> Result<Duration, Self::Error> {
-        self.recipient.send(()).await?;
+        self.recipient.do_send(()).await?;
         Ok(Duration::from_millis(50))
     }
 }
@@ -104,7 +104,7 @@ impl Handler<SupervisionEvent<B>> for Watcher {
 async fn test_task() -> Result<()> {
     let (recipient, mut rx) = Recipient::create(8);
 
-    let (a_address, _) = A::new(recipient).run("A")?;
+    let (a_address, _) = A::new(recipient).start("A")?;
 
     // time between two messages should be 50 ms
 
@@ -166,7 +166,7 @@ async fn test_task() -> Result<()> {
 
 #[tokio::test]
 async fn test_task_no_wait() -> Result<()> {
-    let (b_address, _) = B::default().run("B")?;
+    let (b_address, _) = B::default().start("B")?;
 
     tokio::time::sleep(Duration::from_millis(1)).await;
 
@@ -180,8 +180,8 @@ async fn test_task_no_wait() -> Result<()> {
 
 #[tokio::test]
 async fn test_set_unset_supervisor() -> Result<()> {
-    let (b_address, _) = B::default().run("B")?;
-    let (watcher_address, _) = Watcher.run("watcher")?;
+    let (b_address, _) = B::default().start("B")?;
+    let (watcher_address, _) = Watcher.start("watcher")?;
 
     // no supervisor by default
     assert!(!b_address.send(IsSupervised).await?.await?);

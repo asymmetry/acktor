@@ -2,7 +2,14 @@ use std::marker::PhantomData;
 
 use pretty_assertions::{assert_eq, assert_ne};
 
-use acktor::{HasStableTypeId, Message, MessageId, Signal};
+use acktor::{Message, MessageId, Signal, StableId};
+
+fn first_16(arr: [u8; 32]) -> [u8; 16] {
+    [
+        arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7], arr[8], arr[9], arr[10],
+        arr[11], arr[12], arr[13], arr[14], arr[15],
+    ]
+}
 
 #[derive(Message, MessageId)]
 #[result_type(())]
@@ -12,7 +19,7 @@ struct Ping;
 #[result_type(())]
 struct Pong;
 
-#[derive(HasStableTypeId)]
+#[derive(StableId)]
 struct Wrap<T>(PhantomData<T>);
 
 #[derive(Message, MessageId)]
@@ -38,144 +45,167 @@ struct BoundLifetime<'a>(PhantomData<&'a ()>)
 where
     'a: 'static;
 
-#[derive(HasStableTypeId)]
+#[derive(StableId)]
 struct A;
 
-#[derive(HasStableTypeId)]
+#[derive(StableId)]
 struct B;
 
-#[derive(HasStableTypeId)]
+#[derive(StableId)]
 struct Usize<const N: usize>;
 
-#[derive(HasStableTypeId)]
+#[derive(StableId)]
 struct I32<const I: i32>;
 
-#[derive(HasStableTypeId)]
+#[derive(StableId)]
 struct Bool<const F: bool>;
 
-#[derive(HasStableTypeId)]
+#[derive(StableId)]
 struct Char<const C: char>;
 
-#[derive(HasStableTypeId)]
+#[derive(StableId)]
 struct Mixed<T, const N: usize>(PhantomData<T>)
 where
     T: Send + 'static;
 
 mod inner_a {
-    #[derive(acktor::HasStableTypeId)]
+    #[derive(acktor::StableId)]
     pub struct SameName;
 }
 
 mod inner_b {
-    #[derive(acktor::HasStableTypeId)]
+    #[derive(acktor::StableId)]
     pub struct SameName;
 }
 
 #[test]
 fn test_no_generics() {
-    assert_ne!(Ping::STABLE_TYPE_ID, Pong::STABLE_TYPE_ID);
+    assert_ne!(Ping::TYPE_ID, Pong::TYPE_ID);
     assert_ne!(Ping::ID, Pong::ID);
-    assert_eq!(Ping::ID, Ping::STABLE_TYPE_ID.as_u64());
+    assert_eq!(Ping::ID, Ping::TYPE_ID.as_u64());
 
     // stable type name: `module_path!() + "::" + ident` as bytes.
-    let expected = sha2_const::Sha256::new()
-        .update(b"test_identifier")
-        .update(b"::")
-        .update(b"Ping")
-        .finalize();
-    assert_eq!(Ping::STABLE_TYPE_ID.as_bytes(), &expected);
+    let expected = first_16(
+        sha2_const::Sha256::new()
+            .update(b"test_identifier")
+            .update(b"::")
+            .update(b"Ping")
+            .finalize(),
+    );
+    assert_eq!(Ping::TYPE_ID.as_bytes(), &expected);
 }
 
 #[test]
 fn test_type_generics() {
-    assert_ne!(<Wrap<A>>::STABLE_TYPE_ID, <Wrap<B>>::STABLE_TYPE_ID);
+    assert_ne!(<Wrap<A>>::TYPE_ID, <Wrap<B>>::TYPE_ID);
 
-    let base = sha2_const::Sha256::new()
-        .update(b"test_identifier")
-        .update(b"::")
-        .update(b"Wrap")
-        .finalize();
-    let a = sha2_const::Sha256::new()
-        .update(b"test_identifier")
-        .update(b"::")
-        .update(b"A")
-        .finalize();
-    let expected = sha2_const::Sha256::new()
-        .update(&base)
-        .update(&a)
-        .finalize();
-    assert_eq!(<Wrap<A>>::STABLE_TYPE_ID.as_bytes(), &expected);
+    let wrap = first_16(
+        sha2_const::Sha256::new()
+            .update(b"test_identifier")
+            .update(b"::")
+            .update(b"Wrap")
+            .finalize(),
+    );
+    let a = first_16(
+        sha2_const::Sha256::new()
+            .update(b"test_identifier")
+            .update(b"::")
+            .update(b"A")
+            .finalize(),
+    );
+    let expected = first_16(
+        sha2_const::Sha256::new()
+            .update(&wrap)
+            .update(&a)
+            .finalize(),
+    );
+    assert_eq!(<Wrap<A>>::TYPE_ID.as_bytes(), &expected);
 
-    assert!(<Bound<A>>::STABLE_TYPE_ID.as_u64() != 0);
-    assert!(<BoundDup<A, B>>::STABLE_TYPE_ID.as_u64() != 0);
-    assert!(<BoundLifetime<'_>>::STABLE_TYPE_ID.as_u64() != 0);
+    assert!(<Bound<A>>::TYPE_ID.as_u64() != 0);
+    assert!(<BoundDup<A, B>>::TYPE_ID.as_u64() != 0);
+    assert!(<BoundLifetime<'_>>::TYPE_ID.as_u64() != 0);
 }
 
 #[test]
 fn test_const_generics() {
-    assert_ne!(<Usize<3>>::STABLE_TYPE_ID, <Usize<4>>::STABLE_TYPE_ID);
+    assert_ne!(<Usize<3>>::TYPE_ID, <Usize<4>>::TYPE_ID);
 
-    let base: [u8; 32] = sha2_const::Sha256::new()
-        .update(b"test_identifier")
-        .update(b"::")
-        .update(b"Usize")
-        .finalize();
-    let seven: [u8; 32] = sha2_const::Sha256::new()
-        .update(&7u64.to_le_bytes())
-        .finalize();
-    let expected: [u8; 32] = sha2_const::Sha256::new()
-        .update(&base)
-        .update(&seven)
-        .finalize();
-    assert_eq!(<Usize<7>>::STABLE_TYPE_ID.as_bytes(), &expected);
+    let base = first_16(
+        sha2_const::Sha256::new()
+            .update(b"test_identifier")
+            .update(b"::")
+            .update(b"Usize")
+            .finalize(),
+    );
+    let seven = first_16(
+        sha2_const::Sha256::new()
+            .update(&7u64.to_be_bytes())
+            .finalize(),
+    );
+    let expected = first_16(
+        sha2_const::Sha256::new()
+            .update(&base)
+            .update(&seven)
+            .finalize(),
+    );
+    assert_eq!(<Usize<7>>::TYPE_ID.as_bytes(), &expected);
 
-    assert_ne!(<Bool<true>>::STABLE_TYPE_ID, <Bool<false>>::STABLE_TYPE_ID);
-    assert_ne!(<Char<'a'>>::STABLE_TYPE_ID, <Char<'b'>>::STABLE_TYPE_ID);
-    assert_ne!(<I32<-1>>::STABLE_TYPE_ID, <I32<1>>::STABLE_TYPE_ID);
+    assert_ne!(<Bool<true>>::TYPE_ID, <Bool<false>>::TYPE_ID);
+    assert_ne!(<Char<'a'>>::TYPE_ID, <Char<'b'>>::TYPE_ID);
+    assert_ne!(<I32<-1>>::TYPE_ID, <I32<1>>::TYPE_ID);
 }
 
 #[test]
 fn test_mixed_generics() {
-    assert_ne!(<Mixed<A, 3>>::STABLE_TYPE_ID, <Mixed<B, 3>>::STABLE_TYPE_ID);
-    assert_ne!(<Mixed<A, 3>>::STABLE_TYPE_ID, <Mixed<A, 4>>::STABLE_TYPE_ID);
+    assert_ne!(<Mixed<A, 3>>::TYPE_ID, <Mixed<B, 3>>::TYPE_ID);
+    assert_ne!(<Mixed<A, 3>>::TYPE_ID, <Mixed<A, 4>>::TYPE_ID);
 
-    let base: [u8; 32] = sha2_const::Sha256::new()
-        .update(b"test_identifier")
-        .update(b"::")
-        .update(b"Mixed")
-        .finalize();
-    let a: [u8; 32] = sha2_const::Sha256::new()
-        .update(b"test_identifier")
-        .update(b"::")
-        .update(b"A")
-        .finalize();
-    let seven: [u8; 32] = sha2_const::Sha256::new()
-        .update(&7u64.to_le_bytes())
-        .finalize();
-    let base_a: [u8; 32] = sha2_const::Sha256::new()
-        .update(&base)
-        .update(&a)
-        .finalize();
-    let expected: [u8; 32] = sha2_const::Sha256::new()
-        .update(&base_a)
-        .update(&seven)
-        .finalize();
-    assert_eq!(<Mixed<A, 7>>::STABLE_TYPE_ID.as_bytes(), &expected);
+    let mixed = first_16(
+        sha2_const::Sha256::new()
+            .update(b"test_identifier")
+            .update(b"::")
+            .update(b"Mixed")
+            .finalize(),
+    );
+    let a = first_16(
+        sha2_const::Sha256::new()
+            .update(b"test_identifier")
+            .update(b"::")
+            .update(b"A")
+            .finalize(),
+    );
+    let seven = first_16(
+        sha2_const::Sha256::new()
+            .update(&7u64.to_be_bytes())
+            .finalize(),
+    );
+    let mixed_a = first_16(
+        sha2_const::Sha256::new()
+            .update(&mixed)
+            .update(&a)
+            .finalize(),
+    );
+    let expected = first_16(
+        sha2_const::Sha256::new()
+            .update(&mixed_a)
+            .update(&seven)
+            .finalize(),
+    );
+    assert_eq!(<Mixed<A, 7>>::TYPE_ID.as_bytes(), &expected);
 }
 
 #[test]
 fn test_stable_type_name() {
     // same type name, different modules
-    assert_ne!(
-        inner_a::SameName::STABLE_TYPE_ID,
-        inner_b::SameName::STABLE_TYPE_ID,
-    );
+    assert_ne!(inner_a::SameName::TYPE_ID, inner_b::SameName::TYPE_ID,);
 
     // use statement should not affect the stable type id
-    let expected = sha2_const::Sha256::new()
-        .update(b"acktor::signal") // module_path!()
-        .update(b"::")
-        .update(b"Signal") // ident
-        .finalize();
-    assert_eq!(Signal::STABLE_TYPE_ID.as_bytes(), &expected);
+    let expected = first_16(
+        sha2_const::Sha256::new()
+            .update(b"acktor::signal") // module_path!()
+            .update(b"::")
+            .update(b"Signal") // ident
+            .finalize(),
+    );
+    assert_eq!(Signal::TYPE_ID.as_bytes(), &expected);
 }

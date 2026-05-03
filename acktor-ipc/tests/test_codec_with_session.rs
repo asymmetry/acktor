@@ -3,15 +3,15 @@ use bytes::BytesMut;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use acktor::{
-    Actor, ActorState, Context, Handler, Message, MessageId, Recipient, SenderId, Signal,
+    Actor, ActorState, Context, Handler, Message, MessageId, Recipient, SenderInfo, Signal,
     cron::CronSignal,
     observer::Observer,
     supervisor::{SupervisionEvent, Supervisor},
 };
 use acktor_ipc::{
     Decode, DecodeContext, Encode, EncodeContext, RemoteActor, RemoteAddress,
-    ipc_method::websocket::WebSocketConnection, remote_actor, remote_actor::RemoteActorRegistry,
-    remote_message::RemoteSupervisionEvent,
+    ipc_method::websocket::WebSocketConnection, remote,
+    remote::RemoteMailboxRegistry, remote_message::RemoteSupervisionEvent,
 };
 
 mod common;
@@ -69,12 +69,12 @@ async fn test_codec_with_session() -> Result<()> {
     let session = connect::<WebSocketConnection>(&client, endpoint).await?;
 
     // use an external RemoteActorRegistry so we can check
-    let registry = RemoteActorRegistry::with_capacity(8);
+    let registry = RemoteMailboxRegistry::with_capacity(8);
     assert!(registry.capacity() >= 8);
     let encode_ctx = EncodeContext::new(registry.clone());
     let decode_ctx = DecodeContext::new(session.clone(), registry.clone());
 
-    let (address, join_handle) = Probe.run("probe")?;
+    let (address, join_handle) = Probe.start("probe")?;
     let expected_index =
         RemoteAddress::REMOTE_FLAG | ((session.index().reverse_bits() >> 1) ^ address.index());
 

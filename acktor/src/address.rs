@@ -20,7 +20,7 @@ use tokio::time::Duration;
 
 use crate::actor::{Actor, ActorId};
 #[cfg(feature = "ipc")]
-use crate::actor::{RemoteAccessible, RemoteAccessibleActorHandle};
+use crate::actor::{RemoteAddressable, RemoteMailbox};
 use crate::channel::mpsc;
 use crate::envelope::{Envelope, FromEnvelope, IntoEnvelope};
 use crate::error::SendError;
@@ -28,20 +28,22 @@ use crate::message::Message;
 use crate::utils::ShortName;
 
 mod local;
-pub use local::LocalAddress;
+use local::LocalAddress;
 
 #[cfg(feature = "ipc")]
 mod remote;
 #[cfg(feature = "ipc")]
+use remote::RemoteAddress;
+#[cfg(feature = "ipc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
-pub use remote::{RemoteAddress, RemoteProxy};
+pub use remote::RemoteProxy;
 
 mod permit;
 pub use permit::{OwnedSendPermit, SendPermit};
 
 mod sender;
 pub use sender::{
-    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderMeta,
+    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderInfo,
 };
 
 mod recipient;
@@ -147,7 +149,7 @@ where
     #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
     pub fn new_remote(index: u64, proxy: Arc<dyn RemoteProxy + Send + Sync>) -> Self
     where
-        A: RemoteAccessible,
+        A: RemoteAddressable,
     {
         Self(Inner::Remote(RemoteAddress::new(
             index,
@@ -362,20 +364,20 @@ where
         }
     }
 
-    /// Returns a [`RemoteAccessibleActorHandle`], if `A` is a remote accessible actor, and this
-    /// address is a local address.
+    /// Returns a [`RemoteMailbox`], if the actor is a remote addressable actor, and this address
+    /// is a local address.
     #[cfg(feature = "ipc")]
     #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
-    fn remote_accessible_actor_handle(&self) -> Option<RemoteAccessibleActorHandle> {
+    fn remote_addressable(&self) -> Option<RemoteMailbox> {
         match &self.0 {
-            Inner::Local(address) => address.remote_accessible_actor_handle(),
+            Inner::Local(_) => A::remote_mailbox(self.clone()),
             #[cfg(feature = "ipc")]
             Inner::Remote(_) => None,
         }
     }
 }
 
-impl<A> SenderMeta for Address<A>
+impl<A> SenderInfo for Address<A>
 where
     A: Actor,
 {
@@ -396,8 +398,8 @@ where
     }
 
     #[cfg(feature = "ipc")]
-    fn remote_accessible_actor_handle(&self) -> Option<RemoteAccessibleActorHandle> {
-        self.remote_accessible_actor_handle()
+    fn remote_mailbox(&self) -> Option<RemoteMailbox> {
+        self.remote_addressable()
     }
 }
 
@@ -477,7 +479,7 @@ mod tests {
     use tokio::time::{self, Duration};
 
     #[cfg(feature = "ipc")]
-    use super::SenderMeta;
+    use super::SenderInfo;
     use crate::test_utils::{Ping, hash_of, make_address};
 
     #[tokio::test]

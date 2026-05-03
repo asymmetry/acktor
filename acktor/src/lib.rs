@@ -44,8 +44,8 @@
 //!     }
 //! }
 //!
-//! async fn run() {
-//!     let (addr, handle) = Counter(0).run("counter").unwrap();
+//! async fn start() {
+//!     let (addr, handle) = Counter(0).start("counter").unwrap();
 //!
 //!     // fire-and-forget
 //!     addr.do_send(CounterMsg::Increment).await.unwrap();
@@ -85,7 +85,7 @@ pub mod codec;
 pub mod stable_type_id;
 #[cfg(feature = "identifier")]
 #[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
-pub use stable_type_id::{HasStableTypeId, StableTypeId};
+pub use stable_type_id::{StableId, StableTypeId};
 
 pub mod actor;
 pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
@@ -94,7 +94,7 @@ mod context;
 pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
 
 pub mod address;
-pub use address::{Address, Recipient, Sender, SenderMeta};
+pub use address::{Address, Recipient, Sender, SenderInfo};
 
 pub mod message;
 #[cfg(feature = "identifier")]
@@ -117,12 +117,12 @@ pub mod observer;
 #[cfg_attr(docsrs, doc(cfg(feature = "cron")))]
 pub mod cron;
 
-#[cfg(all(feature = "derive", feature = "identifier"))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "identifier"))))]
-pub use acktor_derive::{HasStableTypeId, MessageId};
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use acktor_derive::{Message, MessageResponse};
+#[cfg(all(feature = "derive", feature = "identifier"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "identifier"))))]
+pub use acktor_derive::{MessageId, StableId};
 
 // re-export for use in derived code
 

@@ -1,29 +1,27 @@
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
-use ahash::RandomState;
 use dashmap::{DashMap, Entry};
 
-use acktor::{Recipient, Sender, SenderId};
+use acktor::{ActorId, SenderInfo, actor::RemoteMailbox};
 
-use crate::remote_message::RemoteMessage;
-
-/// A registry of actors in the current process which can receive [`RemoteMessage`]s.
+/// A registry of actors which are [`RemoteAddressable`][acktor::actor::RemoteAddressable].
 ///
 /// The registry is a cheaply-cloneable concurrent map shared between a [`Node`][crate::Node]
-/// and all of its sessions. It lets sessions route inbound [`RemoteMessage`]s to the proper
-/// actor in the same process.
+/// and all of its sessions. It lets sessions route inbound
+/// [`BinaryMessage`][acktor::message::BinaryMessage]s to the proper actor.
 ///
-/// An actor which implements the [`RemoteActor`][super::RemoteActor] trait will be
-/// automatically registered in a [`Node`][crate::Node]'s registry when its address is encoded
-/// as a [`RemoteMessage`] for the first time. Users can also manually register an actor with
-/// a [`Node`][crate::Node]'s [`AddActor`][crate::node::command::AddActor] command.
+/// An actor which implements the [`RemoteAddressable`][acktor::actor::RemoteAddressable] trait
+/// will be registered in a [`Node`][crate::Node]'s registry when its address is encoded as a
+/// [`BinaryMessage`][acktor::message::BinaryMessage] for the first time. Remote addressable
+/// actors can also be registered with the [`AddActor`][crate::node::command::AddActor] command
+/// of a [`Node`][crate::Node].
 #[derive(Clone, Default)]
-pub struct RemoteActorRegistry {
-    inner: Arc<DashMap<u64, Recipient<RemoteMessage>, RandomState>>,
+pub struct RemoteMailboxRegistry {
+    inner: Arc<DashMap<u64, RemoteMailbox, ahash::RandomState>>,
 }
 
-impl Debug for RemoteActorRegistry {
+impl Debug for RemoteMailboxRegistry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut list = f.debug_list();
         for entry in self.inner.iter() {
@@ -33,18 +31,18 @@ impl Debug for RemoteActorRegistry {
     }
 }
 
-impl RemoteActorRegistry {
-    /// Constructs a new empty [`RemoteActorRegistry`].
+impl RemoteMailboxRegistry {
+    /// Constructs a new empty [`RemoteMailboxRegistry`].
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Constructs a new empty [`RemoteActorRegistry`] with the specified capacity.
+    /// Constructs a new empty [`RemoteMailboxRegistry`] with the specified capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: Arc::new(DashMap::with_capacity_and_hasher(
                 capacity,
-                RandomState::new(),
+                ahash::RandomState::new(),
             )),
         }
     }
@@ -79,20 +77,20 @@ impl RemoteActorRegistry {
     /// registry.
     pub fn retain<F>(&self, mut predicate: F)
     where
-        F: FnMut(u64, &Recipient<RemoteMessage>) -> bool,
+        F: FnMut(u64, &RemoteMailbox) -> bool,
     {
         self.inner
             .retain(|index, recipient| predicate(*index, recipient));
     }
 
-    /// Returns an actor as a `Recipient<RemoteMessage>` corresponding to the given index.
+    /// Returns an actor as a [`RemoteMailbox`] corresponding to the given index.
     ///
     /// If the actor's mailbox is closed, this method removes it and returns `None`. This is
     /// different from the behavior of `get` on a normal `HashMap`.
     ///
     /// **Locking behavior:** May deadlock if called when holding any sort of reference into the
     /// registry.
-    pub fn get(&self, index: u64) -> Option<Recipient<RemoteMessage>> {
+    pub fn get(&self, index: u64) -> Option<RemoteMailbox> {
         match self.inner.entry(index) {
             Entry::Occupied(entry) => {
                 let recipient = entry.get();
@@ -113,8 +111,8 @@ impl RemoteActorRegistry {
     ///
     /// **Locking behavior:** May deadlock if called when holding a mutable reference into the
     /// registry.
-    pub fn contains_index(&self, index: u64) -> bool {
-        match self.inner.entry(index) {
+    pub fn contains_index(&self, index: ActorId) -> bool {
+        match self.inner.entry(index.as_local()) {
             Entry::Occupied(entry) => {
                 if entry.get().is_closed() {
                     entry.remove();
@@ -127,13 +125,15 @@ impl RemoteActorRegistry {
         }
     }
 
-    /// Removes an actor by its index, returning the actor as a `Recipient<RemoteMessage>` if it
-    /// was present in the registry.
+    /// Removes an actor by its index, returning the actor as a [`RemoteMailbox`] if
+    /// it was present in the registry.
     ///
     /// **Locking behavior:** May deadlock if called when holding any sort of reference into the
     /// registry.
-    pub fn remove(&self, index: u64) -> Option<Recipient<RemoteMessage>> {
-        self.inner.remove(&index).map(|(_, recipient)| recipient)
+    pub fn remove(&self, index: ActorId) -> Option<RemoteMailbox> {
+        self.inner
+            .remove(&index.as_local())
+            .map(|(_, recipient)| recipient)
     }
 
     /// Inserts a new actor keyed by its index.
@@ -146,11 +146,8 @@ impl RemoteActorRegistry {
     ///
     /// **Locking behavior:** May deadlock if called when holding any sort of reference into the
     /// registry.
-    pub fn insert<A>(&self, actor: A) -> bool
-    where
-        A: Into<Recipient<RemoteMessage>> + SenderId,
-    {
-        let index = actor.index();
+    pub fn insert(&self, actor: RemoteMailbox) -> bool {
+        let index = actor.index().as_local();
         match self.inner.entry(index) {
             Entry::Occupied(_) => false,
             Entry::Vacant(entry) => {

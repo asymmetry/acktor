@@ -1,17 +1,11 @@
 use std::fmt::{self, Debug};
-use std::sync::Arc;
 
-use futures_util::{FutureExt, TryFutureExt};
+use futures_util::TryFutureExt;
 use tokio::time::Duration;
 
 use super::next_actor_id;
 use super::permit::{OwnedSendPermit, SendPermit};
-use super::recipient::Recipient;
-use super::sender::{
-    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderMeta,
-};
-#[cfg(feature = "ipc")]
-use crate::actor::RemoteAccessibleActorHandle;
+use super::sender::{DoSendResult, SendResult};
 use crate::actor::{Actor, ActorId};
 use crate::channel::{mpsc, oneshot};
 use crate::envelope::{Envelope, FromEnvelope, IntoEnvelope};
@@ -265,87 +259,6 @@ where
                 mpsc::error::TrySendError::Full(_) => SendError::Full(()),
             })
     }
-
-    /// Returns a [`RemoteAccessibleActorHandle`], if `A` is a remote accessible actor.
-    #[cfg(feature = "ipc")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
-    fn remote_accessible_actor_handle(&self) -> Option<RemoteAccessibleActorHandle> {
-        A::remote_accessible_actor_handle()
-    }
-}
-
-impl<A> SenderMeta for LocalAddress<A>
-where
-    A: Actor,
-{
-    fn index(&self) -> ActorId {
-        self.index()
-    }
-
-    fn closed(&self) -> EmptyFuture<'_> {
-        self.closed().boxed()
-    }
-
-    fn is_closed(&self) -> bool {
-        self.is_closed()
-    }
-
-    fn capacity(&self) -> usize {
-        self.capacity()
-    }
-
-    #[cfg(feature = "ipc")]
-    fn remote_accessible_actor_handle(&self) -> Option<RemoteAccessibleActorHandle> {
-        self.remote_accessible_actor_handle()
-    }
-}
-
-impl<A, M, EP> Sender<M, EP> for LocalAddress<A>
-where
-    A: Actor,
-    M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
-{
-    fn send(&self, msg: M) -> SendResultFuture<'_, M> {
-        self.send(msg).boxed()
-    }
-
-    fn do_send(&self, msg: M) -> DoSendResultFuture<'_, M> {
-        self.do_send(msg).boxed()
-    }
-
-    fn try_send(&self, msg: M) -> SendResult<M> {
-        self.try_send(msg)
-    }
-
-    fn try_do_send(&self, msg: M) -> DoSendResult<M> {
-        self.try_do_send(msg)
-    }
-
-    fn send_timeout(&self, msg: M, timeout: Duration) -> SendResultFuture<'_, M> {
-        self.send_timeout(msg, timeout).boxed()
-    }
-
-    fn do_send_timeout(&self, msg: M, timeout: Duration) -> DoSendResultFuture<'_, M> {
-        self.do_send_timeout(msg, timeout).boxed()
-    }
-
-    fn blocking_send(&self, msg: M) -> SendResult<M> {
-        self.blocking_send(msg)
-    }
-
-    fn blocking_do_send(&self, msg: M) -> DoSendResult<M> {
-        self.blocking_do_send(msg)
-    }
-}
-
-impl<A, M, EP> From<LocalAddress<A>> for Recipient<M, EP>
-where
-    A: Actor,
-    M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
-{
-    fn from(addr: LocalAddress<A>) -> Self {
-        Self::new(Arc::new(addr))
-    }
 }
 
 #[cfg(test)]
@@ -359,7 +272,7 @@ mod tests {
     use crate::channel::mpsc;
     use crate::envelope::Envelope;
     use crate::error::SendError;
-    use crate::test_utils::{Dummy, Ping, hash_of};
+    use crate::test_utils::{Dummy, Ping};
 
     fn make_address(capacity: usize) -> (LocalAddress<Dummy>, Mailbox<Dummy>) {
         let (tx, rx) = mpsc::channel::<Envelope<Dummy>>(capacity);
@@ -491,50 +404,6 @@ mod tests {
             Ok(())
         })
         .await??;
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_recipient() -> Result<()> {
-        // From<Address> delivers to the mailbox
-        let (a1, m1) = make_address(4);
-        let index = a1.index();
-        let r1: Recipient<Ping> = a1.into();
-        assert_eq!(r1.index(), index);
-
-        // clone + eq + hash
-        let clone = r1.clone();
-        assert_eq!(r1, clone);
-        assert_eq!(r1.index(), clone.index());
-        assert_eq!(hash_of(&r1), hash_of(&clone));
-
-        // capacity + is_closed + closed
-        assert_eq!(r1.capacity(), 4);
-        assert!(!r1.is_closed());
-        drop(m1);
-        assert!(r1.is_closed());
-        time::timeout(Duration::from_millis(500), r1.closed())
-            .await
-            .context("closed() should resolve after mailbox drop")?;
-
-        // send functions
-        let (a1, m1) = make_address(8);
-        let r1: Recipient<Ping> = a1.into();
-        r1.send(Ping(10)).await?;
-        r1.do_send(Ping(11)).await?;
-        r1.try_send(Ping(12))?;
-        r1.try_do_send(Ping(13))?;
-        r1.send_timeout(Ping(14), Duration::from_millis(10)).await?;
-        r1.do_send_timeout(Ping(15), Duration::from_millis(10))
-            .await?;
-        tokio::task::spawn_blocking(move || -> Result<()> {
-            r1.blocking_send(Ping(16))?;
-            r1.blocking_do_send(Ping(17))?;
-            Ok(())
-        })
-        .await??;
-        assert_eq!(m1.len(), 8);
 
         Ok(())
     }

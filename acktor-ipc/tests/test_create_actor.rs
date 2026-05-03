@@ -1,12 +1,14 @@
 use tokio::time::Duration;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{Actor, Address, Context, Handler, JoinHandle, Message, MessageId, Sender, SenderId};
+use acktor::{
+    Actor, Address, Context, Handler, JoinHandle, Message, MessageId, Sender, SenderInfo,
+};
 use acktor_ipc::{
-    Decode, Encode, Node, NodeError, RemoteActor, RemoteActorFactory,
+    Decode, Encode, Node, NodeError, RemoteActor, RemoteSpawnable,
     ipc_method::websocket::{WebSocketConnection, WebSocketListener},
     node::command,
-    remote_actor,
+    remote,
 };
 
 mod common;
@@ -53,14 +55,14 @@ impl Handler<Inc> for Counter {
     }
 }
 
-impl RemoteActorFactory for Counter {
-    const TYPE_NAME: &'static str = "Counter";
+impl RemoteSpawnable for Counter {
+    const LABEL: &'static str = "Counter";
 
     fn create_remote(
         label: String,
         _config: String,
     ) -> Result<(Address<Self>, JoinHandle<()>), Self::Error> {
-        Counter::default().run(label)
+        Counter::default().start(label)
     }
 }
 
@@ -73,8 +75,8 @@ async fn test_create_actor() -> anyhow::Result<()> {
     let listener = WebSocketListener::bind(&bind_addr).await?;
     let (server, server_join_handle) = Node::new()
         .with_listener(listener)
-        .with_actor_factory::<Counter>()
-        .run("server")?;
+        .with_remote_spawnable_actor::<Counter>()
+        .start("server")?;
 
     let (client, client_join_handle) = start_client()?;
     let session = connect::<WebSocketConnection>(&client, endpoint).await?;
@@ -84,7 +86,7 @@ async fn test_create_actor() -> anyhow::Result<()> {
         .send(command::CreateRemoteActor {
             session: session.clone().into(),
             label: "counter-1".to_string(),
-            r#type: Counter::TYPE_NAME.to_string(),
+            r#type: Counter::LABEL.to_string(),
             config: String::new(),
         })
         .await?
@@ -116,7 +118,7 @@ async fn test_create_actor() -> anyhow::Result<()> {
         .send(command::CreateRemoteActor {
             session: session.clone().into(),
             label: "counter-1".to_string(),
-            r#type: Counter::TYPE_NAME.to_string(),
+            r#type: Counter::LABEL.to_string(),
             config: String::new(),
         })
         .await?

@@ -12,8 +12,8 @@ use crate::message::{Handler, Message, MessageResponse};
 
 /// The default envelope proxy for [`Message`].
 ///
-/// This proxy will invoke the actor's [`Handler<M>`] trait and return the result through
-/// an oneshot channel if provided.
+/// This proxy will invokes the actor's [`Handler`] trait and return the result through an oneshot
+/// channel if provided.
 pub struct DefaultEnvelopeProxy<M>
 where
     M: Message,

@@ -11,18 +11,18 @@ use tokio::{runtime, time::Duration};
 
 use super::recipient::Recipient;
 use super::sender::{
-    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderMeta,
+    DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderInfo,
 };
 use crate::actor::ActorId;
 use crate::channel::oneshot;
 use crate::codec::{
-    CodecItem, CodecTable, Decode, DecodeContext, DecodeError, Encode, EncodeContext,
+    CodecTable, Decode, DecodeContext, DecodeError, Encode, EncodeContext, MessageCodec,
 };
 use crate::error::SendError;
-use crate::message::{EncodedMessage, Message, MessageId};
+use crate::message::{BinaryMessage, Message, MessageId};
 use crate::utils::ShortName;
 
-/// Interface for sending encoded messages to an actor in another process.
+/// Interface for sending binary messages to an actor in another process.
 pub trait RemoteProxy {
     /// Returns the Tokio runtime handle associated with this proxy.
     fn runtime(&self) -> runtime::Handle;
@@ -45,15 +45,14 @@ pub trait RemoteProxy {
     /// Returns the remaining capacity of the proxy.
     fn capacity(&self) -> usize;
 
-    /// Sends an encoded message, waiting until there is capacity.
-    fn do_send(&self, msg: EncodedMessage) -> DoSendResultFuture<'_, ()>;
+    /// Sends an binary message, waiting until there is capacity.
+    fn do_send(&self, msg: BinaryMessage) -> DoSendResultFuture<'_, ()>;
 
-    /// Attempts to immediately send an encoded message.
-    fn try_do_send(&self, msg: EncodedMessage) -> DoSendResult<()>;
+    /// Attempts to immediately send an binary message.
+    fn try_do_send(&self, msg: BinaryMessage) -> DoSendResult<()>;
 
-    /// Sends an encoded message, waiting until there is capacity, but only for a limited time.
-    fn do_send_timeout(&self, msg: EncodedMessage, timeout: Duration)
-    -> DoSendResultFuture<'_, ()>;
+    /// Sends an binary message, waiting until there is capacity, but only for a limited time.
+    fn do_send_timeout(&self, msg: BinaryMessage, timeout: Duration) -> DoSendResultFuture<'_, ()>;
 
     /// Blocking send to call outside of asynchronous contexts.
     ///
@@ -63,13 +62,13 @@ pub trait RemoteProxy {
     /// # Panics
     ///
     /// This function panics if called within an asynchronous execution context.
-    fn blocking_do_send(&self, msg: EncodedMessage) -> DoSendResult<()>;
+    fn blocking_do_send(&self, msg: BinaryMessage) -> DoSendResult<()>;
 }
 
-/// The address of an actor located in a different process.
+/// The address of an actor located in another process.
 pub struct RemoteAddress {
-    index: ActorId,
-    codec: &'static CodecTable,
+    actor_id: ActorId,
+    codec_table: &'static CodecTable,
     proxy: Arc<dyn RemoteProxy + Send + Sync>,
 }
 
@@ -85,18 +84,18 @@ impl Clone for RemoteAddress {
     #[inline]
     fn clone(&self) -> Self {
         Self {
-            index: self.index,
-            codec: self.codec,
+            actor_id: self.actor_id,
+            codec_table: self.codec_table,
             proxy: self.proxy.clone(),
         }
     }
 }
 
-async fn decode_and_forward<M>(
+async fn decode_res<M>(
     raw_rx: oneshot::Receiver<Bytes>,
     mut tx: oneshot::Sender<M::Result>,
     proxy: Arc<dyn RemoteProxy + Send + Sync>,
-    codec: CodecItem,
+    codec: MessageCodec,
 ) where
     M: Message,
 {
@@ -133,19 +132,19 @@ impl RemoteAddress {
     /// Constructs a new [`RemoteAddress`].
     pub fn new(
         index: u64,
-        codec: &'static CodecTable,
+        codec_table: &'static CodecTable,
         proxy: Arc<dyn RemoteProxy + Send + Sync>,
     ) -> Self {
         Self {
-            index: ActorId::new_remote(index, proxy.index()),
-            codec,
+            actor_id: ActorId::new_remote(index, proxy.index()),
+            codec_table,
             proxy,
         }
     }
 
     /// Returns the index of the address.
     pub const fn index(&self) -> ActorId {
-        self.index
+        self.actor_id
     }
 
     /// Completes when the proxy of the actor has been closed.
@@ -169,12 +168,12 @@ impl RemoteAddress {
     where
         M: Message,
     {
-        match self.codec.get(&TypeId::of::<M>()) {
+        match self.codec_table.get(&TypeId::of::<M>()) {
             Some(codec) => match (codec.encode_msg)(&msg, self.proxy.encode_context()) {
                 Ok(bytes) => {
                     let (raw_tx, raw_rx) = oneshot::channel();
                     self.proxy
-                        .do_send(EncodedMessage::send(
+                        .do_send(BinaryMessage::send(
                             self.index(),
                             codec.message_id,
                             bytes,
@@ -186,7 +185,7 @@ impl RemoteAddress {
                     let (tx, rx) = oneshot::channel();
                     let proxy = self.proxy.clone();
 
-                    tokio::spawn(decode_and_forward::<M>(raw_rx, tx, proxy, *codec));
+                    tokio::spawn(decode_res::<M>(raw_rx, tx, proxy, *codec));
 
                     Ok(rx)
                 }
@@ -202,11 +201,11 @@ impl RemoteAddress {
     where
         M: Message,
     {
-        match self.codec.get(&TypeId::of::<M>()) {
+        match self.codec_table.get(&TypeId::of::<M>()) {
             Some(codec) => match (codec.encode_msg)(&msg, self.proxy.encode_context()) {
                 Ok(bytes) => self
                     .proxy
-                    .do_send(EncodedMessage::do_send(
+                    .do_send(BinaryMessage::do_send(
                         self.index(),
                         codec.message_id,
                         bytes,
@@ -227,12 +226,12 @@ impl RemoteAddress {
     where
         M: Message,
     {
-        match self.codec.get(&TypeId::of::<M>()) {
+        match self.codec_table.get(&TypeId::of::<M>()) {
             Some(codec) => match (codec.encode_msg)(&msg, self.proxy.encode_context()) {
                 Ok(bytes) => {
                     let (raw_tx, raw_rx) = oneshot::channel();
                     self.proxy
-                        .try_do_send(EncodedMessage::send(
+                        .try_do_send(BinaryMessage::send(
                             self.index(),
                             codec.message_id,
                             bytes,
@@ -243,7 +242,7 @@ impl RemoteAddress {
                     let (tx, rx) = oneshot::channel();
                     let proxy = self.proxy.clone();
 
-                    tokio::spawn(decode_and_forward::<M>(raw_rx, tx, proxy, *codec));
+                    tokio::spawn(decode_res::<M>(raw_rx, tx, proxy, *codec));
 
                     Ok(rx)
                 }
@@ -260,11 +259,11 @@ impl RemoteAddress {
     where
         M: Message,
     {
-        match self.codec.get(&TypeId::of::<M>()) {
+        match self.codec_table.get(&TypeId::of::<M>()) {
             Some(codec) => match (codec.encode_msg)(&msg, self.proxy.encode_context()) {
                 Ok(bytes) => self
                     .proxy
-                    .try_do_send(EncodedMessage::do_send(
+                    .try_do_send(BinaryMessage::do_send(
                         self.index(),
                         codec.message_id,
                         bytes,
@@ -284,13 +283,13 @@ impl RemoteAddress {
     where
         M: Message,
     {
-        match self.codec.get(&TypeId::of::<M>()) {
+        match self.codec_table.get(&TypeId::of::<M>()) {
             Some(codec) => match (codec.encode_msg)(&msg, self.proxy.encode_context()) {
                 Ok(bytes) => {
                     let (raw_tx, raw_rx) = oneshot::channel();
                     self.proxy
                         .do_send_timeout(
-                            EncodedMessage::send(self.index(), codec.message_id, bytes, raw_tx),
+                            BinaryMessage::send(self.index(), codec.message_id, bytes, raw_tx),
                             timeout,
                         )
                         .await
@@ -299,7 +298,7 @@ impl RemoteAddress {
                     let (tx, rx) = oneshot::channel();
                     let proxy = self.proxy.clone();
 
-                    tokio::spawn(decode_and_forward::<M>(raw_rx, tx, proxy, *codec));
+                    tokio::spawn(decode_res::<M>(raw_rx, tx, proxy, *codec));
 
                     Ok(rx)
                 }
@@ -317,12 +316,12 @@ impl RemoteAddress {
     where
         M: Message,
     {
-        match self.codec.get(&TypeId::of::<M>()) {
+        match self.codec_table.get(&TypeId::of::<M>()) {
             Some(codec) => match (codec.encode_msg)(&msg, self.proxy.encode_context()) {
                 Ok(bytes) => self
                     .proxy
                     .do_send_timeout(
-                        EncodedMessage::do_send(self.index(), codec.message_id, bytes),
+                        BinaryMessage::do_send(self.index(), codec.message_id, bytes),
                         timeout,
                     )
                     .await
@@ -347,12 +346,12 @@ impl RemoteAddress {
     where
         M: Message,
     {
-        match self.codec.get(&TypeId::of::<M>()) {
+        match self.codec_table.get(&TypeId::of::<M>()) {
             Some(codec) => match (codec.encode_msg)(&msg, self.proxy.encode_context()) {
                 Ok(bytes) => {
                     let (raw_tx, raw_rx) = oneshot::channel();
                     self.proxy
-                        .blocking_do_send(EncodedMessage::send(
+                        .blocking_do_send(BinaryMessage::send(
                             self.index(),
                             codec.message_id,
                             bytes,
@@ -364,7 +363,7 @@ impl RemoteAddress {
                     let proxy = self.proxy.clone();
                     let runtime = self.proxy.runtime();
 
-                    runtime.spawn(decode_and_forward::<M>(raw_rx, tx, proxy, *codec));
+                    runtime.spawn(decode_res::<M>(raw_rx, tx, proxy, *codec));
 
                     Ok(rx)
                 }
@@ -388,11 +387,11 @@ impl RemoteAddress {
     where
         M: Message,
     {
-        match self.codec.get(&TypeId::of::<M>()) {
+        match self.codec_table.get(&TypeId::of::<M>()) {
             Some(codec) => match (codec.encode_msg)(&msg, self.proxy.encode_context()) {
                 Ok(bytes) => self
                     .proxy
-                    .blocking_do_send(EncodedMessage::do_send(
+                    .blocking_do_send(BinaryMessage::do_send(
                         self.index(),
                         codec.message_id,
                         bytes,
@@ -413,7 +412,7 @@ where
     M: Message + MessageId + Encode,
     M::Result: Decode,
 {
-    index: ActorId,
+    actor_id: ActorId,
     proxy: Arc<dyn RemoteProxy + Send + Sync>,
     _marker: PhantomData<fn(M) -> M>,
 }
@@ -437,7 +436,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            index: self.index,
+            actor_id: self.actor_id,
             proxy: self.proxy.clone(),
             _marker: PhantomData,
         }
@@ -452,7 +451,7 @@ where
     /// Constructs a new [`RemoteRecipient`].
     pub fn new(index: u64, proxy: Arc<dyn RemoteProxy + Send + Sync>) -> Self {
         Self {
-            index: ActorId::new_remote(index, proxy.index()),
+            actor_id: ActorId::new_remote(index, proxy.index()),
             proxy,
             _marker: PhantomData,
         }
@@ -460,17 +459,17 @@ where
 
     /// Returns the index of the recipient.
     pub const fn index(&self) -> ActorId {
-        self.index
+        self.actor_id
     }
 }
 
-impl<M> SenderMeta for RemoteRecipient<M>
+impl<M> SenderInfo for RemoteRecipient<M>
 where
     M: Message + MessageId + Encode,
     M::Result: Decode,
 {
     fn index(&self) -> ActorId {
-        self.index
+        self.actor_id
     }
 
     fn closed(&self) -> EmptyFuture<'_> {
@@ -486,14 +485,16 @@ where
     }
 }
 
-async fn decode_and_forward_no_codec<M>(
+async fn decode_res_with_bound<M>(
     raw_rx: oneshot::Receiver<Bytes>,
     mut tx: oneshot::Sender<M::Result>,
     proxy: Arc<dyn RemoteProxy + Send + Sync>,
 ) where
-    M: Message + MessageId + Encode,
+    M: Message,
     M::Result: Decode,
 {
+    // `M::Result` is bounded by `Decode` trait so we do not need to dynamically dispatch it with the codec table.
+
     let result = tokio::select! {
         result = raw_rx => match result {
             Ok(bytes) => M::Result::decode(bytes, proxy.decode_context()),
@@ -533,10 +534,10 @@ where
 
         let proxy = self.proxy.clone();
 
-        tokio::spawn(decode_and_forward_no_codec::<M>(raw_rx, tx, proxy));
+        tokio::spawn(decode_res_with_bound::<M>(raw_rx, tx, proxy));
 
         self.proxy
-            .do_send(EncodedMessage::send(self.index(), M::ID, bytes, raw_tx))
+            .do_send(BinaryMessage::send(self.index(), M::ID, bytes, raw_tx))
             .map(|result| match result {
                 Ok(_) => Ok(rx),
                 Err(e) => Err(e.with_msg(msg)),
@@ -551,7 +552,7 @@ where
         };
 
         self.proxy
-            .do_send(EncodedMessage::do_send(self.index(), M::ID, bytes))
+            .do_send(BinaryMessage::do_send(self.index(), M::ID, bytes))
             .map_err(|e| e.with_msg(msg))
             .boxed()
     }
@@ -567,11 +568,11 @@ where
 
         let proxy = self.proxy.clone();
 
-        tokio::spawn(decode_and_forward_no_codec::<M>(raw_rx, tx, proxy));
+        tokio::spawn(decode_res_with_bound::<M>(raw_rx, tx, proxy));
 
         match self
             .proxy
-            .try_do_send(EncodedMessage::send(self.index(), M::ID, bytes, raw_tx))
+            .try_do_send(BinaryMessage::send(self.index(), M::ID, bytes, raw_tx))
         {
             Ok(_) => Ok(rx),
             Err(e) => Err(e.with_msg(msg)),
@@ -585,7 +586,7 @@ where
         };
 
         self.proxy
-            .try_do_send(EncodedMessage::do_send(self.index(), M::ID, bytes))
+            .try_do_send(BinaryMessage::do_send(self.index(), M::ID, bytes))
             .map_err(|e| e.with_msg(msg))
     }
 
@@ -600,11 +601,11 @@ where
 
         let proxy = self.proxy.clone();
 
-        tokio::spawn(decode_and_forward_no_codec::<M>(raw_rx, tx, proxy));
+        tokio::spawn(decode_res_with_bound::<M>(raw_rx, tx, proxy));
 
         self.proxy
             .do_send_timeout(
-                EncodedMessage::send(self.index(), M::ID, bytes, raw_tx),
+                BinaryMessage::send(self.index(), M::ID, bytes, raw_tx),
                 timeout,
             )
             .map(|result| match result {
@@ -621,7 +622,7 @@ where
         };
 
         self.proxy
-            .do_send_timeout(EncodedMessage::do_send(self.index(), M::ID, bytes), timeout)
+            .do_send_timeout(BinaryMessage::do_send(self.index(), M::ID, bytes), timeout)
             .map_err(|e| e.with_msg(msg))
             .boxed()
     }
@@ -638,11 +639,11 @@ where
         let proxy = self.proxy.clone();
         let runtime = proxy.runtime();
 
-        runtime.spawn(decode_and_forward_no_codec::<M>(raw_rx, tx, proxy));
+        runtime.spawn(decode_res_with_bound::<M>(raw_rx, tx, proxy));
 
         match self
             .proxy
-            .blocking_do_send(EncodedMessage::send(self.index(), M::ID, bytes, raw_tx))
+            .blocking_do_send(BinaryMessage::send(self.index(), M::ID, bytes, raw_tx))
         {
             Ok(_) => Ok(rx),
             Err(e) => Err(e.with_msg(msg)),
@@ -656,7 +657,7 @@ where
         };
 
         self.proxy
-            .blocking_do_send(EncodedMessage::do_send(self.index(), M::ID, bytes))
+            .blocking_do_send(BinaryMessage::do_send(self.index(), M::ID, bytes))
             .map_err(|e| e.with_msg(msg))
     }
 }

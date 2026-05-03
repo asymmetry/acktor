@@ -17,21 +17,20 @@ use tracing::{Instrument, debug, info, warn};
 
 use acktor::{
     Actor, ActorContext, ActorId, Address, ErrorReport, Handler, Message, Recipient, Sender,
-    SenderId, channel::oneshot, message::FutureMessageResult, utils::debug_trace,
+    SenderInfo, actor::RemoteAddressable, channel::oneshot, message::FutureMessageResult,
+    utils::debug_trace,
 };
 use acktor_ipc_proto::{actor_message, ipc_message, node_message, utils as proto_utils};
 
 use crate::actor_handle::ActorHandle;
-use crate::codec::{Decode, DecodeContext, Encode};
-use crate::errors::{DecodeError, SessionError};
+use crate::codec::{Decode, DecodeContext, DecodeError, Encode};
+use crate::error::SessionError;
 use crate::ipc_method::IpcConnection;
 use crate::node::{
-    LabelMap,
+    ActorLabelMap,
     factory::{self, Factory},
 };
-use crate::remote_actor::RemoteActorRegistry;
-use crate::remote_address::RemoteAddress;
-use crate::remote_message::RemoteMessage;
+use crate::remote::{RemoteMailboxRegistry, RemoteSpawnable};
 
 pub mod command;
 
@@ -89,8 +88,8 @@ impl Debug for CreateActorResponse {
 pub struct Session {
     connection: Box<dyn IpcConnection>,
     factory: Address<Factory>,
-    registry: RemoteActorRegistry,
-    label_map: LabelMap,
+    registry: RemoteMailboxRegistry,
+    label_map: ActorLabelMap,
     tag: u64, // unique tag generator
     decode_context: Option<DecodeContext>,
     node_msg_res_tx_map: HashMap<u64, (oneshot::Sender<Result<RemoteAddress>>, Instant)>,
@@ -103,8 +102,8 @@ impl Session {
     pub(crate) fn new(
         connection: Box<dyn IpcConnection>,
         factory: Address<Factory>,
-        registry: RemoteActorRegistry,
-        label_map: LabelMap,
+        registry: RemoteMailboxRegistry,
+        label_map: ActorLabelMap,
     ) -> Self {
         Self {
             connection,
@@ -554,27 +553,26 @@ impl Actor for Session {
 // `NodeMessage` sent by this handler.
 // See `handle_node_message_response` for how this actor forwards the result to the original
 // sender when it receives the `NodeMessageResponse` from the remote peer actor.
-impl Handler<command::CreateRemoteActor> for Session {
-    type Result = FutureMessageResult<command::CreateRemoteActor>;
+impl<A> Handler<command::CreateRemoteActor<A>> for Session
+where
+    A: Actor + RemoteSpawnable,
+{
+    type Result = FutureMessageResult<command::CreateRemoteActor<A>>;
 
     async fn handle(
         &mut self,
-        msg: command::CreateRemoteActor,
+        msg: command::CreateRemoteActor<A>,
         _ctx: &mut <Self as Actor>::Context,
     ) -> Self::Result {
-        debug_trace!("Handle command {:?}", msg);
+        debug_trace!("Handle command CreateRemoteActor");
 
-        let command::CreateRemoteActor {
-            label,
-            r#type,
-            config,
-        } = msg;
+        let command::CreateRemoteActor { label, config, .. } = msg;
 
         let (tx, rx) = oneshot::channel();
 
         let tag = self.next_tag();
         let ipc_msg = ipc_message::IpcMessage::node_message(
-            node_message::NodeMessage::create_actor(label, r#type, config, tag),
+            node_message::NodeMessage::create_actor(label, A::TYPE_NAME.to_string(), config, tag),
         );
 
         if let Err(e) = self.send_ipc_message(ipc_msg).await {
@@ -605,24 +603,27 @@ impl Handler<command::CreateRemoteActor> for Session {
 // `NodeMessage` sent by this handler.
 // See `handle_node_message_response` for how this actor forwards the result to the original
 // sender when it receives the `NodeMessageResponse` from the remote peer actor.
-impl Handler<command::GetRemoteActor> for Session {
-    type Result = FutureMessageResult<command::GetRemoteActor>;
+impl<A> Handler<command::GetRemoteActor<A>> for Session
+where
+    A: Actor + RemoteAddressable,
+{
+    type Result = FutureMessageResult<command::GetRemoteActor<A>>;
 
     async fn handle(
         &mut self,
-        msg: command::GetRemoteActor,
+        msg: command::GetRemoteActor<A>,
         _ctx: &mut <Self as Actor>::Context,
     ) -> Self::Result {
-        debug_trace!("Handle command {:?}", msg);
+        debug_trace!("Handle command GetRemoteActor");
 
-        let command::GetRemoteActor { actor } = msg;
+        let command::GetRemoteActor { actor, .. } = msg;
 
         let (tx, rx) = oneshot::channel();
 
         let tag = self.next_tag();
         let ipc_msg = match &actor {
             ActorHandle::Index(actor_id) => ipc_message::IpcMessage::node_message(
-                node_message::NodeMessage::get_actor_with_index(*actor_id, tag),
+                node_message::NodeMessage::get_actor_with_index(actor_id.as_local(), tag),
             ),
             ActorHandle::Label(label) => ipc_message::IpcMessage::node_message(
                 node_message::NodeMessage::get_actor_with_label(label.clone(), tag),

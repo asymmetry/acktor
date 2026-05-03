@@ -1,11 +1,13 @@
 //! Commands which can be used to interact with a session.
 //!
 
-use acktor::Message;
+use std::marker::PhantomData;
+
+use acktor::{Actor, Address, Message, actor::RemoteAddressable};
 
 use crate::actor_handle::ActorHandle;
-use crate::errors::SessionError;
-use crate::remote_address::RemoteAddress;
+use crate::error::SessionError;
+use crate::remote::RemoteSpawnable;
 
 type Result<T> = std::result::Result<T, SessionError>;
 
@@ -15,22 +17,35 @@ type Result<T> = std::result::Result<T, SessionError>;
 /// the operation is successful, the provided `label` will be used as the actor label of the
 /// new actor created in the remote node.
 #[derive(Debug)]
-pub struct CreateRemoteActor {
+pub struct CreateRemoteActor<A>
+where
+    A: Actor + RemoteSpawnable,
+{
     pub label: String,
-    pub r#type: String,
     pub config: String,
+    pub marker: PhantomData<fn() -> A>,
 }
 
-impl Message for CreateRemoteActor {
-    type Result = Result<RemoteAddress>;
+impl<A> Message for CreateRemoteActor<A>
+where
+    A: Actor + RemoteSpawnable,
+{
+    type Result = Result<Address<A>>;
 }
 
 /// A command which is used to get the address of an actor in a remote node.
 #[derive(Debug)]
-pub struct GetRemoteActor {
+pub struct GetRemoteActor<A>
+where
+    A: Actor + RemoteAddressable,
+{
     pub actor: ActorHandle,
+    pub marker: PhantomData<fn() -> A>,
 }
 
-impl Message for GetRemoteActor {
-    type Result = Result<RemoteAddress>;
+impl<A> Message for GetRemoteActor<A>
+where
+    A: Actor + RemoteAddressable,
+{
+    type Result = Result<Address<A>>;
 }

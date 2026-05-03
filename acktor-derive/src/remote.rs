@@ -13,30 +13,24 @@ pub fn expand(input: TokenStream) -> TokenStream {
         Some((_, path, _)) => {
             return syn::Error::new_spanned(
                 path,
-                "#[remote_actor] must be applied to an `impl Actor for ..` block",
+                "#[remote] must be applied to an `impl Actor for ..` block",
             )
             .to_compile_error();
         }
         None => {
             return syn::Error::new_spanned(
                 &item.self_ty,
-                "#[remote_actor] must be applied to an `impl Actor for ..` block",
+                "#[remote] must be applied to an `impl Actor for ..` block",
             )
             .to_compile_error();
         }
     }
 
     let shim_method: syn::ImplItem = syn::parse_quote! {
-        fn type_erased_recipient_fn() -> ::core::option::Option<
-            ::acktor::actor::TypeErasedRecipientFn<Self>,
-        > {
-            ::core::option::Option::Some(|addr: &::acktor::Address<Self>| {
-                let recipient: ::acktor::Recipient<::acktor_ipc::RemoteMessage> =
-                    ::core::convert::From::from(
-                        <::acktor::Address<Self> as ::core::clone::Clone>::clone(addr),
-                    );
-                ::acktor::actor::TypeErasedRecipient::new(recipient)
-            })
+        fn remote_mailbox(
+            address: ::acktor::Address<Self>
+        ) -> ::core::option::Option<::acktor::actor::RemoteMailbox<Self>> {
+            ::core::option::Option::Some(::core::convert::Into::into(address))
         }
     };
     item.items.push(shim_method);

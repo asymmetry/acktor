@@ -6,14 +6,14 @@ use std::any::Any;
 use tracing::{debug, warn};
 
 use crate::actor::JoinHandle;
-use crate::address::{Recipient, Sender, SenderMeta};
+use crate::address::{Recipient, Sender, SenderInfo};
 use crate::signal::Signal;
 
 #[cfg(test)]
 pub(crate) mod test_utils;
 
 mod type_map;
-pub use type_map::TypeMap;
+pub use type_map::{NopHasher, TypeMap};
 
 pub use disqualified::ShortName;
 

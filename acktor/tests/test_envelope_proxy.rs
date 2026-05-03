@@ -33,7 +33,7 @@ impl Handler<Work> for Slow {
 
 #[tokio::test]
 async fn test_handler_done() -> Result<()> {
-    let (address, _) = Slow.run("slow")?;
+    let (address, _) = Slow.start("slow")?;
 
     let result = address
         .send(Timed::new(
@@ -52,7 +52,7 @@ async fn test_handler_done() -> Result<()> {
 
 #[tokio::test]
 async fn test_unpack_message() -> Result<()> {
-    let (address, join_handle) = Slow.run("slow")?;
+    let (address, join_handle) = Slow.start("slow")?;
 
     // close the actor's mailbox by terminating it
     address.do_send(Signal::Terminate).await?;
@@ -80,7 +80,7 @@ async fn test_unpack_message() -> Result<()> {
 
 #[tokio::test]
 async fn test_handler_cancelled() -> Result<()> {
-    let (address, _) = Slow.run("slow")?;
+    let (address, _) = Slow.start("slow")?;
 
     // oneshot closes empty because the proxy dropped the handler future
     let result = address

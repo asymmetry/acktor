@@ -6,7 +6,7 @@ use acktor_ipc::{
     Decode, Encode, Node, NodeError, RemoteActor,
     ipc_method::websocket::{WebSocketConnection, WebSocketListener},
     node::command,
-    remote_actor,
+    remote,
 };
 
 mod common;
@@ -49,7 +49,7 @@ impl Handler<Tick> for Dummy {
 
 #[tokio::test]
 async fn test_add_remove_listener() -> anyhow::Result<()> {
-    let (node, node_join_handle) = Node::new().run("node")?;
+    let (node, node_join_handle) = Node::new().start("node")?;
 
     // 1st add
     let port_1 = pick_free_port().await?;
@@ -93,8 +93,8 @@ async fn test_add_remove_listener() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_add_remove_actor() -> anyhow::Result<()> {
-    let (node, node_join_handle) = Node::new().run("node")?;
-    let (dummy, dummy_join_handle) = Dummy.run("dummy")?;
+    let (node, node_join_handle) = Node::new().start("node")?;
+    let (dummy, dummy_join_handle) = Dummy.start("dummy")?;
     let dummy_idx = dummy.index();
 
     // add
@@ -144,7 +144,7 @@ async fn test_debug_fmt() -> anyhow::Result<()> {
     );
 
     // AddActor
-    let (dummy, dummy_join_handle) = Dummy.run("dummy")?;
+    let (dummy, dummy_join_handle) = Dummy.start("dummy")?;
     let dummy_idx = dummy.index();
     let cmd = command::AddActor {
         label: "dummy".to_string(),

@@ -9,7 +9,7 @@ use acktor::{
     observer::Observer,
 };
 use acktor_ipc::{
-    ActorHandle, RemoteActor, RemoteAddress, Session, remote_actor, session::command,
+    ActorHandle, RemoteActor, RemoteAddress, Session, remote, session::command,
 };
 
 use crate::message::{Ping, Pong};
@@ -32,7 +32,7 @@ impl Client {
     }
 }
 
-#[remote_actor]
+#[remote]
 impl Actor for Client {
     type Context = CronContext<Self>;
     type Error = anyhow::Error;

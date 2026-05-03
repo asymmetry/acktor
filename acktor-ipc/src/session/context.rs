@@ -2,13 +2,13 @@ use tokio::time;
 use tracing::{Instrument, debug, warn};
 
 use acktor::{
-    ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, Handler, Message,
-    Recipient, SenderId, address::Mailbox, channel::mpsc, envelope::EnvelopeProxy,
+    ActorContext, ActorId, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, Handler,
+    Message, Recipient, SenderInfo, address::Mailbox, channel::mpsc, envelope::EnvelopeProxy,
     supervisor::SupervisionEvent,
 };
 
 use super::{CLEANUP_INTERVAL, Session};
-use crate::errors::SessionError;
+use crate::error::SessionError;
 
 #[derive(Debug)]
 struct RequireCleanup;
@@ -58,7 +58,7 @@ impl ActorContext<Session> for SessionContext {
         Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
     }
 
-    fn index(&self) -> u64 {
+    fn index(&self) -> ActorId {
         self.doorplate.index()
     }
 
@@ -82,7 +82,7 @@ impl ActorContext<Session> for SessionContext {
         self.state = state;
     }
 
-    async fn process_loop(
+    async fn run_loop(
         &mut self,
         actor: &mut Session,
         mailbox: &mut Mailbox<Session>,

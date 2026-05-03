@@ -2,14 +2,14 @@ use std::result::Result;
 use std::time::Duration;
 
 use acktor::{
-    Actor, ActorId, Handler, Message, Sender, SenderId,
+    Actor, ActorId, Handler, Message, SenderInfo,
     cron::{CronActor, CronContext},
     utils::debug_trace,
 };
 
-use super::{LabelMap, RemoteActorFactoryRegistry};
-use crate::errors::{NodeError, SessionError};
-use crate::remote_actor::RemoteActorRegistry;
+use super::{ActorLabelMap, ActorFactoryRegistry};
+use crate::error::{NodeError, SessionError};
+use crate::remote::RemoteMailboxRegistry;
 
 /// A command which is used by a [`Session`][crate::session::Session] to create an actor in the
 /// current process on behalf of a remote peer.
@@ -27,20 +27,20 @@ impl Message for CreateActor {
 /// An actor which is responsible for creating actors in the current process on behalf of remote
 /// peers. It also keeps track of the actors in the registry and removes the stale ones.
 pub(crate) struct Factory {
-    factory_registry: RemoteActorFactoryRegistry,
-    registry: RemoteActorRegistry,
-    label_map: LabelMap,
+    spawnable_registry: ActorFactoryRegistry,
+    addressable_registry: RemoteMailboxRegistry,
+    label_map: ActorLabelMap,
 }
 
 impl Factory {
     pub(crate) fn new(
-        factory_registry: RemoteActorFactoryRegistry,
-        registry: RemoteActorRegistry,
-        label_map: LabelMap,
+        spawnable_registry: ActorFactoryRegistry,
+        addressable_registry: RemoteMailboxRegistry,
+        label_map: ActorLabelMap,
     ) -> Self {
         Self {
-            factory_registry,
-            registry,
+            spawnable_registry,
+            addressable_registry,
             label_map,
         }
     }
@@ -53,9 +53,10 @@ impl Actor for Factory {
 
 impl CronActor for Factory {
     async fn task(&mut self, _ctx: &mut Self::Context) -> Result<Duration, NodeError> {
-        self.registry.retain(|_, recipient| !recipient.is_closed());
+        self.addressable_registry
+            .retain(|_, recipient| !recipient.is_closed());
         self.label_map
-            .retain(|_, actor_id| self.registry.contains_index(*actor_id));
+            .retain(|_, actor_id| self.addressable_registry.contains_index(*actor_id));
 
         Ok(Duration::from_secs(60))
     }
@@ -73,14 +74,14 @@ impl Handler<CreateActor> for Factory {
             config,
         } = msg;
 
-        let Some(factory) = self.factory_registry.get(&r#type) else {
-            return Err(SessionError::RemoteActorFactoryError(
+        let Some(factory) = self.spawnable_registry.get(&r#type) else {
+            return Err(SessionError::CreateRemoteActorFailed(
                 format!("no factory registered for actor type {}", r#type).into(),
             ));
         };
 
         if let Some(actor_id) = self.label_map.get(&label) {
-            return Err(SessionError::RemoteActorFactoryError(
+            return Err(SessionError::CreateRemoteActorFailed(
                 format!(
                     "actor with label {} already existed with id {}",
                     label, *actor_id
@@ -89,16 +90,17 @@ impl Handler<CreateActor> for Factory {
             ));
         }
 
-        let factory = factory.clone();
-        let label_cloned = label.clone();
-
-        let (address, _) = tokio::spawn(async move { factory.create_remote(label_cloned, config) })
-            .await
-            .map_err(|e| SessionError::RemoteActorFactoryError(e.into()))?
-            .map_err(SessionError::RemoteActorFactoryError)?;
+        let (address, _) = tokio::spawn({
+            let factory = factory.clone();
+            let label = label.clone();
+            async move { factory.create_remote(label, config) }
+        })
+        .await
+        .map_err(|e| SessionError::CreateRemoteActorFailed(e.into()))?
+        .map_err(SessionError::CreateRemoteActorFailed)?;
 
         let actor_id = address.index();
-        self.registry.insert(address);
+        self.addressable_registry.insert(address);
         self.label_map.insert(label, actor_id);
 
         Ok(actor_id)

@@ -8,15 +8,15 @@ use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 
-use crate::actor::{Actor, ActorId, RemoteAccessible, RemoteAccessibleActorHandle};
-use crate::address::{Address, Recipient, RemoteProxy, SenderMeta};
+use crate::actor::{Actor, ActorId, RemoteAddressable, RemoteMailbox};
+use crate::address::{Address, Recipient, RemoteProxy, SenderInfo};
 use crate::message::{Message, MessageId};
 
 mod error;
 pub use error::{DecodeError, EncodeError};
 
 mod table;
-pub use table::{CodecItem, CodecTable, HasCodecTable};
+pub use table::{Codec, CodecTable, MessageCodec};
 
 mod control_message;
 mod ipc_message;
@@ -34,11 +34,7 @@ pub trait EncodeContext {
     /// Registers an actor with its [`RemoteAccessibleActorHandle`].
     ///
     /// The actor becomes reachable from other processes after registration.
-    fn register(
-        &self,
-        actor_id: ActorId,
-        actor: RemoteAccessibleActorHandle,
-    ) -> Result<(), EncodeError>;
+    fn register(&self, actor_id: ActorId, actor: RemoteMailbox) -> Result<(), EncodeError>;
 }
 
 /// Context for decoding messages.
@@ -78,7 +74,7 @@ pub trait Decode {
 
 impl<A> Address<A>
 where
-    A: Actor + RemoteAccessible,
+    A: Actor + RemoteAddressable,
 {
     pub fn register(&self, ctx: &dyn EncodeContext) -> Result<(), EncodeError> {
         let actor_id = self.index();
@@ -88,7 +84,7 @@ where
         } else {
             ctx.register(
                 actor_id,
-                self.remote_accessible_actor_handle()
+                self.remote_mailbox()
                     .ok_or(EncodeError::NotRemoteAccessible)?,
             )
         }
@@ -97,7 +93,7 @@ where
 
 impl<A> Encode for Address<A>
 where
-    A: Actor + RemoteAccessible,
+    A: Actor + RemoteAddressable,
 {
     #[inline]
     fn encoded_len(&self) -> usize {
@@ -118,7 +114,7 @@ where
 
 impl<A> Decode for Address<A>
 where
-    A: Actor + RemoteAccessible,
+    A: Actor + RemoteAddressable,
 {
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
@@ -140,7 +136,7 @@ where
         } else {
             ctx.register(
                 actor_id,
-                self.remote_accessible_actor_handle()
+                self.remote_mailbox()
                     .ok_or(EncodeError::NotRemoteAccessible)?,
             )
         }

@@ -7,10 +7,10 @@ use crate::channel::oneshot;
 
 /// A helper type which wraps the result of a message handler as a message response.
 ///
-/// This is useful when the result type of a message does not implement [`MessageResponse`],
-/// and you can not implement [`MessageResponse`] for the type due to the orphan rule. In this
-/// case, you can wrap the result type with this type and use it as the
-/// [`Result`][super::Handler::Result] associate type in the [`Handler`][super::Handler] trait.
+/// This is useful when the result type of a message does not implement [`MessageResponse`], and
+/// you can not implement [`MessageResponse`] for the type due to the orphan rule. In this case,
+/// you can wrap the result type with this type and use it as the
+/// [`Handler::Result`][super::Handler::Result] associate type.
 pub struct MessageResult<M>(pub M::Result)
 where
     M: Message;

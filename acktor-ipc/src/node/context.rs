@@ -5,14 +5,14 @@ use tokio::task::{JoinError, JoinHandle};
 use tracing::{debug, warn};
 
 use acktor::{
-    ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, RecvError,
+    ActorContext, ActorId, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, RecvError,
     address::Mailbox,
     channel::mpsc,
     envelope::{Envelope, EnvelopeProxy},
 };
 
 use super::Node;
-use crate::errors::NodeError;
+use crate::error::NodeError;
 use crate::ipc_method::{IpcConnection, IpcListener};
 
 enum LoopEvent {
@@ -128,7 +128,7 @@ impl ActorContext<Node> for NodeContext {
         Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
     }
 
-    fn index(&self) -> u64 {
+    fn index(&self) -> ActorId {
         self.doorplate.index()
     }
 
@@ -152,7 +152,7 @@ impl ActorContext<Node> for NodeContext {
         self.state = state;
     }
 
-    async fn process_loop(
+    async fn run_loop(
         &mut self,
         actor: &mut Node,
         mailbox: &mut Mailbox<Node>,

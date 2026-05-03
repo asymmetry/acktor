@@ -7,7 +7,7 @@ use std::fmt::{self, Debug, Display};
 use std::future::{self, Future};
 
 use crate::actor::{Actor, ActorContext, ActorState};
-use crate::address::{Address, Recipient, SenderMeta};
+use crate::address::{Address, Recipient, SenderInfo};
 use crate::message::{Handler, Message};
 use crate::utils::{ShortName, debug_trace};
 
@@ -134,31 +134,31 @@ where
 }
 
 #[cfg(feature = "identifier")]
-impl<A> crate::stable_type_id::HasStableTypeId for Supervisor<A>
+impl<A> crate::stable_type_id::StableId for Supervisor<A>
 where
-    A: Actor + crate::stable_type_id::HasStableTypeId,
+    A: Actor + crate::stable_type_id::StableId,
 {
-    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+    const TYPE_ID: crate::stable_type_id::StableTypeId =
         crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
             module_path!(),
             "::",
             "Supervisor"
         ))
-        .combine(A::STABLE_TYPE_ID.as_bytes());
+        .combine(A::TYPE_ID.as_bytes());
 }
 
 #[cfg(feature = "identifier")]
-impl<A> crate::stable_type_id::HasStableTypeId for SupervisionEvent<A>
+impl<A> crate::stable_type_id::StableId for SupervisionEvent<A>
 where
-    A: Actor + crate::stable_type_id::HasStableTypeId,
+    A: Actor + crate::stable_type_id::StableId,
 {
-    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+    const TYPE_ID: crate::stable_type_id::StableTypeId =
         crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
             module_path!(),
             "::",
             "SupervisionEvent"
         ))
-        .combine(A::STABLE_TYPE_ID.as_bytes());
+        .combine(A::TYPE_ID.as_bytes());
 }
 
 #[cfg(test)]

@@ -6,10 +6,10 @@ use prost::Message as _;
 use acktor_ipc_proto::control_message as proto;
 
 use super::error::{DecodeError, EncodeError};
-use super::table::HasCodecTable;
+use super::table::Codec;
 use super::{Decode, DecodeContext, Encode, EncodeContext};
-use crate::actor::{Actor, ActorState, RemoteAccessible};
-use crate::address::{Address, Recipient, SenderMeta};
+use crate::actor::{Actor, ActorState, RemoteAddressable};
+use crate::address::{Address, Recipient, SenderInfo};
 #[cfg(feature = "cron")]
 use crate::cron::CronSignal;
 use crate::message::{Message, MessageId};
@@ -47,7 +47,7 @@ impl Decode for Signal {
 
 impl<A> Encode for Supervisor<A>
 where
-    A: Actor + RemoteAccessible,
+    A: Actor + RemoteAddressable,
 {
     fn encoded_len(&self) -> usize {
         let supervisor = match self {
@@ -76,7 +76,7 @@ where
 
 impl<A> Decode for Supervisor<A>
 where
-    A: Actor + RemoteAccessible,
+    A: Actor + RemoteAddressable,
 {
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
         let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
@@ -154,7 +154,7 @@ fn build_supervision_event_message<A>(
     event: &SupervisionEvent<A>,
 ) -> (proto::SupervisionEvent, &Address<A>)
 where
-    A: Actor + HasCodecTable,
+    A: Actor + Codec,
     A::Error: Display,
 {
     match event {
@@ -182,7 +182,7 @@ where
 
 impl<A> Encode for SupervisionEvent<A>
 where
-    A: Actor + RemoteAccessible,
+    A: Actor + RemoteAddressable,
     A::Error: Display,
 {
     fn encoded_len(&self) -> usize {
@@ -211,7 +211,7 @@ where
 
 impl<A> Decode for SupervisionEvent<A>
 where
-    A: Actor + RemoteAccessible,
+    A: Actor + RemoteAddressable,
     A::Error: From<String>,
 {
     #[inline]

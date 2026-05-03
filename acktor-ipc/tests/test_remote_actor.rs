@@ -100,7 +100,7 @@ where
 
 #[tokio::test]
 async fn test_derived_remote_actor() -> Result<()> {
-    let (address, handle) = Calculator::<u64>::default().run("calc")?;
+    let (address, handle) = Calculator::<u64>::default().start("calc")?;
 
     assert_eq!(roundtrip(&address, Double { value: 5 }).await?, 10);
     assert_eq!(roundtrip(&address, Triple { value: 5 }).await?, 15);
