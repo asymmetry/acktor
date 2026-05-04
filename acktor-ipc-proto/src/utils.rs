@@ -1,10 +1,11 @@
 use bytes::Bytes;
 
-pub use crate::proto::utils::actor_handle::Handle as ActorHandleType;
+pub use crate::proto::utils::actor_ref::Ref as ActorRefType;
 pub use crate::proto::utils::result::Result as ProtoResultType;
+pub use crate::proto::utils::result_address::Result as ResultAddressType;
 pub use crate::proto::utils::{
-    ActorHandle, Option as ProtoOption, Result as ProtoResult, Tuple, VecBool, VecDouble, VecFloat,
-    VecInt32, VecInt64, VecUint32, VecUint64,
+    ActorRef, Option as ProtoOption, Result as ProtoResult, ResultAddress, Tuple, VecBool,
+    VecDouble, VecFloat, VecInt32, VecInt64, VecUint32, VecUint64,
 };
 
 impl ProtoResult {
@@ -79,18 +80,34 @@ impl Tuple {
     impl_tuple_ctor!(tuple10, [t0, t1, t2, t3, t4, t5, t6, t7, t8, t9], []);
 }
 
-impl ActorHandle {
+impl ActorRef {
     #[inline]
     pub fn index(actor_id: u64) -> Self {
         Self {
-            handle: Some(ActorHandleType::Index(actor_id)),
+            r#ref: Some(ActorRefType::Index(actor_id)),
         }
     }
 
     #[inline]
     pub fn label(label: String) -> Self {
         Self {
-            handle: Some(ActorHandleType::Label(label)),
+            r#ref: Some(ActorRefType::Label(label)),
+        }
+    }
+}
+
+impl ResultAddress {
+    #[inline]
+    pub fn ok(actor_id: u64) -> Self {
+        Self {
+            result: Some(ResultAddressType::Ok(actor_id)),
+        }
+    }
+
+    #[inline]
+    pub fn err(err: String) -> Self {
+        Self {
+            result: Some(ResultAddressType::Err(err)),
         }
     }
 }

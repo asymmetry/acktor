@@ -29,11 +29,11 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
-    // also emit the `HasStableTypeId` impl so `#[derive(RemoteActor)]` alone is enough
+    // also emit the `StableId` impl so `#[derive(RemoteAddressable)]` alone is enough
     let has_stable_type_id_impl = stable_id::expand(ast);
 
     let marker_impl = quote! {
-        impl #impl_generics ::acktor_ipc::RemoteActor for #name #ty_generics #where_clause {}
+        impl #impl_generics ::acktor::RemoteAddressable for #name #ty_generics #where_clause {}
 
         #has_stable_type_id_impl
     };
@@ -45,19 +45,19 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let arms = messages.iter().map(|m| {
         quote! {
             <#m as ::acktor::MessageId>::ID => {
-                match <#m as ::acktor_ipc::Decode>::decode(
-                    message,
-                    decode_context.as_ref(),
+                match <#m as ::acktor::codec::Decode>::decode(
+                    bytes,
+                    decode_msg_ctx.as_deref(),
                 ) {
                     ::core::result::Result::Ok(msg) => {
                         let result =
                             <Self as ::acktor::Handler<#m>>::handle(self, msg, ctx).await;
                         if let ::core::option::Option::Some(tx) = result_tx {
-                            send_result(tx, &result, encode_ctx.as_ref());
+                            send_result(tx, &result, encode_res_ctx.as_deref());
                         }
                     }
                     ::core::result::Result::Err(e) => {
-                        ::acktor_ipc::tracing::debug!(
+                        ::acktor::tracing::debug!(
                             "Could not decode the message: {}", ::acktor::ErrorReport::report(&e)
                         );
                         if let ::core::option::Option::Some(tx) = result_tx {
@@ -91,34 +91,68 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
         };
     };
 
+    let codec_impl = quote! {
+        impl #impl_generics ::acktor::codec::Codec for #name #ty_generics #where_clause {
+            fn codec_table() -> &'static ::acktor::codec::CodecTable {
+                static TABLE: ::std::sync::OnceLock<::acktor::codec::CodecTable> =
+                    ::std::sync::OnceLock::new();
+                TABLE.get_or_init(|| {
+                    let mut map: ::acktor::utils::TypeMap<::acktor::codec::MessageCodec> =
+                        ::std::default::Default::default();
+                    #(
+                        map.insert(
+                            ::std::any::TypeId::of::<#messages>(),
+                            ::acktor::codec::MessageCodec {
+                                message_id: <#messages as ::acktor::MessageId>::ID,
+                                encode_msg: |any, ctx| {
+                                    let m = any.downcast_ref::<#messages>()
+                                        .expect("TypeId invariant");
+                                    ::acktor::codec::Encode::encode_to_bytes(m, ctx)
+                                },
+                                decode_res: |bytes, ctx| {
+                                    let r = <<#messages as ::acktor::Message>::Result
+                                        as ::acktor::codec::Decode>::decode(bytes, ctx)?;
+                                    ::core::result::Result::Ok(
+                                        ::std::boxed::Box::new(r)
+                                            as ::std::boxed::Box<dyn ::std::any::Any>
+                                    )
+                                },
+                            },
+                        );
+                    )*
+                    ::acktor::codec::CodecTable::new(map)
+                })
+            }
+        }
+    };
+
     let handler_impl = quote! {
-        impl #impl_generics ::acktor::Handler<::acktor_ipc::RemoteMessage>
+        impl #impl_generics ::acktor::Handler<::acktor::BinaryMessage>
             for #name #ty_generics #where_clause
         {
             type Result = ();
 
             async fn handle(
                 &mut self,
-                msg: ::acktor_ipc::RemoteMessage,
+                msg: ::acktor::BinaryMessage,
                 ctx: &mut <Self as ::acktor::Actor>::Context,
             ) -> Self::Result {
-                let ::acktor_ipc::RemoteMessage {
+                let ::acktor::BinaryMessage {
                     message_id,
-                    message,
+                    bytes,
                     result_tx,
-                    decode_context,
+                    decode_msg_ctx,
+                    encode_res_ctx,
                     ..
                 } = msg;
 
-                let encode_ctx = decode_context.as_ref().map(|c| c.create_encode_context());
-
                 #[inline]
                 fn send_err(
-                    tx: ::acktor::channel::oneshot::Sender<::acktor_ipc::bytes::Bytes>,
-                    err: impl ::core::convert::Into::<::acktor::BoxError>,
+                    tx: ::acktor::channel::oneshot::Sender<::acktor::bytes::Bytes>,
+                    err: impl ::core::convert::Into<::acktor::error::BoxError>,
                 ) {
                     if let Err(e) = tx.send_err(err) {
-                        ::acktor_ipc::tracing::debug!(
+                        ::acktor::tracing::debug!(
                             "Could not report the error to the sender: {}",
                             ::acktor::ErrorReport::report(&e)
                         );
@@ -127,21 +161,21 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
                 #[inline]
                 fn send_result(
-                    tx: ::acktor::channel::oneshot::Sender<::acktor_ipc::bytes::Bytes>,
-                    result: &impl ::acktor_ipc::Encode,
-                    encode_ctx: Option<&::acktor_ipc::EncodeContext>,
+                    tx: ::acktor::channel::oneshot::Sender<::acktor::bytes::Bytes>,
+                    result: &impl ::acktor::codec::Encode,
+                    encode_ctx: ::core::option::Option<&dyn ::acktor::codec::EncodeContext>,
                 ) {
-                    match ::acktor_ipc::Encode::encode_to_bytes(result, encode_ctx) {
+                    match ::acktor::codec::Encode::encode_to_bytes(result, encode_ctx) {
                         ::core::result::Result::Ok(bytes) => {
                             if let Err(e) = tx.send(bytes) {
-                                ::acktor_ipc::tracing::debug!(
+                                ::acktor::tracing::debug!(
                                     "Could not send the message response to the sender: {}",
                                     ::acktor::ErrorReport::report(&e)
                                 );
                             }
                         }
                         ::core::result::Result::Err(e) => {
-                            ::acktor_ipc::tracing::debug!(
+                            ::acktor::tracing::debug!(
                                 "Could not encode the message response: {}",
                                 ::acktor::ErrorReport::report(&e)
                             );
@@ -153,14 +187,14 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                 match message_id {
                     #(#arms)*
                     _ => {
-                        ::acktor_ipc::tracing::debug!(
+                        ::acktor::tracing::debug!(
                             "Received a message with unknown message id {}",
                             message_id
                         );
                         if let ::core::option::Option::Some(tx) = result_tx {
                             send_err(
                                 tx,
-                                ::acktor_ipc::errors::DecodeError::UnknownMessageId(message_id)
+                                ::acktor::codec::DecodeError::UnknownMessageId(message_id),
                             );
                         }
                     }
@@ -171,6 +205,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
     quote! {
         #marker_impl
+        #codec_impl
         #handler_impl
         #uniqueness_check
     }

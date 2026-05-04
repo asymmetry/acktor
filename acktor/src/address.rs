@@ -19,13 +19,13 @@ use futures_util::FutureExt;
 use tokio::time::Duration;
 
 use crate::actor::{Actor, ActorId};
-#[cfg(feature = "ipc")]
-use crate::actor::{RemoteAddressable, RemoteMailbox};
 use crate::channel::mpsc;
 use crate::envelope::{Envelope, FromEnvelope, IntoEnvelope};
 use crate::error::SendError;
 use crate::message::Message;
 use crate::utils::ShortName;
+#[cfg(feature = "ipc")]
+use crate::{actor::RemoteAddressable, message::BinaryMessage};
 
 mod local;
 use local::LocalAddress;
@@ -58,6 +58,14 @@ static INDEX_GENERATOR: AtomicU64 = AtomicU64::new(0);
 pub(crate) fn next_actor_id() -> u64 {
     INDEX_GENERATOR.fetch_add(1, Ordering::Relaxed)
 }
+
+/// A remote mailbox which can be used by the runtime to deliver binary messages to a remote
+/// addressable actor.
+///
+/// It is an alias of the address of the actor in the form of a `Recipient<BinaryMessage>`.
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub type RemoteMailbox = Recipient<BinaryMessage>;
 
 enum Inner<A>
 where
@@ -94,7 +102,7 @@ where
     A: Actor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(&format!("{}", ShortName::of::<Self>()))
+        f.debug_tuple(&ShortName::of::<Self>().to_string())
             .field(&self.index())
             .finish()
     }

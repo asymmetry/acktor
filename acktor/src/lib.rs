@@ -71,7 +71,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod error;
-pub use error::{BoxError, ErrorReport, RecvError, SendError};
+pub use error::{ErrorReport, RecvError, SendError};
 
 pub mod channel;
 pub mod utils;
@@ -89,11 +89,17 @@ pub use stable_type_id::{StableId, StableTypeId};
 
 pub mod actor;
 pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use actor::{RemoteAddressable, RemoteSpawnable};
 
 mod context;
 pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
 
 pub mod address;
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use address::RemoteProxy;
 pub use address::{Address, Recipient, Sender, SenderInfo};
 
 pub mod message;
@@ -123,6 +129,9 @@ pub use acktor_derive::{Message, MessageResponse};
 #[cfg(all(feature = "derive", feature = "identifier"))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "identifier"))))]
 pub use acktor_derive::{MessageId, StableId};
+#[cfg(all(feature = "derive", feature = "ipc"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "ipc"))))]
+pub use acktor_derive::{/* RemoteAddressable,*/ remote};
 
 // re-export for use in derived code
 
@@ -132,6 +141,9 @@ pub use bytes;
 #[doc(hidden)]
 #[cfg(feature = "identifier")]
 pub use sha2_const;
+#[doc(hidden)]
+#[cfg(feature = "ipc")]
+pub use tracing;
 
 #[cfg(test)]
 pub(crate) use utils::test_utils;

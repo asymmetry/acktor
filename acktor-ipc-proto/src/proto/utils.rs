@@ -89,21 +89,39 @@ pub struct Tuple {
     #[prost(bytes = "bytes", optional, tag = "10")]
     pub t9: ::core::option::Option<::prost::bytes::Bytes>,
 }
-/// A message which represents an `ActorHandle`.
+/// A message which represents an `ActorRef`.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ActorHandle {
-    #[prost(oneof = "actor_handle::Handle", tags = "1, 2")]
-    pub handle: ::core::option::Option<actor_handle::Handle>,
+pub struct ActorRef {
+    #[prost(oneof = "actor_ref::Ref", tags = "1, 2")]
+    pub r#ref: ::core::option::Option<actor_ref::Ref>,
 }
-/// Nested message and enum types in `ActorHandle`.
-pub mod actor_handle {
+/// Nested message and enum types in `ActorRef`.
+pub mod actor_ref {
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Handle {
+    pub enum Ref {
         /// The index of the actor.
         #[prost(uint64, tag = "1")]
         Index(u64),
         /// The label of the actor.
         #[prost(string, tag = "2")]
         Label(::prost::alloc::string::String),
+    }
+}
+/// A message which represents a `Result<Address, E>`.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResultAddress {
+    #[prost(oneof = "result_address::Result", tags = "1, 2")]
+    pub result: ::core::option::Option<result_address::Result>,
+}
+/// Nested message and enum types in `ResultAddress`.
+pub mod result_address {
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Result {
+        /// The actor id of the actor in the remote node.
+        #[prost(uint64, tag = "1")]
+        Ok(u64),
+        /// The error message.
+        #[prost(string, tag = "2")]
+        Err(::prost::alloc::string::String),
     }
 }

@@ -8,9 +8,13 @@ use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 
-use crate::actor::{Actor, ActorId, RemoteAddressable, RemoteMailbox};
-use crate::address::{Address, Recipient, RemoteProxy, SenderInfo};
+use crate::actor::{Actor, RemoteAddressable};
+use crate::address::{Address, Recipient, RemoteMailbox, RemoteProxy, SenderInfo};
 use crate::message::{Message, MessageId};
+
+#[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+pub use acktor_derive::{Decode, Encode};
 
 mod error;
 pub use error::{DecodeError, EncodeError};
@@ -31,16 +35,16 @@ mod prost_codec;
 
 /// Context for encoding messages.
 pub trait EncodeContext {
-    /// Registers an actor with its [`RemoteAccessibleActorHandle`].
+    /// Registers an actor with its [`RemoteMailbox`].
     ///
     /// The actor becomes reachable from other processes after registration.
-    fn register(&self, actor_id: ActorId, actor: RemoteMailbox) -> Result<(), EncodeError>;
+    fn register(&self, actor: RemoteMailbox) -> Result<(), EncodeError>;
 }
 
 /// Context for decoding messages.
 pub trait DecodeContext {
-    /// Returns the [`RemoteProxy`] associated with this context.
-    fn remote_proxy(&self) -> Arc<dyn RemoteProxy + Send + Sync>;
+    /// Returns the [`RemoteProxy`] associated with this context, if any.
+    fn remote_proxy(&self) -> Option<Arc<dyn RemoteProxy + Send + Sync>>;
 }
 
 /// Describes how to encode a message.
@@ -83,11 +87,18 @@ where
             Err(EncodeError::EncodeRemoteAddress)
         } else {
             ctx.register(
-                actor_id,
                 self.remote_mailbox()
                     .ok_or(EncodeError::NotRemoteAccessible)?,
             )
         }
+    }
+
+    pub fn new_with_decode_context(
+        index: u64,
+        ctx: &dyn DecodeContext,
+    ) -> Result<Self, DecodeError> {
+        let proxy = ctx.remote_proxy().ok_or(DecodeError::MissingRemoteProxy)?;
+        Ok(Address::new_remote(index, proxy))
     }
 }
 
@@ -119,8 +130,7 @@ where
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
         let actor_id = <u64 as prost::Message>::decode(buf)?;
-        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
-        Ok(Address::new_remote(actor_id, proxy))
+        Self::new_with_decode_context(actor_id, ctx.ok_or(DecodeError::MissingDecodeContext)?)
     }
 }
 
@@ -135,11 +145,19 @@ where
             Err(EncodeError::EncodeRemoteAddress)
         } else {
             ctx.register(
-                actor_id,
                 self.remote_mailbox()
                     .ok_or(EncodeError::NotRemoteAccessible)?,
             )
         }
+    }
+
+    pub fn new_with_decode_context(index: u64, ctx: &dyn DecodeContext) -> Result<Self, DecodeError>
+    where
+        M: MessageId + Encode,
+        M::Result: Decode,
+    {
+        let proxy = ctx.remote_proxy().ok_or(DecodeError::MissingRemoteProxy)?;
+        Ok(Recipient::new_remote(index, proxy))
     }
 }
 
@@ -173,8 +191,7 @@ where
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
         let actor_id = <u64 as prost::Message>::decode(buf)?;
-        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
-        Ok(Recipient::new_remote(actor_id, proxy))
+        Self::new_with_decode_context(actor_id, ctx.ok_or(DecodeError::MissingDecodeContext)?)
     }
 }
 

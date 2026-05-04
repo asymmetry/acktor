@@ -1,8 +1,20 @@
 syntax = "proto3";
 
-import "utils.proto";
+import "node_message.proto";
 
-package actor_message;
+package message;
+
+// IPC message.
+message IpcMessage {
+  oneof message {
+    // A message which is used to communicate with remote actors.
+    ActorMessage actor_message = 1;
+    // A message which is used to communicate with remote nodes directly.
+    node_message.NodeMessage node_message = 2;
+    // A message which is used as the response of an `ActorMessage` or an `NodeMessage`.
+    MessageResponse message_response = 3;
+  }
+}
 
 // A message which is used to send a message to an actor in the remote node.
 //
@@ -18,8 +30,8 @@ message ActorMessage {
   optional uint64 tag = 4;
 }
 
-// A message which is used as the response of an `ActorMessage`.
-message ActorMessageResponse {
+// A message which is used as the response of an `ActorMessage` or an `NodeMessage`.
+message MessageResponse {
   // The tag of the message.
   uint64 tag = 1;
   // The response of the message. If the message is successfully handled by the target actor,
@@ -28,11 +40,12 @@ message ActorMessageResponse {
   //
   // Note that a message is considered to be successfully handled by the target actor if the
   // message handler properly returns a value matches the `Message::Result` type, even if this
-  // value itself is a `Result::Err`.
+  // value itself is a `Result` and is a `Result::Err` variant.
   //
-  // Thus, the `err` field is only used to report errors that causes the message to fail to be
-  // handled by the target actor, e.g., the IPC communication error, the encoding/decoding error
-  // and etc.
+  // The `err` field here is only used to report errors that causes the message not able to be
+  // handled by the target actor. For example, if a message's response type is `()`, but it failed
+  // to be decoded by the target actor, the `err` field will be set to the error message of the
+  // `DecodeError`.
   oneof response {
     // The response of the message.
     bytes ok = 2;

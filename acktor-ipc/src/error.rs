@@ -5,8 +5,9 @@ use std::io;
 use thiserror::Error;
 
 use acktor::{
-    BoxError, RecvError, SendError,
+    RecvError, SendError,
     codec::{DecodeError, EncodeError},
+    error::BoxError,
 };
 
 pub use crate::double_map::{KeyConflictError, TryReserveError};
@@ -23,11 +24,8 @@ pub enum NodeError {
     #[error("could not find the session {0}")]
     SessionNotFound(String),
 
-    #[error("could not create the remote actor")]
-    CreateRemoteActorFailed(#[source] SessionError),
-
-    #[error("could not find the actor in the remote process")]
-    RemoteActorNotFound(#[source] SessionError),
+    #[error(transparent)]
+    SessionError(#[from] SessionError),
 
     #[error("could not send message")]
     SendError(#[source] BoxError),
@@ -60,20 +58,14 @@ pub enum SessionError {
     #[error("could not forward the inbound remote message to any actor")]
     ForwardInboundMessageFailed(#[source] BoxError),
 
-    #[error("invalid node message response tag: {0}")]
-    InvalidNodeMsgResTxTag(u64),
-
-    #[error("could not forward the node message response to the original sender")]
-    ForwardNodeMsgResFailed,
-
-    #[error("invalid actor message response tag: {0}")]
-    InvalidActorMsgResTxTag(u64),
+    #[error("invalid message response tag: {0}")]
+    InvalidMessageResTxTag(u64),
 
     #[error("could not forward the actor message response")]
-    ForwardActorMessageResFailed,
+    ForwardMessageResFailed,
 
-    #[error("could not create the actor on behalf of the remote peer")]
-    CreateRemoteActorFailed(#[source] BoxError),
+    #[error("could not create the actor on behalf of the remote node")]
+    CreateActorFailed(#[source] BoxError),
 
     #[error("could not find actor {0} in the current process")]
     ActorNotFound(String),
@@ -81,14 +73,14 @@ pub enum SessionError {
     #[error("could not handle inbound remote message")]
     HandleInboundMessageFailed(#[source] BoxError),
 
+    #[error("remote node returned an error: {0}")]
+    RemoteNodeError(String),
+
     #[error(
-        "no response received from the remote peer after {} seconds",
+        "no response received from the remote node after {} seconds",
         crate::session::RESPONSE_TIMEOUT.as_secs()
     )]
     ResponseTimeout,
-
-    #[error("remote actor returned an error: {0}")]
-    RemotePeerError(String),
 
     #[error(transparent)]
     IoError(io::Error),

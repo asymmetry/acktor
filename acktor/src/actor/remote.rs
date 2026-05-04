@@ -1,5 +1,5 @@
-use super::Actor;
-use crate::address::Recipient;
+use super::{Actor, JoinHandle};
+use crate::address::Address;
 use crate::codec::Codec;
 use crate::message::{BinaryMessage, Handler};
 use crate::stable_type_id::StableId;
@@ -42,8 +42,13 @@ use crate::stable_type_id::StableId;
 /// workaround since specialization is not yet stable in Rust.
 pub trait RemoteAddressable: Actor + Codec + Handler<BinaryMessage> + StableId {}
 
-/// A remote mailbox which can be used by the runtime to deliver binary messages to a remote
-/// addressable actor.
-///
-/// It is an alias of the address of the actor in the form of a `Recipient<BinaryMessage>`.
-pub type RemoteMailbox = Recipient<BinaryMessage>;
+/// An actor type which can be created from another process.
+pub trait RemoteSpawnable: RemoteAddressable {
+    /// Creates an instance of this actor with the given label and config string.
+    ///
+    /// Implementations typically call [`Actor::start`] or [`Actor::create`] internally.
+    fn create_remote(
+        label: String,
+        config: String,
+    ) -> Result<(Address<Self>, JoinHandle<()>), <Self as Actor>::Error>;
+}

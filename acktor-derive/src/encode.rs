@@ -61,7 +61,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                         ::core::result::Result::Ok(())
                     }
                     ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                        ::acktor_ipc::errors::EncodeError::from(err.to_string()),
+                        ::acktor::error::EncodeError::from(err.to_string()),
                     ),
                 }
             },
@@ -76,7 +76,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                         ::core::result::Result::Ok(())
                     }
                     ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                        ::acktor_ipc::errors::EncodeError::from(err.to_string()),
+                        ::acktor::error::EncodeError::from(err.to_string()),
                     ),
                 }
             },
@@ -84,7 +84,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     };
 
     quote! {
-        impl #impl_generics ::acktor_ipc::Encode for #name #ty_generics #where_clause {
+        impl #impl_generics ::acktor::codec::Encode for #name #ty_generics #where_clause {
             #[inline]
             fn encoded_len(&self) -> usize {
                 #encoded_len_body
@@ -93,9 +93,9 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
             #[inline]
             fn encode(
                 &self,
-                buf: &mut ::acktor_ipc::bytes::BytesMut,
-                _ctx: ::core::option::Option<&::acktor_ipc::EncodeContext>,
-            ) -> ::core::result::Result<(), ::acktor_ipc::errors::EncodeError> {
+                buf: &mut ::acktor::bytes::BytesMut,
+                _ctx: ::core::option::Option<&dyn ::acktor::codec::EncodeContext>,
+            ) -> ::core::result::Result<(), ::acktor::error::EncodeError> {
                 #encode_body
             }
         }

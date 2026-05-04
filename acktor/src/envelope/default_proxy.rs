@@ -9,6 +9,7 @@ use super::{Envelope, EnvelopeProxy, FromEnvelope, IntoEnvelope};
 use crate::actor::Actor;
 use crate::channel::oneshot;
 use crate::message::{Handler, Message, MessageResponse};
+use crate::utils::ShortName;
 
 /// The default envelope proxy for [`Message`].
 ///
@@ -27,7 +28,7 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{}", crate::utils::ShortName::of::<Self>()))
+        f.write_fmt(format_args!("{}", ShortName::of::<Self>()))
     }
 }
 

@@ -17,7 +17,7 @@ pub async fn start_websocket_server(bind_addr: &str) -> Result<(Address<Node>, J
     use acktor_ipc::ipc_method::websocket::WebSocketListener;
 
     let listener = WebSocketListener::bind(bind_addr).await?;
-    Ok(Node::new().with_listener(listener).run("server")?)
+    Ok(Node::new().with_listener(listener).start("server")?)
 }
 
 #[cfg(feature = "pipe")]
@@ -25,7 +25,7 @@ pub fn start_pipe_server(endpoint: &str) -> Result<(Address<Node>, JoinHandle<()
     use acktor_ipc::ipc_method::pipe::PipeListener;
 
     let listener = PipeListener::new(endpoint)?;
-    Ok(Node::new().with_listener(listener).run("server")?)
+    Ok(Node::new().with_listener(listener).start("server")?)
 }
 
 pub fn start_client() -> Result<(Address<Node>, JoinHandle<()>)> {

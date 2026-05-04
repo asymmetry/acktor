@@ -65,6 +65,9 @@ pub enum DecodeError {
     #[error("unknown message id: {0}")]
     UnknownMessageId(u64),
 
+    #[error("decode context does not contain a remote proxy")]
+    MissingRemoteProxy,
+
     #[error(transparent)]
     ProstDecodeError(#[from] prost::DecodeError),
 

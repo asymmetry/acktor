@@ -79,12 +79,12 @@ where
     A: Actor + RemoteAddressable,
 {
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
-        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
+        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
         let supervisor = proto::Supervisor::decode(buf)?;
         match supervisor.supervisor {
-            Some(proto::SupervisorType::Set(actor_id)) => {
-                Ok(Supervisor::Set(Recipient::new_remote(actor_id, proxy)))
-            }
+            Some(proto::SupervisorType::Set(actor_id)) => Ok(Supervisor::Set(
+                Recipient::new_with_decode_context(actor_id, ctx)?,
+            )),
             Some(proto::SupervisorType::Unset(())) => Ok(Supervisor::Unset),
             None => Err("missing field `supervisor` in the `Supervisor` message".into()),
         }
@@ -136,15 +136,15 @@ where
     M::Result: Decode,
 {
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
-        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
+        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
         let observer = proto::Observer::decode(buf)?;
         match observer.observer {
-            Some(proto::ObserverType::Register(actor_id)) => {
-                Ok(Observer::Register(Recipient::new_remote(actor_id, proxy)))
-            }
-            Some(proto::ObserverType::Unregister(actor_id)) => {
-                Ok(Observer::Unregister(Recipient::new_remote(actor_id, proxy)))
-            }
+            Some(proto::ObserverType::Register(actor_id)) => Ok(Observer::Register(
+                Recipient::new_with_decode_context(actor_id, ctx)?,
+            )),
+            Some(proto::ObserverType::Unregister(actor_id)) => Ok(Observer::Unregister(
+                Recipient::new_with_decode_context(actor_id, ctx)?,
+            )),
             None => Err("missing field `observer` in the `Observer` message".into()),
         }
     }
@@ -216,30 +216,30 @@ where
 {
     #[inline]
     fn decode(buf: Bytes, ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
-        let proxy = ctx.ok_or(DecodeError::MissingDecodeContext)?.remote_proxy();
+        let ctx = ctx.ok_or(DecodeError::MissingDecodeContext)?;
         let event = proto::SupervisionEvent::decode(buf)?;
         match event.event {
             Some(proto::SupervisionEventType::Warn(warn)) => Ok(SupervisionEvent::<A>::Warn(
-                Address::new_remote(warn.actor_id, proxy),
+                Address::new_with_decode_context(warn.actor_id, ctx)?,
                 warn.err.into(),
             )),
 
             Some(proto::SupervisionEventType::Terminated(terminated)) => {
                 Ok(SupervisionEvent::<A>::Terminated(
-                    Address::new_remote(terminated.actor_id, proxy),
+                    Address::new_with_decode_context(terminated.actor_id, ctx)?,
                     terminated.err.map(|e| e.into()),
                 ))
             }
 
             Some(proto::SupervisionEventType::Panicked(panicked)) => {
                 Ok(SupervisionEvent::<A>::Panicked(
-                    Address::new_remote(panicked.actor_id, proxy),
+                    Address::new_with_decode_context(panicked.actor_id, ctx)?,
                     panicked.info,
                 ))
             }
 
             Some(proto::SupervisionEventType::State(state)) => Ok(SupervisionEvent::<A>::State(
-                Address::new_remote(state.actor_id, proxy),
+                Address::new_with_decode_context(state.actor_id, ctx)?,
                 ActorState::try_from(state.state as u8).map_err(|_| {
                     DecodeError::from("invalid actor state value in the `SupervisionEvent` message")
                 })?,

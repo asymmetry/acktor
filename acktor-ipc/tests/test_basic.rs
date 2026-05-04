@@ -17,7 +17,7 @@ async fn test_basic_websocket() -> Result<()> {
     let client_session = connect::<WebSocketConnection>(&client, endpoint).await?;
 
     // sanity check: the session has a valid index
-    assert!(client_session.index() > 0);
+    assert!(client_session.index().as_local() > 0);
 
     acktor::utils::terminate_actor(client, client_join_handle).await;
     acktor::utils::terminate_actor(server, server_join_handle).await;
@@ -35,7 +35,7 @@ async fn test_basic_pipe() -> Result<()> {
 
     let client_session = connect::<PipeConnection>(&client, endpoint).await?;
 
-    assert!(client_session.index() > 0);
+    assert!(client_session.index().as_local() > 0);
 
     acktor::utils::terminate_actor(client, client_join_handle).await;
     acktor::utils::terminate_actor(server, server_join_handle).await;

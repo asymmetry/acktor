@@ -5,7 +5,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use acktor::{Actor, Context, Handler, Message, MessageId, Recipient, Sender, SenderInfo};
 use acktor_ipc::{
-    ActorHandle, Decode, Encode, RemoteActor, RemoteAddress,
+    ActorRef, Decode, Encode, RemoteActor, RemoteAddress,
     ipc_method::websocket::WebSocketConnection, node::command, remote,
     session::command as session_command,
 };
@@ -75,8 +75,8 @@ async fn test_remote_address() -> anyhow::Result<()> {
 
     // resolve the remote echo actor by its known index
     let remote = client_session
-        .send(session_command::GetRemoteActor {
-            actor: ActorHandle::Index(address.index()),
+        .send(session_command::RemoteGetActor {
+            actor: ActorRef::Index(address.index()),
         })
         .await?
         .await??;
@@ -88,8 +88,8 @@ async fn test_remote_address() -> anyhow::Result<()> {
 
     // two remote addresses created with GetRemoteActor should be equal
     let duplicate = client_session
-        .send(session_command::GetRemoteActor {
-            actor: ActorHandle::Index(address.index()),
+        .send(session_command::RemoteGetActor {
+            actor: ActorRef::Index(address.index()),
         })
         .await?
         .await??;

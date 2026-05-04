@@ -1,26 +1,11 @@
 use std::marker::PhantomData;
 
-use acktor::{
-    Actor, Address, BoxError, JoinHandle,
-    actor::{RemoteAddressable, RemoteMailbox},
-};
+use acktor::{JoinHandle, error::BoxError};
 
-/// Extends [`RemoteAddressable`] with the ability to be spawned from another process.
-pub trait RemoteSpawnable: RemoteAddressable {
-    /// Creates an instance of this actor with the given label and configuration string.
-    ///
-    /// Implementations typically call [`Actor::start`] or [`Actor::create`] internally.
-    fn create_remote(
-        label: String,
-        config: String,
-    ) -> Result<(Address<Self>, JoinHandle<()>), <Self as Actor>::Error>;
-}
+use super::{RemoteMailbox, RemoteSpawnable};
 
-/// Dyn-compatible shim stored inside a [`Node`][crate::Node]'s actor factory map.
-///
-/// [`RemoteSpawnable`] itself is not dyn-compatible because of the `Actor` supertrait. This trait
-/// returns a [`RemoteMailbox`] so the node can store factories as `Arc<dyn DynRemoteSpawnable>`.
-pub(crate) trait DynRemoteSpawnable: Send + Sync + 'static {
+/// Remote actor factory stored inside a [`Node`][crate::Node]'s actor factory map.
+pub(crate) trait RemoteFactory: Send + Sync + 'static {
     fn create_remote(
         &self,
         label: String,
@@ -29,10 +14,10 @@ pub(crate) trait DynRemoteSpawnable: Send + Sync + 'static {
 }
 
 /// Zero-sized generic adapter that bridges a [`RemoteSpawnable`] impl into a dyn-compatible
-/// [`DynRemoteSpawnable`] trait object.
-pub(crate) struct RemoteSpawnableShim<A>(pub(crate) PhantomData<fn() -> A>);
+/// [`RemoteFactory`] trait object.
+pub(crate) struct RemoteFactoryShim<A>(pub(crate) PhantomData<fn(A) -> A>);
 
-impl<A> DynRemoteSpawnable for RemoteSpawnableShim<A>
+impl<A> RemoteFactory for RemoteFactoryShim<A>
 where
     A: RemoteSpawnable,
 {

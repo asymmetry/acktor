@@ -5,26 +5,25 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use ahash::{HashMap, HashSet};
-use dashmap::DashMap;
 use futures_util::future::join_all;
 use tracing::{error, info, warn};
 
 use acktor::{
     Actor, ActorContext, ActorId, Address, ErrorReport, Handler, JoinHandle, Recipient, Signal,
-    actor::RemoteAddressable,
     message::FutureMessageResult,
     observer::{ObserverSet, SubjectActor},
     supervisor::SupervisionEvent,
-    utils::{debug_trace, terminate_actor},
+    utils::{ShortName, debug_trace, terminate_actor},
 };
 
 use crate::double_map::DoubleMap;
 use crate::error::NodeError;
 use crate::ipc_method::{IpcConnection, IpcListener};
 use crate::remote::{
-    RemoteMailboxRegistry, RemoteSpawnable, ActorFactoryRegistry, RemoteSpawnableShim,
+    RemoteAddressable, RemoteFactoryRegistry, RemoteFactoryShim, RemoteMailboxRegistry,
+    RemoteSpawnable,
 };
-use crate::session::{self, Session, SessionHandle};
+use crate::session::{self, Session, SessionRef};
 
 pub mod command;
 
@@ -34,39 +33,57 @@ pub use event::NodeEvent;
 mod context;
 use context::NodeContext;
 
-pub(crate) mod factory;
-use factory::Factory;
+pub(crate) mod actor_mgr;
+use actor_mgr::{ActorLabelMap, ActorMgr};
 
 type Result<T> = std::result::Result<T, NodeError>;
-
-pub(crate) type ActorLabelMap = Arc<DashMap<String, ActorId, ahash::RandomState>>;
 
 /// An actor which helps to manage the IPC connections.
 ///
 /// The node can hold multiple [`IpcListener`]s to accept incoming IPC connections on several
 /// endpoints in parallel. Outbound connections are initiated by sending a
 /// [`Connect<C>`][command::Connect] command.
-#[derive(Default)]
 pub struct Node {
     listener_labels: HashSet<String>,
     listeners: Vec<Box<dyn IpcListener>>,
-    /// Registers remote spawnable actors, the key is the actor's stable type id, the value is a
-    /// `DynRemoteSpawnable` trait object.
-    factory_registry: Option<ActorFactoryRegistry>,
-    /// Registers remote addressable actors, the key is the actor id (not the stable type id), the
-    /// value is the actor's address in the form of `Recipient<BinaryMessage>`.
-    ///
-    /// `addressable_registry` and `label_map` are cloned into the factory actor and session actors.
-    actor_registry: RemoteMailboxRegistry,
-    /// Maps actor labels to actor ids for remote addressable actors, so they can be looked up by
-    /// a more user-friendly label.
-    actor_label_map: ActorLabelMap,
-    /// Factory actor, which handles the creation of remote spawnable actors.
-    factory: Option<Address<Factory>>,
-    /// Maps actor ids and labels to addresses for session actors.
+    /// Registers remote addressable actors, the key is the actor's index (local part only, not
+    /// the stable type id), the value is the actor's `RemoteMailbox`.
+    registry: RemoteMailboxRegistry,
+    /// Actor manager, which handles the creation of remote spawnable actors.
+    actor_mgr: Option<Address<ActorMgr>>,
+    //
     sessions: DoubleMap<ActorId, String, Address<Session>>,
     children: HashMap<Recipient<Signal>, JoinHandle<()>>,
     observers: ObserverSet<NodeEvent>,
+    /// Registers remote spawnable actor types, the key is the actor's stable type id (as a
+    /// `u64`), the value is a `RemoteFactory` trait object.
+    ///
+    /// The `ActorMgr` actor will take the ownership of this registry in `post_start` and leave a
+    /// `None` here.
+    _factories: Option<RemoteFactoryRegistry>,
+    /// Maps actor labels to actor ids for remote addressable actors, so they can be looked up by
+    /// a user-friendly label.
+    ///
+    /// The `ActorMgr` actor will take the ownership of this map in `post_start` and leave a `None`
+    /// here.
+    _actor_labels: Option<ActorLabelMap>,
+}
+
+impl Default for Node {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            listener_labels: HashSet::default(),
+            listeners: Vec::new(),
+            registry: RemoteMailboxRegistry::default(),
+            actor_mgr: None,
+            sessions: DoubleMap::default(),
+            children: HashMap::default(),
+            observers: ObserverSet::new(),
+            _factories: Some(RemoteFactoryRegistry::default()),
+            _actor_labels: Some(ActorLabelMap::default()),
+        }
+    }
 }
 
 impl Node {
@@ -78,9 +95,9 @@ impl Node {
     /// Adds an IPC listener to the node.
     ///
     /// If the node already has a listener listening on the same endpoint, the new listener will
-    /// replace the existing one. Note this is not the same as the
-    /// [`AddListener`][command::AddListener] command, which will not replace the existing
-    /// listener.
+    /// replace the existing one, since the node is not started yet when this method is available.
+    /// Note this is not the same as the [`AddListener`][command::AddListener] command, which will
+    /// not replace the existing listener.
     pub fn with_listener<L>(mut self, listener: L) -> Self
     where
         L: IpcListener,
@@ -96,31 +113,39 @@ impl Node {
         self
     }
 
-    /// Adds an remote addressable actor to the node, registering it under `label` so that remote
-    /// actors can look it up by name.
+    /// Adds an remote addressable actor to the node.
     ///
-    /// Duplicate labels and actor ids are silently skipped.
-    pub fn with_actor<A>(self, label: String, actor: Address<A>) -> Self
+    /// It also registers a label for the actor so that remote actors can look it up by a more
+    /// user-friendly name.
+    ///
+    /// Duplicate actors and labels are silently skipped.
+    pub fn with_actor<A>(mut self, label: String, actor: Address<A>) -> Self
     where
         A: Actor + RemoteAddressable,
     {
-        let actor_id = actor.index();
-        if !self.actor_label_map.contains_key(&label) && self.actor_registry.insert(actor.into()) {
-            self.actor_label_map.insert(label, actor_id);
+        if let Some(actor_labels) = &mut self._actor_labels {
+            let actor_id = actor.index();
+            if !actor_labels.contains_key(&label) && self.registry.insert(actor.into()) {
+                actor_labels.insert(label, actor_id.as_local());
+            }
         }
         self
     }
 
-    /// Adds an remote spawnable actor factory to the node, remote sessions can create instances
-    /// of this actor type by sending a `CreateActor` node command to this node.
-    pub fn with_actor_factory<A>(mut self) -> Self
+    /// Adds an remote spawnable actor factory to the node.
+    ///
+    /// Remote nodes can create instances of this actor type by sending a `CreateActor` node
+    /// command.
+    pub fn with_factory<A>(mut self) -> Self
     where
         A: Actor + RemoteSpawnable,
     {
-        self.factory_registry.get_or_insert_default().insert(
-            A::TYPE_ID.as_u64(),
-            Arc::new(RemoteSpawnableShim::<A>(PhantomData)),
-        );
+        if let Some(factories) = &mut self._factories {
+            factories.insert(
+                A::TYPE_ID.as_u64(),
+                Arc::new(RemoteFactoryShim::<A>(PhantomData)),
+            );
+        }
         self
     }
 
@@ -134,34 +159,38 @@ impl Node {
 
         let session_label = session_label.unwrap_or_else(|| endpoint.clone());
 
-        if self.sessions.contains_key2(&session_label) {
+        if self.sessions.contains_key2(&endpoint) || self.sessions.contains_key2(&session_label) {
             return Err(NodeError::CreateSessionFailed(
-                format!("session with label '{}' already exists", session_label).into(),
+                format!("session with endpoint '{}' already exists", endpoint).into(),
             ));
         }
 
+        let session = Session::new(
+            connection,
+            self.registry.clone(),
+            self.actor_mgr.clone().ok_or_else(|| {
+                NodeError::CreateSessionFailed("actor manager does not exist".into())
+            })?,
+        );
+
         let (address, join_handle) = Session::create(endpoint.clone(), |child_ctx| {
             child_ctx.set_supervisor(Some(ctx.address().into()));
-
-            // SAFETY: `self.factory` is assigned at the end of `post_start`, and `create_session`
-            // is only reachable from message handlers, which the actor runtime does not dispatch
-            // until `post_start` has returned `Ok`. The unwrap is therefore infallible.
-            Ok(Session::new(
-                connection,
-                self.factory.clone().unwrap(),
-                self.actor_registry.clone(),
-                self.actor_label_map.clone(),
-            ))
+            Ok(session)
         })
         .map_err(|e| NodeError::CreateSessionFailed(e.into()))?;
 
         let session_id = address.index();
 
-        // this will never fail since we have verified the session label is unique and the actor id
-        // is also unique in the same process
+        // this will never fail since we have verified the session label is unique and the session id
+        // is also unique as an actor id
         let _ = self
             .sessions
-            .insert(session_id, session_label.clone(), address.clone());
+            .insert(session_id, endpoint.clone(), address.clone());
+        if session_label != endpoint {
+            let _ = self
+                .sessions
+                .insert(session_id, session_label.clone(), address.clone());
+        }
 
         self.children.insert(address.clone().into(), join_handle);
 
@@ -171,19 +200,21 @@ impl Node {
         Ok(address)
     }
 
-    fn get_session(&self, session_ref: &SessionHandle) -> Result<Address<Session>> {
+    fn get_session(&self, session_ref: &SessionRef) -> Result<Address<Session>> {
         match session_ref {
-            SessionHandle::Address(address) => self
+            SessionRef::Address(address) => self
                 .sessions
                 .get_by_key1(&address.index())
                 .cloned()
                 .ok_or_else(|| NodeError::SessionNotFound(address.index().to_string())),
-            SessionHandle::Index(index) => self
+
+            SessionRef::Index(index) => self
                 .sessions
                 .get_by_key1(index)
                 .cloned()
                 .ok_or_else(|| NodeError::SessionNotFound(index.to_string())),
-            SessionHandle::Label(label) => self
+
+            SessionRef::Label(label) => self
                 .sessions
                 .get_by_key2(label)
                 .cloned()
@@ -197,18 +228,14 @@ impl Actor for Node {
     type Error = NodeError;
 
     async fn post_start(&mut self, _ctx: &mut Self::Context) -> Result<()> {
-        let factory_registry = self.factory_registry.take().unwrap_or_default();
+        let factories = self._factories.take().unwrap_or_default();
+        let actor_labels = self._actor_labels.take().unwrap_or_default();
 
-        // the factory actor never fail, so it is not supervised
-        let (address, join_handle) = Factory::new(
-            factory_registry,
-            self.actor_registry.clone(),
-            self.actor_label_map.clone(),
-        )
-        .start("factory")?;
-
+        // the ActorMgr never fail, so it is not supervised
+        let (address, join_handle) =
+            ActorMgr::new(self.registry.clone(), actor_labels, factories).start("mgr")?;
         self.children.insert(address.clone().into(), join_handle);
-        self.factory = Some(address);
+        self.actor_mgr = Some(address);
 
         info!("Node is ready");
 
@@ -279,51 +306,6 @@ impl Handler<command::RemoveListener> for Node {
     }
 }
 
-impl<A> Handler<command::AddActor<A>> for Node
-where
-    A: Actor + RemoteAddressable,
-{
-    type Result = bool;
-
-    async fn handle(
-        &mut self,
-        msg: command::AddActor<A>,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
-        debug_trace!("Handle command {:?}", msg);
-
-        let command::AddActor { label, address } = msg;
-
-        if self.actor_label_map.contains_key(&label) {
-            return false;
-        }
-
-        let actor_id = address.index();
-        if !self.actor_registry.insert(address.into()) {
-            return false;
-        }
-        self.actor_label_map.insert(label, actor_id);
-
-        true
-    }
-}
-
-impl Handler<command::RemoveActor> for Node {
-    type Result = bool;
-
-    async fn handle(
-        &mut self,
-        msg: command::RemoveActor,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
-        debug_trace!("Handle command {:?}", msg);
-
-        let actor_id = msg.0;
-        self.actor_label_map.retain(|_, id| *id != actor_id);
-        self.actor_registry.remove(actor_id).is_some()
-    }
-}
-
 impl<T> Handler<command::Connect<T>> for Node
 where
     T: IpcConnection,
@@ -347,69 +329,106 @@ where
     }
 }
 
-impl<A> Handler<command::CreateRemoteActor<A>> for Node
+impl<A> Handler<command::AddActor<A>> for Node
 where
-    A: Actor + RemoteSpawnable,
+    A: Actor + RemoteAddressable,
 {
-    type Result = FutureMessageResult<command::CreateRemoteActor<A>>;
+    type Result = bool;
 
     async fn handle(
         &mut self,
-        msg: command::CreateRemoteActor<A>,
+        msg: command::AddActor<A>,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        debug_trace!("Handle command CreateRemoteActor");
+        debug_trace!("Handle command {:?}", msg);
 
-        let command::CreateRemoteActor {
+        if let Some(actor_mgr) = &self.actor_mgr {
+            if let Ok(rx) = actor_mgr.send(msg).await {
+                return rx.await.unwrap_or(false);
+            }
+        }
+
+        false
+    }
+}
+
+impl Handler<command::RemoveActor> for Node {
+    type Result = bool;
+
+    async fn handle(
+        &mut self,
+        msg: command::RemoveActor,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        debug_trace!("Handle command {:?}", msg);
+
+        if let Some(actor_mgr) = &self.actor_mgr {
+            if let Ok(rx) = actor_mgr.send(msg).await {
+                return rx.await.unwrap_or(false);
+            }
+        }
+
+        false
+    }
+}
+
+impl<A> Handler<command::RemoteCreateActor<A>> for Node
+where
+    A: Actor + RemoteSpawnable,
+{
+    type Result = FutureMessageResult<command::RemoteCreateActor<A>>;
+
+    async fn handle(
+        &mut self,
+        msg: command::RemoteCreateActor<A>,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        debug_trace!("Handle command RemoteCreateActor<{}>", ShortName::of::<A>());
+
+        let command::RemoteCreateActor {
             session,
             label,
             config,
+            ..
         } = msg;
 
         let session = self.get_session(&session);
 
         FutureMessageResult::new(async move {
             session?
-                .send(session::command::CreateRemoteActor {
-                    label,
-                    config,
-                    marker: PhantomData,
-                })
+                .send(session::command::RemoteCreateActor::new(label, config))
                 .await?
                 // this await is time consuming since it involves IPC
                 .await?
-                .map_err(NodeError::CreateRemoteActorFailed)
+                .map_err(Into::into)
         })
     }
 }
 
-impl<A> Handler<command::GetRemoteActor<A>> for Node
+impl<A> Handler<command::RemoteGetActor<A>> for Node
 where
     A: Actor + RemoteAddressable,
 {
-    type Result = FutureMessageResult<command::GetRemoteActor<A>>;
+    type Result = FutureMessageResult<command::RemoteGetActor<A>>;
 
     async fn handle(
         &mut self,
-        msg: command::GetRemoteActor<A>,
+        msg: command::RemoteGetActor<A>,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
         debug_trace!("Handle command GetRemoteActor");
 
-        let command::GetRemoteActor { session, actor } = msg;
+        let command::RemoteGetActor { session, actor, .. } = msg;
 
         let session = self.get_session(&session);
 
         FutureMessageResult::new(async move {
             session?
-                .send(session::command::GetRemoteActor {
-                    actor,
-                    marker: PhantomData,
-                })
+                .send(session::command::RemoteGetActor::new(actor))
                 .await?
                 // this await is time consuming since it involves IPC
                 .await?
-                .map_err(NodeError::RemoteActorNotFound)
+                .map_err(Into::into)
         })
     }
 }

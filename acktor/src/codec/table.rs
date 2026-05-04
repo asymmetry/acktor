@@ -26,6 +26,12 @@ pub struct MessageCodec {
 /// A table mapping the [`TypeId`][std::any::TypeId] of messages to their corresponding codecs.
 pub struct CodecTable(TypeMap<MessageCodec>);
 
+impl CodecTable {
+    pub fn new(map: TypeMap<MessageCodec>) -> Self {
+        Self(map)
+    }
+}
+
 impl Deref for CodecTable {
     type Target = TypeMap<MessageCodec>;
 

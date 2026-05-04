@@ -4,14 +4,14 @@ use std::sync::Arc;
 
 use acktor::utils::NopHasher;
 
-pub use acktor::actor::{RemoteAddressable, RemoteMailbox};
+pub use acktor::{RemoteAddressable, RemoteSpawnable};
+pub(crate) use acktor::{RemoteProxy, address::RemoteMailbox, message::BinaryMessage};
 
 mod factory;
-pub use factory::RemoteSpawnable;
-pub(crate) use factory::{DynRemoteSpawnable, RemoteSpawnableShim};
+pub(crate) use factory::{RemoteFactory, RemoteFactoryShim};
 
 mod registry;
-pub use registry::RemoteMailboxRegistry;
+pub(crate) use registry::RemoteMailboxRegistry;
 
-pub(crate) type ActorFactoryRegistry =
-    HashMap<u64, Arc<dyn DynRemoteSpawnable>, BuildHasherDefault<NopHasher>>;
+pub(crate) type RemoteFactoryRegistry =
+    HashMap<u64, Arc<dyn RemoteFactory>, BuildHasherDefault<NopHasher>>;

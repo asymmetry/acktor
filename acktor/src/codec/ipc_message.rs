@@ -1,6 +1,6 @@
 use bytes::{Bytes, BytesMut};
 
-use acktor_ipc_proto::ipc_message::IpcMessage;
+use acktor_ipc_proto::message::IpcMessage;
 
 use super::error::{DecodeError, EncodeError};
 use super::{Decode, DecodeContext, Encode, EncodeContext};

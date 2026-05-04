@@ -3,7 +3,7 @@ use pretty_assertions::assert_eq;
 use rkyv::{Archive, Deserialize, Serialize};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor_ipc::{Decode, Encode, error::DecodeError};
+use acktor::codec::{Decode, DecodeError, Encode};
 
 #[derive(Debug, PartialEq, Encode, Decode)]
 #[codec(prost, ProstBridge)]

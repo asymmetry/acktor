@@ -9,10 +9,13 @@ use tokio::time::Duration;
 use tracing::{Instrument, debug};
 
 use super::next_actor_id;
-#[cfg(feature = "ipc")]
-use super::remote::{RemoteProxy, RemoteRecipient};
 use super::sender::{
     DoSendResult, DoSendResultFuture, EmptyFuture, SendResult, SendResultFuture, Sender, SenderInfo,
+};
+#[cfg(feature = "ipc")]
+use super::{
+    RemoteMailbox,
+    remote::{RemoteProxy, RemoteRecipient},
 };
 use crate::actor::ActorId;
 use crate::channel::mpsc;
@@ -22,7 +25,6 @@ use crate::message::Message;
 use crate::utils::ShortName;
 #[cfg(feature = "ipc")]
 use crate::{
-    actor::RemoteMailbox,
     codec::{Decode, Encode},
     message::{BinaryMessage, MessageId},
 };

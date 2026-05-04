@@ -2,9 +2,9 @@ use std::pin::Pin;
 
 use tokio::time::Duration;
 
-use crate::actor::ActorId;
 #[cfg(feature = "ipc")]
-use crate::actor::RemoteMailbox;
+use super::RemoteMailbox;
+use crate::actor::ActorId;
 use crate::channel::oneshot::Receiver;
 use crate::envelope::DefaultEnvelopeProxy;
 use crate::error::SendError;

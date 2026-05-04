@@ -53,7 +53,7 @@ async fn server() -> Result<()> {
 
     let (address, join_handle) = Node::new()
         .with_listener(listener)
-        .with_remote_spawnable_actor::<Server>()
+        .with_factory::<Server>()
         .start(format!("node-{}", process::id()))?;
 
     signal::ctrl_c().await?;

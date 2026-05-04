@@ -11,6 +11,8 @@ use std::panic::{self, AssertUnwindSafe};
 use futures_util::FutureExt;
 use tracing::{Instrument, Span, debug, error, error_span, field, warn};
 
+#[cfg(feature = "ipc")]
+use crate::address::RemoteMailbox;
 use crate::address::{Address, Mailbox, Recipient, Sender};
 use crate::error::{BoxError, ErrorReport};
 use crate::supervisor::SupervisionEvent;
@@ -23,7 +25,7 @@ pub use index::ActorId;
 mod remote;
 #[cfg(feature = "ipc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
-pub use remote::{RemoteAddressable, RemoteMailbox};
+pub use remote::{RemoteAddressable, RemoteSpawnable};
 
 pub use tokio::task::JoinHandle;
 

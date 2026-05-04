@@ -191,7 +191,7 @@ async fn test_actor_commands() -> anyhow::Result<()> {
 
     // test GetRemoteActor with unknown actor
     let error = client
-        .send(command::GetRemoteActor {
+        .send(command::RemoteGetActor {
             session: "server-session".into(),
             actor: (u64::MAX / 2).into(),
         })
@@ -205,7 +205,7 @@ async fn test_actor_commands() -> anyhow::Result<()> {
 
     // test GetRemoteActor with unknown session
     let error = client
-        .send(command::GetRemoteActor {
+        .send(command::RemoteGetActor {
             session: "nonexistent-session".to_string().into(),
             actor: "0".to_string().into(),
         })
@@ -219,7 +219,7 @@ async fn test_actor_commands() -> anyhow::Result<()> {
 
     // test CreateRemoteActor with failure
     let error = client
-        .send(command::CreateRemoteActor {
+        .send(command::RemoteCreateActor {
             session: session.index().into(),
             label: "new".to_string(),
             r#type: "NonExistentType".to_string(),

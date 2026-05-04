@@ -14,6 +14,7 @@ use std::pin::Pin;
 use crate::actor::Actor;
 use crate::channel::oneshot;
 use crate::message::Message;
+use crate::utils::ShortName;
 
 mod default_proxy;
 pub use default_proxy::DefaultEnvelopeProxy;
@@ -73,10 +74,7 @@ where
     A: Actor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!(
-            "Envelope<{}>",
-            crate::utils::ShortName::of::<A>()
-        ))
+        f.write_fmt(format_args!("{}", ShortName::of::<Self>()))
     }
 }
 

@@ -47,7 +47,7 @@ impl<M> SendError<M> {
 }
 
 #[cfg(feature = "ipc")]
-impl SendError<()> {
+impl SendError<crate::message::BinaryMessage> {
     pub(crate) fn with_msg<M>(self, msg: M) -> SendError<M> {
         match self {
             SendError::Closed(_) => SendError::Closed(msg),

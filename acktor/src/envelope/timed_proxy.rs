@@ -10,6 +10,7 @@ use super::{Envelope, EnvelopeProxy, FromEnvelope, IntoEnvelope};
 use crate::actor::Actor;
 use crate::channel::oneshot;
 use crate::message::{Handler, Message, MessageResponse};
+use crate::utils::ShortName;
 
 /// Wraps a message with a time budget for handling.
 ///
@@ -29,7 +30,7 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(&format!("{}", crate::utils::ShortName::of::<Self>()))
+        f.debug_tuple(&ShortName::of::<Self>().to_string())
             .field(&self.budget)
             .finish()
     }
@@ -76,7 +77,7 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{}", crate::utils::ShortName::of::<Self>()))
+        f.write_fmt(format_args!("{}", ShortName::of::<Self>()))
     }
 }
 

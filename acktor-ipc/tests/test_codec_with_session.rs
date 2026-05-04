@@ -10,8 +10,8 @@ use acktor::{
 };
 use acktor_ipc::{
     Decode, DecodeContext, Encode, EncodeContext, RemoteActor, RemoteAddress,
-    ipc_method::websocket::WebSocketConnection, remote,
-    remote::RemoteMailboxRegistry, remote_message::RemoteSupervisionEvent,
+    ipc_method::websocket::WebSocketConnection, remote, remote::RemoteMailboxRegistry,
+    remote_message::RemoteSupervisionEvent,
 };
 
 mod common;

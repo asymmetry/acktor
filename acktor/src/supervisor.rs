@@ -36,7 +36,7 @@ where
             SupervisionEvent::Warn(address, error) => f
                 .debug_tuple("Warn")
                 .field(&address.index())
-                .field(&format_args!("{error}"))
+                .field(&format_args!("{}", error))
                 .finish(),
             SupervisionEvent::Terminated(address, error) => f
                 .debug_tuple("Terminated")
@@ -51,7 +51,7 @@ where
             SupervisionEvent::Panicked(address, info) => f
                 .debug_tuple("Panicked")
                 .field(&address.index())
-                .field(&format_args!("{info}"))
+                .field(&format_args!("{}", info))
                 .finish(),
             SupervisionEvent::State(address, state) => f
                 .debug_tuple("State")

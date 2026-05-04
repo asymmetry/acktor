@@ -7,6 +7,7 @@ use tracing::Instrument;
 use super::{Message, MessageResponse};
 use crate::actor::Actor;
 use crate::channel::oneshot;
+use crate::utils::ShortName;
 
 /// A helper type which wraps the result of a message handler as a future which runs off the
 /// mailbox.
@@ -29,7 +30,7 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{}", crate::utils::ShortName::of::<Self>()))
+        f.write_fmt(format_args!("{}", ShortName::of::<Self>()))
     }
 }
 

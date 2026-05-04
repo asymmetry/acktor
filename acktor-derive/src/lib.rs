@@ -16,7 +16,7 @@ mod encode;
 #[cfg(feature = "ipc")]
 mod remote;
 #[cfg(feature = "ipc")]
-mod remote_actor;
+mod remote_addressable;
 
 /// Derive the [`Message`] trait for a struct or enum.
 ///
@@ -226,46 +226,48 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
     decode::expand(&ast).into()
 }
 
-/// Derive the [`RemoteActor`] trait for an actor.
+/// Derive the [`RemoteAddressable`] trait for an actor.
 ///
-/// Without any attribute, only the marker `impl RemoteActor for Self {}` is emitted.
+/// A `#[message(M1, M2, ...)]` attribute must be present to specify the list of messages the
+/// actor can handle remotely. For each message `Mi`, the actor must have implemented the
+/// [`Handler`] trait; `Mi` itself must have implemented the [`MessageId`] trait, the [`Encode`]
+/// trait and the [`Decode`] trait; `Mi::Result` must also have implemented the [`Encode`] trait
+/// and the [`Decode`] trait.
 ///
-/// With an optional `#[message(M1, M2, ...)]` attribute, an additional
-/// `impl Handler<RemoteMessage> for Self` is emitted which dispatches inbound messages by
-/// matching their `message_id` against `<Mi as Decode>::ID` and invoking the corresponding
-/// message handler `<Self as Handler<Mi>>::handle`. After handling the message, the response is
-/// encoded and sent back through an oneshot channel to the sender of the [`RemoteMessage`].
+/// The macro emits a [`Codec`] impl and a `Handler<BinaryMessage>` impl for the actor based on
+/// the message list specified in the `#[message(..)]` attribute. The [`Codec`] impl provides a
+/// codec table which defines how to encode the message and decode the message response for each
+/// message type `Mi`. The `Handler<BinaryMessage>` impl dispatches inbound messages by matching
+/// the message id and invoking the corresponding message handler.
 ///
-/// For each `Mi`, the actor must implement [`Handler<Mi>`] trait and the result type of the
-/// trait must implement [`Encode`] trait.
-///
-/// This also emits the [`StableId`] impl, so `#[derive(RemoteActor)]` alone is sufficient
-/// — do **not** also derive [`StableId`] separately, as that would produce conflicting
-/// impls. See the [`StableId`] derive for the hashing scheme and the rules around generic
-/// parameters.
+/// This macro also emits a [`StableId`] impl, do **not** also derive [`StableId`] separately, as
+/// that would produce conflicting impls. See the [`StableId`] derive for the hashing scheme and
+/// the rules of generic parameters.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use acktor_derive::RemoteActor;
+/// use acktor_derive::RemoteAddressable;
 ///
-/// #[derive(RemoteActor)]
+/// #[derive(RemoteAddressable)]
 /// #[message(Ping, Echo)]
 /// pub struct MyActor;
 /// ```
 ///
-/// [`RemoteActor`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/remote_actor/trait.RemoteActor.html
-/// [`RemoteMessage`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/remote_message/struct.RemoteMessage.html
-/// [`Handler<Mi>`]: https://docs.rs/acktor/latest/acktor/message/trait.Handler.html
-/// [`Encode`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/codec/trait.Encode.html
-/// [`StableId`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/stable_type_id/trait.StableId.html
+/// [`RemoteAddressable`]: https://docs.rs/acktor/latest/acktor/actor/remote/trait.RemoteAddressable.html
+/// [`Handler`]: https://docs.rs/acktor/latest/acktor/message/trait.Handler.html
+/// [`MessageId`]: https://docs.rs/acktor/latest/acktor/message/index/trait.MessageId.html
+/// [`Encode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Encode.html
+/// [`Decode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Decode.html
+/// [`Codec`]: https://docs.rs/acktor/latest/acktor/codec/table/trait.Codec.html
+/// [`StableId`]: https://docs.rs/acktor/latest/acktor/stable_type_id/trait.StableId.html
 #[cfg(feature = "ipc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
-#[proc_macro_derive(RemoteActor, attributes(message))]
-pub fn remote_actor_derive(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(RemoteAddressable, attributes(message))]
+pub fn remote_addressable_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
 
-    remote_actor::expand(&ast).into()
+    remote_addressable::expand(&ast).into()
 }
 
 /// Attribute macro applies to the `impl Actor for MyActor` block, which overrides the internal

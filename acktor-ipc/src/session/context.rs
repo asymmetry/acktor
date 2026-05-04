@@ -89,7 +89,7 @@ impl ActorContext<Session> for SessionContext {
     ) -> Result<(), SessionError> {
         while self.state() == ActorState::Running {
             if self.require_cleanup {
-                actor.cleanup_msg_res_tx();
+                actor.cleanup_message_res_tx_map();
                 self.require_cleanup = false;
                 // schedule the next cleanup
                 let address = self.address();

@@ -79,20 +79,14 @@ impl BinaryMessage {
     }
 
     /// Sets the decode context on this message.
-    pub fn with_decode_context<C>(mut self, context: C) -> Self
-    where
-        C: DecodeContext + Send + Sync + 'static,
-    {
-        self.decode_msg_ctx = Some(Arc::new(context));
+    pub fn with_decode_context(mut self, context: Arc<dyn DecodeContext + Send + Sync>) -> Self {
+        self.decode_msg_ctx = Some(context);
         self
     }
 
     /// Sets the encode context on this message.
-    pub fn with_encode_context<C>(mut self, context: C) -> Self
-    where
-        C: EncodeContext + Send + Sync + 'static,
-    {
-        self.encode_res_ctx = Some(Arc::new(context));
+    pub fn with_encode_context(mut self, context: Arc<dyn EncodeContext + Send + Sync>) -> Self {
+        self.encode_res_ctx = Some(context);
         self
     }
 }

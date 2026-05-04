@@ -83,7 +83,7 @@ async fn test_create_actor() -> anyhow::Result<()> {
 
     // test CreateRemoteActor
     let remote = client
-        .send(command::CreateRemoteActor {
+        .send(command::RemoteCreateActor {
             session: session.clone().into(),
             label: "counter-1".to_string(),
             r#type: Counter::LABEL.to_string(),
@@ -96,7 +96,7 @@ async fn test_create_actor() -> anyhow::Result<()> {
 
     // test GetRemoteActor by label
     let same = client
-        .send(command::GetRemoteActor {
+        .send(command::RemoteGetActor {
             session: session.clone().into(),
             actor: "counter-1".into(),
         })
@@ -115,7 +115,7 @@ async fn test_create_actor() -> anyhow::Result<()> {
 
     // test CreateRemoteActor with duplicate label
     let error = client
-        .send(command::CreateRemoteActor {
+        .send(command::RemoteCreateActor {
             session: session.clone().into(),
             label: "counter-1".to_string(),
             r#type: Counter::LABEL.to_string(),

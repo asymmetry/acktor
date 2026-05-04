@@ -34,6 +34,7 @@ ipc = [
     "dep:bytes",
     "dep:prost",
     "dep:zerocopy",
+    "acktor-derive/ipc",
 ]
 # emits debug-level tracing logs when an observer's mailbox is full and becomes a bottleneck
 bottleneck-warning = []
@@ -60,6 +61,7 @@ acktor-ipc-proto = { workspace = true, optional = true, default-features = false
 anyhow.workspace = true
 clap.workspace = true
 pretty_assertions.workspace = true
+rkyv.workspace = true
 
 [[example]]
 name = "ring"
@@ -70,17 +72,21 @@ name = "test_basic"
 required-features = ["derive"]
 
 [[test]]
-name = "test_observer"
-required-features = ["observer"]
-
-[[test]]
-name = "test_cron"
-required-features = ["cron"]
+name = "test_codec"
+required-features = ["derive", "ipc"]
 
 [[test]]
 name = "test_cron_context"
 required-features = ["cron"]
 
 [[test]]
+name = "test_cron"
+required-features = ["cron"]
+
+[[test]]
 name = "test_identifier"
 required-features = ["derive", "identifier"]
+
+[[test]]
+name = "test_observer"
+required-features = ["observer"]
