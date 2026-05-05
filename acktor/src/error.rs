@@ -47,14 +47,27 @@ impl<M> SendError<M> {
 }
 
 #[cfg(feature = "ipc")]
-impl SendError<crate::message::BinaryMessage> {
-    pub(crate) fn with_msg<M>(self, msg: M) -> SendError<M> {
+impl SendError<()> {
+    pub fn with_msg<M>(self, msg: M) -> SendError<M> {
         match self {
             SendError::Closed(_) => SendError::Closed(msg),
             SendError::Full(_) => SendError::Full(msg),
             SendError::Timeout(_) => SendError::Timeout(msg),
             SendError::NoEncodeFn(_) => SendError::NoEncodeFn(msg),
             SendError::Other(e, _) => SendError::Other(e, msg),
+        }
+    }
+}
+
+#[cfg(feature = "ipc")]
+impl<M> SendError<M> {
+    pub fn without_msg(self) -> SendError<()> {
+        match self {
+            SendError::Closed(_) => SendError::Closed(()),
+            SendError::Full(_) => SendError::Full(()),
+            SendError::Timeout(_) => SendError::Timeout(()),
+            SendError::NoEncodeFn(_) => SendError::NoEncodeFn(()),
+            SendError::Other(e, _) => SendError::Other(e, ()),
         }
     }
 }

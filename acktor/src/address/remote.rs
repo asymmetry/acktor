@@ -46,17 +46,13 @@ pub trait RemoteProxy {
     fn capacity(&self) -> usize;
 
     /// Sends an binary message, waiting until there is capacity.
-    fn do_send(&self, msg: BinaryMessage) -> DoSendResultFuture<'_, BinaryMessage>;
+    fn do_send(&self, msg: BinaryMessage) -> DoSendResultFuture<'_, ()>;
 
     /// Attempts to immediately send an binary message.
-    fn try_do_send(&self, msg: BinaryMessage) -> DoSendResult<BinaryMessage>;
+    fn try_do_send(&self, msg: BinaryMessage) -> DoSendResult<()>;
 
     /// Sends an binary message, waiting until there is capacity, but only for a limited time.
-    fn do_send_timeout(
-        &self,
-        msg: BinaryMessage,
-        timeout: Duration,
-    ) -> DoSendResultFuture<'_, BinaryMessage>;
+    fn do_send_timeout(&self, msg: BinaryMessage, timeout: Duration) -> DoSendResultFuture<'_, ()>;
 
     /// Blocking send to call outside of asynchronous contexts.
     ///
@@ -66,7 +62,7 @@ pub trait RemoteProxy {
     /// # Panics
     ///
     /// This function panics if called within an asynchronous execution context.
-    fn blocking_do_send(&self, msg: BinaryMessage) -> DoSendResult<BinaryMessage>;
+    fn blocking_do_send(&self, msg: BinaryMessage) -> DoSendResult<()>;
 }
 
 struct Inner {
