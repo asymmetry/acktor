@@ -4,21 +4,20 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 use acktor::{
-    Actor, ActorContext, Address, ErrorReport, Handler, Sender,
+    Actor, ActorContext, Address, ErrorReport, Handler,
     cron::{CronActor, CronContext},
     observer::Observer,
 };
-use acktor_ipc::{
-    ActorHandle, RemoteActor, RemoteAddress, Session, remote_actor, session::command,
-};
+use acktor_ipc::{ActorRef, RemoteAddressable, Session, remote, session::command};
 
 use crate::message::{Ping, Pong};
+use crate::server::Server;
 
-#[derive(Debug, RemoteActor)]
+#[derive(Debug, RemoteAddressable)]
 #[message(Pong)]
 pub struct Client {
     session: Address<Session>,
-    server: Option<RemoteAddress>,
+    server: Option<Address<Server>>,
     id: u64,
 }
 
@@ -32,7 +31,7 @@ impl Client {
     }
 }
 
-#[remote_actor]
+#[remote]
 impl Actor for Client {
     type Context = CronContext<Self>;
     type Error = anyhow::Error;
@@ -41,37 +40,34 @@ impl Actor for Client {
 impl CronActor for Client {
     async fn task(&mut self, ctx: &mut Self::Context) -> anyhow::Result<Duration> {
         if self.server.is_none() {
-            let get_result = self
+            let server = self
                 .session
-                .send(command::GetRemoteActor {
-                    actor: ActorHandle::from("pong"),
-                })
+                .send(command::RemoteGetActor::new(ActorRef::from("pong")))
                 .await?
                 .await?;
 
-            let address = match get_result {
+            let address = match server {
                 Ok(addr) => {
-                    info!("Got remote actor: {:?}", addr);
-
+                    info!("Got server: {:?}", addr);
                     addr
                 }
                 Err(e) => {
-                    info!("Could not get remote actor: {}", e.report());
-
+                    info!("Could not get server: {}", e.report());
                     match self
                         .session
-                        .send(command::CreateRemoteActor {
-                            label: "pong".to_string(),
-                            r#type: "Server".to_string(),
-                            config: String::new(),
-                        })
+                        .send(command::RemoteCreateActor::new(
+                            "pong".to_string(),
+                            String::new(),
+                        ))
                         .await?
                         .await?
                     {
-                        Ok(addr) => addr,
+                        Ok(addr) => {
+                            info!("Created server: {:?}", addr);
+                            addr
+                        }
                         Err(e) => {
-                            warn!("Could not create remote actor: {}", e.report());
-
+                            warn!("Could not create server: {}", e.report());
                             return Ok(Duration::from_secs(1));
                         }
                     }

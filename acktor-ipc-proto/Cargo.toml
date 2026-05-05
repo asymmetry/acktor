@@ -1,6 +1,6 @@
 [package]
 name = "acktor-ipc-proto"
-version = "1.0.2"
+version = "1.0.3"
 description = "Interprocess communication protocol for the acktor actor framework"
 edition.workspace = true
 rust-version.workspace = true
@@ -9,9 +9,16 @@ license.workspace = true
 repository.workspace = true
 categories.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = []
+adaptor = ["dep:ahash"]
+
 [dependencies]
 bytes.workspace = true
 prost.workspace = true
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-ahash.workspace = true
+ahash = { workspace = true, optional = true }

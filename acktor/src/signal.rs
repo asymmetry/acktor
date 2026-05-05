@@ -68,8 +68,8 @@ where
 }
 
 #[cfg(feature = "identifier")]
-impl crate::stable_type_id::HasStableTypeId for Signal {
-    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+impl crate::stable_type_id::StableId for Signal {
+    const TYPE_ID: crate::stable_type_id::StableTypeId =
         crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
             module_path!(),
             "::",
@@ -79,6 +79,8 @@ impl crate::stable_type_id::HasStableTypeId for Signal {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]

@@ -1,5 +1,0 @@
-error: expected `impl`
- --> tests/ui/remote_actor_attr_not_impl.rs:4:1
-  |
-4 | struct NotAnImpl;
-  | ^^^^^^

@@ -99,13 +99,13 @@ impl Handler<CheckB> for B {
 
 #[tokio::test]
 async fn test_supervisor() -> Result<()> {
-    let (a_address, _) = A.run("A")?;
+    let (a_address, _) = A.start("A")?;
 
     // no effect
     a_address.send(Notify).await?.await?;
     a_address.send(TryNotify).await?.await?;
 
-    let (b_address, _) = B { received: 0 }.run("B")?;
+    let (b_address, _) = B { received: 0 }.start("B")?;
 
     // set B as the supervisor of A
     a_address

@@ -10,11 +10,11 @@ use tokio::time;
 use tracing::{Instrument, debug, warn};
 
 use crate::actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
-use crate::address::{Address, Mailbox, Recipient, SenderId};
+use crate::address::{Address, Mailbox, Recipient, SenderInfo};
 use crate::channel::mpsc;
 use crate::context::DEFAULT_MAILBOX_CAPACITY;
 use crate::envelope::EnvelopeProxy;
-use crate::errors::RecvError;
+use crate::error::RecvError;
 use crate::message::{Handler, Message};
 use crate::supervisor::SupervisionEvent;
 use crate::utils::debug_trace;
@@ -214,11 +214,7 @@ where
         self.try_notify_supervisor(SupervisionEvent::State(self.address(), state));
     }
 
-    async fn process_loop(
-        &mut self,
-        actor: &mut A,
-        mailbox: &mut Mailbox<A>,
-    ) -> Result<(), A::Error> {
+    async fn run_loop(&mut self, actor: &mut A, mailbox: &mut Mailbox<A>) -> Result<(), A::Error> {
         while self.state() == ActorState::Running {
             if self.drain_mailbox {
                 let count = mailbox.len();
@@ -356,8 +352,8 @@ where
 }
 
 #[cfg(feature = "identifier")]
-impl crate::stable_type_id::HasStableTypeId for CronSignal {
-    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+impl crate::stable_type_id::StableId for CronSignal {
+    const TYPE_ID: crate::stable_type_id::StableTypeId =
         crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
             module_path!(),
             "::",
@@ -367,6 +363,8 @@ impl crate::stable_type_id::HasStableTypeId for CronSignal {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]

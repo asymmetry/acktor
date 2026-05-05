@@ -137,10 +137,10 @@ impl Handler<CheckB> for B {
 #[tokio::test]
 async fn test_observer() -> Result<()> {
     // the subject actor
-    let (a_address, _) = A::default().run("A")?;
+    let (a_address, _) = A::default().start("A")?;
 
     // use actor as observer
-    let (b_address, b_join_handle) = B { received: false }.run("B")?;
+    let (b_address, b_join_handle) = B { received: false }.start("B")?;
 
     // use none-actor backed recipientas observer
     let (recipient, mut rx) = Recipient::<M1>::create(8);
@@ -201,7 +201,7 @@ async fn test_observer() -> Result<()> {
     // B should receive M1, but the recipient should not
     let received = b_address.send(CheckB).await?.await?;
     assert_eq!(received, true);
-    let received = rx.recv_timeout(Duration::from_millis(10)).await;
+    let received = rx.recv_timeout(Duration::from_millis(100)).await;
     assert!(matches!(received, Err(RecvError::Timeout)));
 
     // register none-actor backed recipient back

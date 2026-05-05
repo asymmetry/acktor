@@ -180,7 +180,7 @@ fn spawn_actors(
     Address<Watcher>,
     JoinHandle<()>,
 )> {
-    let (watcher_address, watcher_join_handle) = Watcher::default().run("watcher")?;
+    let (watcher_address, watcher_join_handle) = Watcher::default().start("watcher")?;
 
     let (actor_address, actor_join_handle) = TestActor::create("actor", |ctx| {
         ctx.set_supervisor(Some(watcher_address.clone().into()));
@@ -285,7 +285,7 @@ async fn test_drain_mailbox() -> Result<()> {
 
     // block occupies the actor long enough for the remaining messages to queue behind it
     // in a deterministic order
-    let block_rx = actor.send(Block(Duration::from_millis(30))).await?;
+    let block_rx = actor.send(Block(Duration::from_millis(100))).await?;
 
     // mailbox order while actor is blocked: [Increment, Increment, Drain, Increment, Increment]
     actor.do_send(Increment).await?;
@@ -297,7 +297,7 @@ async fn test_drain_mailbox() -> Result<()> {
     // wait for block to finish, then give the actor time to process the first 3 messages
     // and drain the rest on the next loop iteration.
     block_rx.await?;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // count arrives after the mailbox has been drained
     let count = actor.send(GetCount).await?.await?;

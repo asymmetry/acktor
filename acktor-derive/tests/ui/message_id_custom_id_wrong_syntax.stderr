@@ -1,5 +1,0 @@
-error: the correct syntax is `#[custom_id(<u64 value>)]`
- --> tests/ui/message_id_custom_id_wrong_syntax.rs:4:1
-  |
-4 | #[custom_id = 42]
-  | ^^^^^^^^^^^^^^^^^

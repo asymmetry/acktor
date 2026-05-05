@@ -7,10 +7,9 @@ fn main() {
     let proto_dir = Path::new("src").join("proto");
 
     let proto_files = [
-        "node_message.proto",
-        "actor_message.proto",
-        "ipc_message.proto",
         "control_message.proto",
+        "message.proto",
+        "node_message.proto",
         "utils.proto",
     ];
 

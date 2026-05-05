@@ -1,7 +1,7 @@
 use tracing::{debug, warn};
 
 use crate::actor::{Actor, ActorContext, ActorId, ActorState, Stopping};
-use crate::address::{Address, Mailbox, Recipient, SenderId};
+use crate::address::{Address, Mailbox, Recipient, SenderInfo};
 use crate::channel::mpsc;
 use crate::envelope::EnvelopeProxy;
 use crate::supervisor::SupervisionEvent;
@@ -100,11 +100,7 @@ where
         self.try_notify_supervisor(SupervisionEvent::State(self.address(), state));
     }
 
-    async fn process_loop(
-        &mut self,
-        actor: &mut A,
-        mailbox: &mut Mailbox<A>,
-    ) -> Result<(), A::Error> {
+    async fn run_loop(&mut self, actor: &mut A, mailbox: &mut Mailbox<A>) -> Result<(), A::Error> {
         while self.state() == ActorState::Running {
             if self.drain_mailbox {
                 let count = mailbox.len();

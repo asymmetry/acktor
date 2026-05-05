@@ -1,5 +1,0 @@
-error: unknown codec method, expected one of: `prost`, `zerocopy`, `rkyv`
- --> tests/ui/encode_unknown_codec.rs:4:9
-  |
-4 | #[codec(json)]
-  |         ^^^^

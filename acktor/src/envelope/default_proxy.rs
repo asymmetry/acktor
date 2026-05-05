@@ -9,11 +9,12 @@ use super::{Envelope, EnvelopeProxy, FromEnvelope, IntoEnvelope};
 use crate::actor::Actor;
 use crate::channel::oneshot;
 use crate::message::{Handler, Message, MessageResponse};
+use crate::utils::ShortName;
 
 /// The default envelope proxy for [`Message`].
 ///
-/// This proxy will invoke the actor's [`Handler<M>`] trait and return the result through
-/// an oneshot channel if provided.
+/// This proxy will invokes the actor's [`Handler`] trait and return the result through an oneshot
+/// channel if provided.
 pub struct DefaultEnvelopeProxy<M>
 where
     M: Message,
@@ -27,7 +28,7 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{}", crate::utils::ShortName::of::<Self>()))
+        f.write_fmt(format_args!("{}", ShortName::of::<Self>()))
     }
 }
 

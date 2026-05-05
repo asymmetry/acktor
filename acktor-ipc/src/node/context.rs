@@ -5,14 +5,14 @@ use tokio::task::{JoinError, JoinHandle};
 use tracing::{debug, warn};
 
 use acktor::{
-    ActorContext, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, RecvError,
+    ActorContext, ActorId, ActorState, Address, DEFAULT_MAILBOX_CAPACITY, ErrorReport, RecvError,
     address::Mailbox,
     channel::mpsc,
     envelope::{Envelope, EnvelopeProxy},
 };
 
 use super::Node;
-use crate::errors::NodeError;
+use crate::error::NodeError;
 use crate::ipc_method::{IpcConnection, IpcListener};
 
 enum LoopEvent {
@@ -128,7 +128,7 @@ impl ActorContext<Node> for NodeContext {
         Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
     }
 
-    fn index(&self) -> u64 {
+    fn index(&self) -> ActorId {
         self.doorplate.index()
     }
 
@@ -152,7 +152,7 @@ impl ActorContext<Node> for NodeContext {
         self.state = state;
     }
 
-    async fn process_loop(
+    async fn run_loop(
         &mut self,
         actor: &mut Node,
         mailbox: &mut Mailbox<Node>,
@@ -170,7 +170,7 @@ impl ActorContext<Node> for NodeContext {
                     }
                 },
                 LoopEvent::Accept(Ok(connection), label) => {
-                    debug!("Accepted a new connection from {}", label);
+                    debug!("Accepted a new connection on listener {}", label);
                     if let Err(e) = actor.create_session(connection, None, self).await {
                         warn!("Could not create new session: {}", e.report());
                     }
@@ -178,7 +178,11 @@ impl ActorContext<Node> for NodeContext {
                 LoopEvent::Accept(Err(e), label) => {
                     // IO error is normal when accepting connections, so we just log it and
                     // continue accepting new connections.
-                    warn!("Could not accept connection from {}: {}", label, e.report(),);
+                    warn!(
+                        "Could not accept connection on listener {}: {}",
+                        label,
+                        e.report(),
+                    );
                 }
                 LoopEvent::ListenerPanicked(e, label) => {
                     warn!("Listener {} panicked, terminate the actor: {}", label, e);

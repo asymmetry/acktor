@@ -22,12 +22,12 @@ pub mod node_message {
 /// A message which is used to create a new actor in the remote node.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateActor {
+    /// The stable type index of the actor type.
+    #[prost(fixed64, tag = "1")]
+    pub type_id: u64,
     /// The label of the actor.
-    #[prost(string, tag = "1")]
-    pub label: ::prost::alloc::string::String,
-    /// The type of the actor.
     #[prost(string, tag = "2")]
-    pub r#type: ::prost::alloc::string::String,
+    pub label: ::prost::alloc::string::String,
     /// The config of the actor.
     #[prost(string, tag = "3")]
     pub config: ::prost::alloc::string::String,
@@ -41,47 +41,8 @@ pub struct CreateActor {
 pub struct GetActor {
     /// The actor handle of the actor.
     #[prost(message, optional, tag = "1")]
-    pub actor: ::core::option::Option<super::utils::ActorHandle>,
+    pub actor: ::core::option::Option<super::utils::ActorRef>,
     /// The tag to be used in the message response.
     #[prost(uint64, tag = "2")]
     pub tag: u64,
-}
-/// A message which is used as the response of a `NodeMessage`.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct NodeMessageResponse {
-    /// The tag of the message.
-    #[prost(uint64, tag = "1")]
-    pub tag: u64,
-    #[prost(oneof = "node_message_response::Response", tags = "2, 3")]
-    pub response: ::core::option::Option<node_message_response::Response>,
-}
-/// Nested message and enum types in `NodeMessageResponse`.
-pub mod node_message_response {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Response {
-        /// The response of the `CreateActor` message.
-        #[prost(message, tag = "2")]
-        CreateActor(super::ResultRemoteAddress),
-        /// The response of the `GetActor` message.
-        #[prost(message, tag = "3")]
-        GetActor(super::ResultRemoteAddress),
-    }
-}
-/// A message which represents a `Result<RemoteAddress, E>`.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ResultRemoteAddress {
-    #[prost(oneof = "result_remote_address::Result", tags = "1, 2")]
-    pub result: ::core::option::Option<result_remote_address::Result>,
-}
-/// Nested message and enum types in `ResultRemoteAddress`.
-pub mod result_remote_address {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Result {
-        /// The actor id of the actor in the remote node.
-        #[prost(uint64, tag = "1")]
-        ActorId(u64),
-        /// The error message.
-        #[prost(string, tag = "2")]
-        Err(::prost::alloc::string::String),
-    }
 }

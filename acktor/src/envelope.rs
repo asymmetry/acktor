@@ -14,6 +14,7 @@ use std::pin::Pin;
 use crate::actor::Actor;
 use crate::channel::oneshot;
 use crate::message::Message;
+use crate::utils::ShortName;
 
 mod default_proxy;
 pub use default_proxy::DefaultEnvelopeProxy;
@@ -73,10 +74,7 @@ where
     A: Actor,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!(
-            "Envelope<{}>",
-            crate::utils::ShortName::of::<A>()
-        ))
+        f.write_fmt(format_args!("{}", ShortName::of::<Self>()))
     }
 }
 
@@ -125,14 +123,14 @@ mod tests {
 
     #[test]
     fn test_debug_fmt() {
-        let budget = Duration::from_secs(1);
+        let budget = Duration::from_millis(100);
 
         // DefaultEnvelopeProxy
         let default_proxy = DefaultEnvelopeProxy {
             message: Some(Ping(42)),
             tx: None,
         };
-        assert_eq!(format!("{default_proxy:?}"), "DefaultEnvelopeProxy<Ping>");
+        assert_eq!(format!("{:?}", default_proxy), "DefaultEnvelopeProxy<Ping>");
 
         // TimedEnvelopeProxy
         let timed_proxy = TimedEnvelopeProxy {
@@ -140,19 +138,32 @@ mod tests {
             tx: None,
             budget,
         };
-        assert_eq!(format!("{timed_proxy:?}"), "TimedEnvelopeProxy<Ping>");
+        assert_eq!(format!("{:?}", timed_proxy), "TimedEnvelopeProxy<Ping>");
 
         // Timed
         let timed = Timed::new(Ping(42), budget);
-        assert_eq!(format!("{timed:?}"), format!("Timed<Ping>({budget:?})"));
+        assert_eq!(format!("{:?}", timed), format!("Timed<Ping>({:?})", budget));
 
         // Envelope
         let envelope = Envelope::<Dummy>::with_proxy(Box::new(default_proxy));
-        assert_eq!(format!("{envelope:?}"), "Envelope<Dummy>");
+        assert_eq!(format!("{:?}", envelope), "Envelope<Dummy>");
+    }
 
+    #[test]
+    fn test_as_any() {
+        let default_proxy = DefaultEnvelopeProxy {
+            message: Some(Ping(42)),
+            tx: None,
+        };
+        let envelope = Envelope::<Dummy>::with_proxy(Box::new(default_proxy));
         let trait_object = envelope.as_any();
         assert!(trait_object.is::<DefaultEnvelopeProxy<Ping>>());
 
+        let timed_proxy = TimedEnvelopeProxy {
+            message: Some(Ping(42)),
+            tx: None,
+            budget: Duration::from_millis(100),
+        };
         let envelope = Envelope::<Dummy>::with_proxy(Box::new(timed_proxy));
         let trait_object = envelope.as_any();
         assert!(trait_object.is::<TimedEnvelopeProxy<Ping>>());

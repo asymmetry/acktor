@@ -117,6 +117,8 @@ impl IpcConnection for PipeConnection {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     fn unique_pipe_name() -> String {

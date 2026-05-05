@@ -46,7 +46,7 @@ impl Handler<GetCustomResAsync> for MyActor {
 
     async fn handle(&mut self, _msg: GetCustomResAsync, _ctx: &mut Self::Context) -> Self::Result {
         FutureMessageResult::new(async {
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
             99
         })
     }
@@ -54,7 +54,7 @@ impl Handler<GetCustomResAsync> for MyActor {
 
 #[tokio::test]
 async fn test_message_result() -> Result<()> {
-    let (addr, join_handle) = MyActor.run("actor")?;
+    let (addr, join_handle) = MyActor.start("actor")?;
 
     // MessageResult forwards the custom type as the message response
     let custom = addr.send(GetCustomRes).await?.await?;

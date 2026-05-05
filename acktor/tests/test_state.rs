@@ -66,7 +66,7 @@ impl Handler<Check> for Watcher {
 
 #[tokio::test]
 async fn test_normal() -> Result<()> {
-    let (watcher, _) = Watcher::default().run("watcher")?;
+    let (watcher, _) = Watcher::default().start("watcher")?;
 
     let (normal, join_handle) = Normal::create("normal", |ctx| {
         ctx.set_supervisor(Some(watcher.clone().into()));
@@ -110,7 +110,7 @@ async fn test_normal() -> Result<()> {
 
 #[tokio::test]
 async fn test_post_start_failed() -> Result<()> {
-    let (watcher, _) = Watcher::default().run("watcher")?;
+    let (watcher, _) = Watcher::default().start("watcher")?;
 
     let (_, join_handle) = PostStartFailed::create("fail", |ctx| {
         ctx.set_supervisor(Some(watcher.clone().into()));

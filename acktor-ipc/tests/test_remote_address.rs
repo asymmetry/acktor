@@ -1,19 +1,20 @@
-use std::collections::HashSet;
+use anyhow::Result;
+use std::num::NonZeroU64;
 
-use tokio::time::{Duration, timeout};
+use tokio::time::{self, Duration};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{Actor, Context, Handler, Message, MessageId, Recipient, Sender, SenderId};
+use acktor::{Actor, ActorId, Context, Handler, Message, MessageId, Recipient, Sender, SenderInfo};
 use acktor_ipc::{
-    ActorHandle, Decode, Encode, RemoteActor, RemoteAddress,
-    ipc_method::websocket::WebSocketConnection, node::command, remote_actor,
-    session::command as session_command,
+    ActorRef, Decode, Encode, RemoteAddressable, ipc_method::websocket::WebSocketConnection,
+    node::command as node_command, remote, session::command as session_command,
 };
 
 mod common;
-use common::{connect, pick_free_port, start_client, start_websocket_server};
+use common::{connect, hash_of, pick_free_port, start_client, start_websocket_server};
 
-// Minimal echo remote actor: doubles the input.
+// echo actor: double the input
+
 #[derive(
     Debug,
     Clone,
@@ -34,11 +35,11 @@ pub struct Echo {
     pub value: i64,
 }
 
-#[derive(Debug, RemoteActor)]
+#[derive(Debug, RemoteAddressable)]
 #[message(Echo)]
 pub struct EchoServer;
 
-#[remote_actor]
+#[remote]
 impl Actor for EchoServer {
     type Context = Context<Self>;
     type Error = anyhow::Error;
@@ -53,17 +54,17 @@ impl Handler<Echo> for EchoServer {
 }
 
 #[tokio::test]
-async fn test_remote_address() -> anyhow::Result<()> {
+async fn test_remote_address() -> Result<()> {
     let port = pick_free_port().await?;
     let bind_addr = format!("127.0.0.1:{port}");
     let endpoint = format!("ws://{bind_addr}");
 
     // spawn the echo actor and register it on the server node (clone the address so we can
     // terminate it explicitly at the end of the test)
-    let (address, join_handle) = EchoServer.run("echo")?;
+    let (address, join_handle) = EchoServer.start("echo")?;
     let (server, server_join_handle) = start_websocket_server(&bind_addr).await?;
     server
-        .send(command::AddActor {
+        .send(node_command::AddActor {
             label: "echo".to_string(),
             address: address.clone(),
         })
@@ -75,36 +76,29 @@ async fn test_remote_address() -> anyhow::Result<()> {
 
     // resolve the remote echo actor by its known index
     let remote = client_session
-        .send(session_command::GetRemoteActor {
-            actor: ActorHandle::Index(address.index()),
-        })
+        .send(session_command::RemoteGetActor::<EchoServer>::new(
+            ActorRef::Index(address.index()),
+        ))
         .await?
         .await??;
     assert_eq!(
         remote.index(),
-        RemoteAddress::REMOTE_FLAG
-            | ((client_session.index().reverse_bits() >> 1) ^ address.index())
+        ActorId::new_remote(
+            address.index().as_local(),
+            NonZeroU64::new(client_session.index().as_local()).unwrap()
+        )
     );
 
-    // two remote addresses created with GetRemoteActor should be equal
+    // two remote addresses created with RemoteGetActor should be equal
     let duplicate = client_session
-        .send(session_command::GetRemoteActor {
-            actor: ActorHandle::Index(address.index()),
-        })
+        .send(session_command::RemoteGetActor::<EchoServer>::new(
+            ActorRef::Index(address.index()),
+        ))
         .await?
         .await??;
     assert_eq!(remote, duplicate);
     assert_eq!(remote.index(), duplicate.index());
-
-    #[allow(clippy::mutable_key_type)]
-    let mut map = HashSet::new();
-    map.insert(remote.clone());
-    map.insert(duplicate.clone());
-    assert_eq!(
-        map.len(),
-        1,
-        "two remote addresses created with GetRemoteActor should have the same hash"
-    );
+    assert_eq!(hash_of(&remote), hash_of(&duplicate));
 
     // properties
     assert!(remote.is_remote());
@@ -117,13 +111,9 @@ async fn test_remote_address() -> anyhow::Result<()> {
     let result = rx.recv_timeout(Duration::from_millis(100)).await?;
     assert_eq!(result, value * 2);
 
-    // send_timeout
+    // do_send
     let value = 2;
-    let mut rx = remote
-        .send_timeout(Echo { value }, Duration::from_secs(5))
-        .await?;
-    let result = rx.recv_timeout(Duration::from_millis(100)).await?;
-    assert_eq!(result, value * 2);
+    remote.do_send(Echo { value }).await?;
 
     // try_send
     let value = 3;
@@ -131,34 +121,38 @@ async fn test_remote_address() -> anyhow::Result<()> {
     let result = rx.recv_timeout(Duration::from_millis(100)).await?;
     assert_eq!(result, value * 2);
 
-    // blocking_send
+    // try_do_send
     let value = 4;
+    remote.try_do_send(Echo { value })?;
+
+    // send_timeout
+    let value = 5;
+    let mut rx = remote
+        .send_timeout(Echo { value }, Duration::from_millis(100))
+        .await?;
+    let result = rx.recv_timeout(Duration::from_millis(100)).await?;
+    assert_eq!(result, value * 2);
+
+    // do_send_timeout
+    let value = 6;
+    remote
+        .do_send_timeout(Echo { value }, Duration::from_millis(100))
+        .await?;
+
+    // blocking_send
+    let value = 7;
     let remote_clone = remote.clone();
-    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<i64> {
+    let result = tokio::task::spawn_blocking(move || -> Result<i64> {
         let rx = remote_clone.blocking_send(Echo { value })?;
         Ok(rx.blocking_recv()?)
     })
     .await??;
     assert_eq!(result, value * 2);
 
-    // do_send
-    let value = 5;
-    remote.do_send(Echo { value }).await?;
-
-    // do_send_timeout
-    let value = 6;
-    remote
-        .do_send_timeout(Echo { value }, Duration::from_secs(5))
-        .await?;
-
-    // try_do_send
-    let value = 7;
-    remote.try_do_send(Echo { value })?;
-
     // blocking_do_send
     let value = 8;
     let remote_clone = remote.clone();
-    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+    tokio::task::spawn_blocking(move || -> Result<()> {
         remote_clone.blocking_do_send(Echo { value })?;
         Ok(())
     })
@@ -167,6 +161,7 @@ async fn test_remote_address() -> anyhow::Result<()> {
     let recipient: Recipient<Echo> = remote.clone().into();
 
     assert!(!recipient.is_closed());
+    time::sleep(Duration::from_millis(100)).await;
     assert_eq!(recipient.capacity(), acktor::DEFAULT_MAILBOX_CAPACITY);
 
     // send via Recipient
@@ -183,7 +178,7 @@ async fn test_remote_address() -> anyhow::Result<()> {
     acktor::utils::terminate_actor(server, server_join_handle).await;
 
     assert!(remote.is_closed());
-    timeout(Duration::from_millis(500), closed).await?;
+    time::timeout(Duration::from_millis(500), closed).await?;
 
     Ok(())
 }

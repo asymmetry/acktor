@@ -13,7 +13,7 @@ use tracing::debug;
 
 use crate::actor::Actor;
 use crate::channel::oneshot;
-use crate::errors::{BoxError, ErrorReport, SendError};
+use crate::error::{BoxError, ErrorReport, SendError};
 
 mod result;
 pub use result::MessageResult;
@@ -26,6 +26,12 @@ mod index;
 #[cfg(feature = "identifier")]
 #[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
 pub use index::MessageId;
+
+#[cfg(feature = "ipc")]
+mod remote;
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use remote::BinaryMessage;
 
 /// Types that can be sent between actors.
 pub trait Message: Send + 'static {
@@ -296,9 +302,12 @@ mod tests {
     #[test]
     fn test_debug_fmt() {
         let result = MessageResult::<M<i32>>(42);
-        assert_eq!(format!("{result:?}"), "MessageResult<M<i32>>");
+        assert_eq!(format!("{:?}", result), "MessageResult<M<i32>>");
 
         let future_result = FutureMessageResult::<M<i32>>::new(async { 42 });
-        assert_eq!(format!("{future_result:?}"), "FutureMessageResult<M<i32>>");
+        assert_eq!(
+            format!("{:?}", future_result),
+            "FutureMessageResult<M<i32>>"
+        );
     }
 }

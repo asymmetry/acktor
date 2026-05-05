@@ -7,7 +7,7 @@ use std::fmt::{self, Debug, Display};
 use std::future::{self, Future};
 
 use crate::actor::{Actor, ActorContext, ActorState};
-use crate::address::{Address, Recipient, SenderId};
+use crate::address::{Address, Recipient, SenderInfo};
 use crate::message::{Handler, Message};
 use crate::utils::{ShortName, debug_trace};
 
@@ -36,22 +36,17 @@ where
             SupervisionEvent::Warn(address, error) => f
                 .debug_tuple("Warn")
                 .field(&address.index())
-                .field(&format_args!("{error}"))
+                .field(&error.to_string())
                 .finish(),
             SupervisionEvent::Terminated(address, error) => f
                 .debug_tuple("Terminated")
                 .field(&address.index())
-                .field(&format_args!(
-                    "{}",
-                    error
-                        .as_ref()
-                        .map_or_else(|| "None".to_string(), |e| e.to_string())
-                ))
+                .field(&error.as_ref().map(|e| e.to_string()))
                 .finish(),
             SupervisionEvent::Panicked(address, info) => f
                 .debug_tuple("Panicked")
                 .field(&address.index())
-                .field(&format_args!("{info}"))
+                .field(info)
                 .finish(),
             SupervisionEvent::State(address, state) => f
                 .debug_tuple("State")
@@ -134,31 +129,31 @@ where
 }
 
 #[cfg(feature = "identifier")]
-impl<A> crate::stable_type_id::HasStableTypeId for Supervisor<A>
+impl<A> crate::stable_type_id::StableId for Supervisor<A>
 where
-    A: Actor + crate::stable_type_id::HasStableTypeId,
+    A: Actor + crate::stable_type_id::StableId,
 {
-    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+    const TYPE_ID: crate::stable_type_id::StableTypeId =
         crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
             module_path!(),
             "::",
             "Supervisor"
         ))
-        .combine(A::STABLE_TYPE_ID.as_bytes());
+        .combine(A::TYPE_ID.as_bytes());
 }
 
 #[cfg(feature = "identifier")]
-impl<A> crate::stable_type_id::HasStableTypeId for SupervisionEvent<A>
+impl<A> crate::stable_type_id::StableId for SupervisionEvent<A>
 where
-    A: Actor + crate::stable_type_id::HasStableTypeId,
+    A: Actor + crate::stable_type_id::StableId,
 {
-    const STABLE_TYPE_ID: crate::stable_type_id::StableTypeId =
+    const TYPE_ID: crate::stable_type_id::StableTypeId =
         crate::stable_type_id::StableTypeId::from_stable_type_name(concat!(
             module_path!(),
             "::",
-            "Supervisor"
+            "SupervisionEvent"
         ))
-        .combine(A::STABLE_TYPE_ID.as_bytes());
+        .combine(A::TYPE_ID.as_bytes());
 }
 
 #[cfg(test)]
@@ -168,7 +163,7 @@ mod tests {
     use super::*;
     use crate::channel::mpsc;
     use crate::envelope::Envelope;
-    use crate::test_utils::Dummy;
+    use crate::test_utils::{Dummy, TestError};
 
     #[test]
     fn test_debug_fmt() {
@@ -178,26 +173,32 @@ mod tests {
 
         // SupervisionEvent
         let event: SupervisionEvent<Dummy> =
-            SupervisionEvent::Warn(address.clone(), anyhow::anyhow!("oops"));
-        assert_eq!(format!("{event:?}"), format!("Warn({index}, oops)"));
+            SupervisionEvent::Warn(address.clone(), TestError::from("oops"));
+        assert_eq!(format!("{:?}", event), format!("Warn({}, \"oops\")", index));
 
         let event: SupervisionEvent<Dummy> = SupervisionEvent::Terminated(address.clone(), None);
-        assert_eq!(format!("{event:?}"), format!("Terminated({index}, None)"));
+        assert_eq!(
+            format!("{:?}", event),
+            format!("Terminated({}, None)", index)
+        );
 
         let event: SupervisionEvent<Dummy> =
-            SupervisionEvent::Terminated(address.clone(), Some(anyhow::anyhow!("boom")));
-        assert_eq!(format!("{event:?}"), format!("Terminated({index}, boom)"));
+            SupervisionEvent::Terminated(address.clone(), Some(TestError::from("boom")));
+        assert_eq!(
+            format!("{:?}", event),
+            format!("Terminated({}, Some(\"boom\"))", index)
+        );
 
         let event: SupervisionEvent<Dummy> =
             SupervisionEvent::Panicked(address.clone(), "panicked!".to_string());
         assert_eq!(
-            format!("{event:?}"),
-            format!("Panicked({index}, panicked!)")
+            format!("{:?}", event),
+            format!("Panicked({}, \"panicked!\")", index)
         );
 
         let event: SupervisionEvent<Dummy> =
             SupervisionEvent::State(address.clone(), ActorState::Running);
-        assert_eq!(format!("{event:?}"), format!("State({index}, Running)"));
+        assert_eq!(format!("{:?}", event), format!("State({}, Running)", index));
 
         // Supervisor
         let (recipient, _rx) = Recipient::<SupervisionEvent<Dummy>>::create(1);
@@ -205,11 +206,11 @@ mod tests {
 
         let cmd: Supervisor<Dummy> = Supervisor::Set(recipient);
         assert_eq!(
-            format!("{cmd:?}"),
-            format!("Supervisor<Dummy>::Set({recipient_index})")
+            format!("{:?}", cmd),
+            format!("Supervisor<Dummy>::Set({})", recipient_index)
         );
 
         let cmd: Supervisor<Dummy> = Supervisor::Unset;
-        assert_eq!(format!("{cmd:?}"), "Supervisor<Dummy>::Unset");
+        assert_eq!(format!("{:?}", cmd), "Supervisor<Dummy>::Unset");
     }
 }

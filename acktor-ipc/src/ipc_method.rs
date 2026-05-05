@@ -3,7 +3,6 @@
 
 use std::io::Error;
 use std::pin::Pin;
-use std::sync::Arc;
 
 use bytes::Bytes;
 
@@ -15,8 +14,8 @@ pub mod pipe;
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod websocket;
 
-/// A boxed `Send` future returning `Result<T, std::io::Error>`, used as the return type
-/// of dyn-compatible trait methods in this module.
+/// A boxed `Send` future returning `Result<T, IoError>`, used as the return type of
+/// dyn-compatible trait methods in this module.
 pub type IoFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, Error>> + Send + 'a>>;
 
 /// Describes the behavior of an IPC listener which accepts incoming IPC connections.
@@ -78,30 +77,4 @@ pub trait IpcConnection: Send + Sync + 'static {
     /// [`tokio::select!`](tokio::select) statement and some other branch completes first, then
     /// it is guaranteed that no data was read from the underlying connection.
     fn recv(&mut self) -> IoFuture<'_, Bytes>;
-}
-
-impl<T> IpcListener for Box<T>
-where
-    T: IpcListener + ?Sized,
-{
-    fn local_endpoint(&self) -> &str {
-        (**self).local_endpoint()
-    }
-
-    fn accept(&self) -> IoFuture<'_, Box<dyn IpcConnection>> {
-        (**self).accept()
-    }
-}
-
-impl<T> IpcListener for Arc<T>
-where
-    T: IpcListener + ?Sized,
-{
-    fn local_endpoint(&self) -> &str {
-        (**self).local_endpoint()
-    }
-
-    fn accept(&self) -> IoFuture<'_, Box<dyn IpcConnection>> {
-        (**self).accept()
-    }
 }

@@ -1,12 +1,12 @@
 use pretty_assertions::assert_eq;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{Actor, Context, Handler, Message, MessageId};
+use acktor::{Actor, ActorId, Context, Handler, Message, MessageId, SenderInfo};
 use acktor_ipc::{
-    Decode, Encode, Node, NodeError, RemoteActor,
+    ActorRef, Decode, Encode, Node, NodeError, RemoteAddressable, RemoteSpawnable, StableId,
     ipc_method::websocket::{WebSocketConnection, WebSocketListener},
     node::command,
-    remote_actor,
+    remote,
 };
 
 mod common;
@@ -32,14 +32,23 @@ pub struct Tick {
     pub value: u64,
 }
 
-#[derive(Debug, RemoteActor)]
+#[derive(Debug, RemoteAddressable, StableId)]
 #[message(Tick)]
 pub struct Dummy;
 
-#[remote_actor]
+#[remote]
 impl Actor for Dummy {
     type Context = Context<Self>;
     type Error = anyhow::Error;
+}
+
+impl RemoteSpawnable for Dummy {
+    fn create_remote(
+        label: String,
+        _config: String,
+    ) -> Result<(acktor::Address<Self>, acktor::JoinHandle<()>), Self::Error> {
+        Dummy.start(label)
+    }
 }
 
 impl Handler<Tick> for Dummy {
@@ -49,7 +58,7 @@ impl Handler<Tick> for Dummy {
 
 #[tokio::test]
 async fn test_add_remove_listener() -> anyhow::Result<()> {
-    let (node, node_join_handle) = Node::new().run("node")?;
+    let (node, node_join_handle) = Node::new().start("node")?;
 
     // 1st add
     let port_1 = pick_free_port().await?;
@@ -93,8 +102,8 @@ async fn test_add_remove_listener() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_add_remove_actor() -> anyhow::Result<()> {
-    let (node, node_join_handle) = Node::new().run("node")?;
-    let (dummy, dummy_join_handle) = Dummy.run("dummy")?;
+    let (node, node_join_handle) = Node::new().start("node")?;
+    let (dummy, dummy_join_handle) = Dummy.start("dummy")?;
     let dummy_idx = dummy.index();
 
     // add
@@ -118,60 +127,21 @@ async fn test_add_remove_actor() -> anyhow::Result<()> {
     assert!(!succeed); // duplicate label rejected
 
     // remove
-    let succeed = node.send(command::RemoveActor(dummy_idx)).await?.await?;
+    let succeed = node
+        .send(command::RemoveActor(ActorRef::Index(dummy_idx)))
+        .await?
+        .await?;
     assert!(succeed);
 
     // remove again
-    let succeed = node.send(command::RemoveActor(dummy_idx)).await?.await?;
+    let succeed = node
+        .send(command::RemoveActor(ActorRef::Index(dummy_idx)))
+        .await?
+        .await?;
     assert!(!succeed); // should report false
 
     acktor::utils::terminate_actor(dummy, dummy_join_handle).await;
     acktor::utils::terminate_actor(node, node_join_handle).await;
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_debug_fmt() -> anyhow::Result<()> {
-    // AddListener
-    let port = pick_free_port().await?;
-    let bind_addr = format!("127.0.0.1:{port}");
-    let listener = WebSocketListener::bind(&bind_addr).await?;
-    let cmd = command::AddListener(listener);
-    assert_eq!(
-        format!("{cmd:?}"),
-        format!("AddListener<WebSocketListener>({bind_addr})")
-    );
-
-    // AddActor
-    let (dummy, dummy_join_handle) = Dummy.run("dummy")?;
-    let dummy_idx = dummy.index();
-    let cmd = command::AddActor {
-        label: "dummy".to_string(),
-        address: dummy.clone(),
-    };
-    assert_eq!(
-        format!("{cmd:?}"),
-        format!("AddActor<Dummy>(\"dummy\", {dummy_idx})")
-    );
-    acktor::utils::terminate_actor(dummy, dummy_join_handle).await;
-
-    // Connect with a session label
-    let cmd = command::Connect::<WebSocketConnection>::new(
-        "ws://localhost:9000".to_string(),
-        Some("session-x".to_string()),
-    );
-    assert_eq!(
-        format!("{cmd:?}"),
-        "Connect<WebSocketConnection>(\"ws://localhost:9000\", Some(\"session-x\"))"
-    );
-
-    // Connect without a session label
-    let cmd = command::Connect::<WebSocketConnection>::new("ws://localhost:9000".to_string(), None);
-    assert_eq!(
-        format!("{cmd:?}"),
-        "Connect<WebSocketConnection>(\"ws://localhost:9000\", None)"
-    );
 
     Ok(())
 }
@@ -187,28 +157,26 @@ async fn test_actor_commands() -> anyhow::Result<()> {
 
     // test Connect
     let session = connect::<WebSocketConnection>(&client, endpoint).await?;
-    assert!(session.index() > 0);
+    assert!(session.index().as_local() > 0);
+    assert!(!session.is_remote());
 
-    // test GetRemoteActor with unknown actor
+    // test RemoteGetActor with unknown actor
     let error = client
-        .send(command::GetRemoteActor {
-            session: "server-session".into(),
-            actor: (u64::MAX / 2).into(),
-        })
+        .send(command::RemoteGetActor::<Dummy>::new(
+            "server-session".into(),
+            ActorId::new(u64::MAX / 2).into(),
+        ))
         .await?
         .await?
         .unwrap_err();
-    assert!(
-        matches!(error, NodeError::RemoteActorNotFound(_)),
-        "expected RemoteActorNotFound, got {error:?}"
-    );
+    assert!(matches!(error, NodeError::SessionError(_)),);
 
-    // test GetRemoteActor with unknown session
+    // test RemoteGetActor with unknown session
     let error = client
-        .send(command::GetRemoteActor {
-            session: "nonexistent-session".to_string().into(),
-            actor: "0".to_string().into(),
-        })
+        .send(command::RemoteGetActor::<Dummy>::new(
+            "nonexistent-session".to_string().into(),
+            "0".to_string().into(),
+        ))
         .await?
         .await?
         .unwrap_err();
@@ -217,27 +185,69 @@ async fn test_actor_commands() -> anyhow::Result<()> {
         "expected SessionNotFound, got {error:?}"
     );
 
-    // test CreateRemoteActor with failure
+    // test RemoteCreateActor with failure
     let error = client
-        .send(command::CreateRemoteActor {
-            session: session.index().into(),
-            label: "new".to_string(),
-            r#type: "NonExistentType".to_string(),
-            config: String::new(),
-        })
+        .send(command::RemoteCreateActor::<Dummy>::new(
+            session.index().into(),
+            "new".to_string(),
+            String::new(),
+        ))
         .await?
         .await?
         .unwrap_err();
-    assert!(
-        matches!(error, NodeError::CreateRemoteActorFailed(_)),
-        "expected CreateRemoteActorFailed, got {error:?}"
-    );
+    assert!(matches!(error, NodeError::SessionError(_)),);
 
+    // terminate session
     session.do_send(acktor::Signal::Terminate).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     acktor::utils::terminate_actor(client, client_join_handle).await;
     acktor::utils::terminate_actor(server, server_join_handle).await;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_debug_fmt() -> anyhow::Result<()> {
+    // AddListener
+    let port = pick_free_port().await?;
+    let bind_addr = format!("127.0.0.1:{port}");
+    let listener = WebSocketListener::bind(&bind_addr).await?;
+    let cmd = command::AddListener(listener);
+    assert_eq!(
+        format!("{:?}", cmd),
+        format!("AddListener<WebSocketListener>(\"{}\")", bind_addr)
+    );
+
+    // AddActor
+    let (dummy, dummy_join_handle) = Dummy.start("dummy")?;
+    let dummy_idx = dummy.index();
+    let cmd = command::AddActor {
+        label: "dummy".to_string(),
+        address: dummy.clone(),
+    };
+    assert_eq!(
+        format!("{:?}", cmd),
+        format!("AddActor<Dummy>(\"dummy\", {})", dummy_idx)
+    );
+    acktor::utils::terminate_actor(dummy, dummy_join_handle).await;
+
+    // Connect with a session label
+    let cmd = command::Connect::<WebSocketConnection>::new(
+        "ws://localhost:9000".to_string(),
+        Some("session-x".to_string()),
+    );
+    assert_eq!(
+        format!("{:?}", cmd),
+        "Connect<WebSocketConnection>(\"ws://localhost:9000\", Some(\"session-x\"))"
+    );
+
+    // Connect without a session label
+    let cmd = command::Connect::<WebSocketConnection>::new("ws://localhost:9000".to_string(), None);
+    assert_eq!(
+        format!("{:?}", cmd),
+        "Connect<WebSocketConnection>(\"ws://localhost:9000\", None)"
+    );
 
     Ok(())
 }

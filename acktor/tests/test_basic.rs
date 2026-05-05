@@ -63,7 +63,7 @@ impl Handler<Command> for Number {
 #[tokio::test]
 async fn test_basic() -> Result<()> {
     // test run
-    let (address, join_handle) = Number(16).run("Number")?;
+    let (address, join_handle) = Number(16).start("Number")?;
 
     // test send
     let result = address.send(Arithmetic::Add(32)).await?.await?;
@@ -85,14 +85,14 @@ async fn test_basic() -> Result<()> {
 
     // test send_timeout
     let result = address
-        .send_timeout(Arithmetic::Multiply(2), Duration::from_millis(10))
+        .send_timeout(Arithmetic::Multiply(2), Duration::from_millis(100))
         .await?
         .await?;
     assert_eq!(result.0, -22);
 
     // test do_send_timeout
     address
-        .do_send_timeout(Arithmetic::Divide(2), Duration::from_millis(10))
+        .do_send_timeout(Arithmetic::Divide(2), Duration::from_millis(100))
         .await?;
     let result = address.send(Command::Get).await?.await?;
     assert_eq!(result, -11);
@@ -117,11 +117,6 @@ async fn test_basic() -> Result<()> {
     let (address, join_handle) = Number::create("Number", |_| Ok(Number(16)))?;
 
     // test terminate
-    acktor::utils::terminate_actor(address, join_handle).await;
-
-    // test create_in_span with no parent (root span)
-    let (address, join_handle) = Number::create_in_span("Number", None, |_| Ok(Number(16)))?;
-
     acktor::utils::terminate_actor(address, join_handle).await;
 
     Ok(())

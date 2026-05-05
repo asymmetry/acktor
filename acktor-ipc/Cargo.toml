@@ -1,6 +1,6 @@
 [package]
 name = "acktor-ipc"
-version = "1.0.5"
+version = "1.0.6"
 description = "Interprocess communication support for the acktor actor framework"
 edition.workspace = true
 rust-version.workspace = true
@@ -27,10 +27,6 @@ pipe = [
     "tokio/io-util",
 ]
 websocket = ["dep:tokio-tungstenite", "tokio/net"]
-# codec for primitive types
-# the default codec use zerocopy for some primitive types for efficiency, assuming a Rust-to-Rust
-# communication scenario
-prost-codec = [] # use prost for all types
 
 [dependencies]
 ahash.workspace = true
@@ -61,7 +57,7 @@ anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
 pretty_assertions.workspace = true
-rkyv.workspace = true
+
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "time"] }
 tracing-subscriber.workspace = true
 
@@ -74,25 +70,13 @@ name = "test_basic"
 required-features = ["pipe", "websocket"]
 
 [[test]]
-name = "test_codec"
-required-features = ["derive"]
-
-[[test]]
-name = "test_codec_with_session"
-required-features = ["derive", "websocket"]
-
-[[test]]
-name = "test_create_actor"
-required-features = ["derive", "websocket"]
-
-[[test]]
 name = "test_node"
 required-features = ["derive", "websocket"]
 
 [[test]]
-name = "test_remote_actor"
-required-features = ["derive"]
+name = "test_remote_address"
+required-features = ["derive", "websocket"]
 
 [[test]]
-name = "test_remote_address"
+name = "test_remote_spawnable"
 required-features = ["derive", "websocket"]

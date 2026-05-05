@@ -7,13 +7,14 @@ use tracing::Instrument;
 use super::{Message, MessageResponse};
 use crate::actor::Actor;
 use crate::channel::oneshot;
+use crate::utils::ShortName;
 
 /// A helper type which wraps the result of a message handler as a future which runs off the
 /// mailbox.
 ///
 /// Return [`FutureMessageResult`] from a handler when the work must be awaited but should not
-/// stall the actor. The inner future resolves to `M::Result`, which is what the caller of
-/// `Address::send` ultimately receives.
+/// stall the actor. The inner future resolves to `M::Result`, which is what the caller ultimately
+/// receives.
 ///
 /// The inner future is spawned into the Tokio runtime and is detached from the actor's
 /// lifecycle. It continues running even after the actor is stopped or terminated.
@@ -29,7 +30,7 @@ where
     M: Message,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{}", crate::utils::ShortName::of::<Self>()))
+        f.write_fmt(format_args!("{}", ShortName::of::<Self>()))
     }
 }
 

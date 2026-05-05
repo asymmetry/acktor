@@ -1,0 +1,13 @@
+error: missing required attribute `#[result_type(T)]`
+ --> tests/ui/message_result_type.rs:3:10
+  |
+3 | #[derive(Message)] // missing result type
+  |          ^^^^^^^
+  |
+  = note: this error originates in the derive macro `Message` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: the correct syntax is `#[result_type(T)]`
+ --> tests/ui/message_result_type.rs:7:1
+  |
+7 | #[result_type = "()"] // wrong syntax
+  | ^^^^^^^^^^^^^^^^^^^^^

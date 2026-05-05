@@ -44,8 +44,8 @@
 //!     }
 //! }
 //!
-//! async fn run() {
-//!     let (addr, handle) = Counter(0).run("counter").unwrap();
+//! async fn start() {
+//!     let (addr, handle) = Counter(0).start("counter").unwrap();
 //!
 //!     // fire-and-forget
 //!     addr.do_send(CounterMsg::Increment).await.unwrap();
@@ -70,35 +70,43 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-mod errors;
-pub use errors::{BoxError, ErrorReport, RecvError, SendError};
+pub mod error;
+pub use error::{ErrorReport, RecvError, SendError};
 
 pub mod channel;
-
 pub mod utils;
 
-pub mod actor;
-pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
-
-mod context;
-pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
-
-pub mod address;
-pub use address::{Address, Recipient, Sender, SenderId};
-
-pub mod message;
-pub use message::{Handler, Message, MessageResponse};
-
-#[cfg(feature = "identifier")]
-#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
-pub use message::MessageId;
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub mod codec;
 
 #[cfg(feature = "identifier")]
 #[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
 pub mod stable_type_id;
 #[cfg(feature = "identifier")]
 #[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
-pub use stable_type_id::{HasStableTypeId, StableTypeId};
+pub use stable_type_id::{StableId, StableTypeId};
+
+pub mod actor;
+pub use actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stopping};
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use actor::{RemoteAddressable, RemoteSpawnable};
+
+mod context;
+pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
+
+pub mod address;
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use address::RemoteProxy;
+pub use address::{Address, Recipient, Sender, SenderInfo};
+
+pub mod message;
+#[cfg(feature = "identifier")]
+#[cfg_attr(docsrs, doc(cfg(feature = "identifier")))]
+pub use message::MessageId;
+pub use message::{Handler, Message, MessageResponse};
 
 pub mod envelope;
 
@@ -115,42 +123,27 @@ pub mod observer;
 #[cfg_attr(docsrs, doc(cfg(feature = "cron")))]
 pub mod cron;
 
-#[cfg(all(feature = "derive", feature = "identifier"))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "identifier"))))]
-pub use acktor_derive::{HasStableTypeId, MessageId};
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use acktor_derive::{Message, MessageResponse};
+#[cfg(all(feature = "derive", feature = "identifier"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "identifier"))))]
+pub use acktor_derive::{MessageId, StableId};
+#[cfg(all(feature = "derive", feature = "ipc"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "ipc"))))]
+pub use acktor_derive::{RemoteAddressable, remote};
 
 // re-export for use in derived code
+
+#[doc(hidden)]
+#[cfg(feature = "ipc")]
+pub use bytes;
 #[doc(hidden)]
 #[cfg(feature = "identifier")]
 pub use sha2_const;
+#[doc(hidden)]
+#[cfg(feature = "ipc")]
+pub use tracing;
 
 #[cfg(test)]
-mod test_utils {
-    use crate::actor::Actor;
-    use crate::context::Context;
-    use crate::message::{Handler, Message};
-
-    #[derive(Debug)]
-    pub struct Dummy;
-
-    impl Actor for Dummy {
-        type Context = Context<Self>;
-        type Error = anyhow::Error;
-    }
-
-    #[derive(Debug)]
-    pub struct Ping(pub u32);
-
-    impl Message for Ping {
-        type Result = ();
-    }
-
-    impl Handler<Ping> for Dummy {
-        type Result = ();
-
-        async fn handle(&mut self, _msg: Ping, _ctx: &mut Self::Context) {}
-    }
-}
+pub(crate) use utils::test_utils;

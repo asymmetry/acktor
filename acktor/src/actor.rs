@@ -9,15 +9,23 @@ use std::fmt::Display;
 use std::panic::{self, AssertUnwindSafe};
 
 use futures_util::FutureExt;
-use tracing::{Instrument, Span, debug, error, error_span, warn};
+use tracing::{Instrument, Span, debug, error, error_span, field, warn};
 
+#[cfg(feature = "ipc")]
+use crate::address::RemoteMailbox;
 use crate::address::{Address, Mailbox, Recipient, Sender};
-use crate::errors::{BoxError, ErrorReport};
+use crate::error::{BoxError, ErrorReport};
 use crate::supervisor::SupervisionEvent;
 use crate::utils::panic_info_to_string;
 
-/// Actor index type.
-pub type ActorId = u64;
+mod index;
+pub use index::ActorId;
+
+#[cfg(feature = "ipc")]
+mod remote;
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use remote::{RemoteAddressable, RemoteSpawnable};
 
 pub use tokio::task::JoinHandle;
 
@@ -75,7 +83,8 @@ pub trait Actor: Sized + Send + 'static {
     /// synchronously. The actor will enter the [`Starting`][ActorState::Starting] state after
     /// this method returns.
     ///
-    /// Panics in this method propagate to the caller of [`run`][Actor::run].
+    /// Panics in this method propagate to the caller of [`start`][Actor::start] or
+    /// [`create`][Actor::create].
     #[allow(unused_variables)]
     fn pre_start(&mut self, ctx: &mut Self::Context) -> Result<(), Self::Error> {
         Ok(())
@@ -124,88 +133,52 @@ pub trait Actor: Sized + Send + 'static {
         std::future::ready(Ok(()))
     }
 
-    /// Starts an actor and spawns it to the tokio runtime, returns its actor address and the
-    /// join handle.
-    fn run<S>(self, label: S) -> Result<(Address<Self>, JoinHandle<()>), Self::Error>
+    /// Starts an actor, returns its address and the join handle.
+    fn start<S>(self, label: S) -> Result<(Address<Self>, JoinHandle<()>), Self::Error>
     where
         S: AsRef<str>,
     {
         let ctx = Self::Context::new(label.as_ref().to_string());
-        let span = error_span!("Actor", id = ctx.address().index(), label = ctx.label());
-        ctx.run(self, span)
+        let id = field::display(ctx.index());
+        let label = ctx.label();
+        let span = error_span!("Actor", id = id, label = label);
+        ctx.spawn(self, span)
     }
 
-    /// Creates a new actor, starts it and spawns it to the tokio runtime, returns its actor
-    /// address and the join handle.
+    /// Creates a new actor, starts it and returns its address and the join handle.
     fn create<S, F>(label: S, f: F) -> Result<(Address<Self>, JoinHandle<()>), Self::Error>
     where
         S: AsRef<str>,
         F: FnOnce(&mut Self::Context) -> Result<Self, Self::Error>,
     {
         let mut ctx = Self::Context::new(label.as_ref().to_string());
-        let span = error_span!("Actor", id = ctx.address().index(), label = ctx.label());
+        let id = field::display(ctx.index());
+        let label = ctx.label();
+        let span = error_span!("Actor", id = id, label = label);
         let actor = {
             let _enter = span.enter();
             f(&mut ctx)?
         };
-        ctx.run(actor, span)
+        ctx.spawn(actor, span)
     }
 
-    /// Like [`create`][Self::create] but allows the caller to specify the parent tracing span.
+    /// Returns a remote mailbox of this actor if it is a remote addressable actor.
     ///
-    /// - `Some(&span)` — use `span` as the parent.
-    /// - `None` — create the span as a new root (no parent).
+    /// # Implementation
     ///
-    /// Use this when you want to control an actor's span hierarchy independently of whatever
-    /// span happens to be entered at the call site.
-    fn create_in_span<S, F>(
-        label: S,
-        parent_span: Option<&Span>,
-        f: F,
-    ) -> Result<(Address<Self>, JoinHandle<()>), Self::Error>
-    where
-        S: AsRef<str>,
-        F: FnOnce(&mut Self::Context) -> Result<Self, Self::Error>,
-    {
-        let mut ctx = Self::Context::new(label.as_ref().to_string());
-        let parent_span = parent_span.and_then(|s| s.id());
-        let span = error_span!(
-            parent: parent_span,
-            "Actor",
-            id = ctx.address().index(),
-            label = ctx.label(),
-        );
-        let actor = {
-            let _enter = span.enter();
-            f(&mut ctx)?
-        };
-        ctx.run(actor, span)
-    }
-
-    /// Opt-in hook that turns an [`Address<A>`] into a type-erased trait object which can be
-    /// downcast into a concrete [`Recipient<M>`], where `M` is a specific message type
-    /// chosen in the overridden implementation of this method.
+    /// **Do not implement this method yourself!** Instead, use the
+    /// [`#[remote]`][acktor_derive::remote] attribute macro to annotate the
+    /// `impl Actor for MyActor` block, it will generate the proper implementation for you.
     ///
-    /// Sometimes users may need to convert a `Recipient<N>` backed by an `Address<A>` into a
-    /// `Recipient<M>`. If the actor type `A` is known, users can retrieve the `Address<A>` by
-    /// downcasting the trait object in the `Recipient<N>`, and then the `Address<A>` can be
-    /// converted into a `Recipient<M>`. However, if the concrete actor type `A` is not known
-    /// (e.g., in a function receives a `Recipient<N>` backed by several different actor types),
-    /// this approach does not work.
-    ///
-    /// This hook allows users to provide a function `f`, which defines a two-step conversion from
-    /// an `Address<A>` to a `Recipient<M>` first, with `M` being a specific message type chosen
-    /// by the user, and then to a type-erased `Box<dyn Any + Send + Sync>`. Returning `Some(f)`
-    /// causes [`Address::new`] to bake `f` into every address for this actor. To convert a
-    /// `Recipient<N>` into a `Recipient<M>`, users can use the [`Sender::type_erased_recipient`]
-    /// method, which will invoke the function `f` and return the type-erased trait object, and
-    /// convert the type-erased trait object back into a `Recipient<M>` by downcasting.
-    ///
-    /// Crates that extend actors with extra capabilities based on this feature can provide a
-    /// macro which overrides this method automatically for their users to avoid boilerplate.
-    #[cfg(feature = "type-erased-recipient-hook")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-    fn type_erased_recipient_fn() -> Option<TypeErasedRecipientFn<Self>> {
+    /// This is a temporary workaround since specialization is not yet stable in Rust.
+    #[doc(hidden)]
+    #[cfg(feature = "ipc")]
+    #[allow(unused_variables)]
+    fn remote_mailbox(address: Address<Self>) -> Option<RemoteMailbox> {
+        // the default implementation for a remote addressable actor looks like this:
+        // ```ignore
+        //  Some(address.into())
+        // ```
         None
     }
 }
@@ -236,9 +209,9 @@ where
     /// Moves the mailbox of the actor out of the context, leaving `None` in its place.
     ///
     /// Typically the address and the mailbox are created together in the constructor of the
-    /// context. However, since the [`process`][Self::process] method consumes the mailbox, the
-    /// context needs to provide a way to move the mailbox out of itself so that it can be
-    /// passed into the [`process`][Self::process] method.
+    /// context. However, since the [`run`][Self::run] method consumes the mailbox, the context
+    /// needs to provide a way to move the mailbox out of itself so that it can be passed into the
+    /// [`run`][Self::run] method.
     ///
     /// # Example
     ///
@@ -269,11 +242,15 @@ where
     /// Sets the state of the actor.
     fn set_state(&mut self, state: ActorState);
 
-    /// The message processing loop of the actor.
+    /// The message handling loop of the actor.
     ///
-    /// This method is invoked by [`process`][Self::process]. It is responsible for
-    /// receiving messages from the mailbox and handling them.
-    fn process_loop(
+    /// Called by [`run`][Self::run] after [`post_start`][Actor::post_start] completes. Runs until
+    /// the actor stops, repeatedly pulling envelopes from the `mailbox` and dispatching them to
+    /// the appropriate [`Handler`][crate::message::Handler] implementation on `actor`.
+    ///
+    /// Implementors are responsible for checking [`ActorContext::state`][Self::state] and
+    /// honoring [`Actor::stopping`].
+    fn run_loop(
         &mut self,
         actor: &mut A,
         mailbox: &mut Mailbox<A>,
@@ -351,14 +328,12 @@ where
         }
     }
 
-    /// Starts the actor and returns its address and a join handle.
-    ///
-    /// This method consumes the context and the actor.
-    fn run(mut self, mut actor: A, span: Span) -> Result<(Address<A>, JoinHandle<()>), A::Error> {
+    /// Spawns the actor into the tokio runtime and returns its address and the join handle.
+    fn spawn(mut self, mut actor: A, span: Span) -> Result<(Address<A>, JoinHandle<()>), A::Error> {
         let address = self.address();
 
         let mailbox = self.take_mailbox().expect(
-            "ActorContext::take_mailbox() returned None on first call to run(); \
+            "ActorContext::take_mailbox() returned None on first call to spawn(); \
              custom ActorContext implementations must provide a mailbox in new()",
         );
 
@@ -381,7 +356,7 @@ where
         }
 
         let future = async move {
-            match self.process(&mut actor, mailbox).await {
+            match self.run(actor, mailbox).await {
                 Ok(Ok(_)) => {
                     self.try_notify_supervisor(SupervisionEvent::Terminated(self.address(), None));
                 }
@@ -413,14 +388,14 @@ where
         Ok((address, join_handle))
     }
 
-    /// The main processing flow of the actor.
+    /// The main lifecycle of the actor.
     ///
-    /// This method is invoked by [`run`][Self::run]. It is responsible for invoking the
+    /// This method is invoked by [`spawn`][Self::spawn]. It is responsible for invoking the
     /// [`post_start`][Actor::post_start] and the [`post_stop`][Actor::post_stop] lifecycle
-    /// hooks. It is the user's responsibility to choose where to invoke the
-    /// [`stopping`][Actor::stopping] lifecycle hook. The default implementation handles the
-    /// [`stopping`][Actor::stopping] in the [`process_loop`][Self::process_loop], but users can
-    /// handle it here by overriding the default implementation.
+    /// hooks, and running [`run_loop`][Self::run_loop] for handling messages. The default
+    /// implementation of [`run_loop`][Self::run_loop] invokes the [`stopping`][Actor::stopping]
+    /// lifecycle hook when the actor is about to stop, but users can change this behavior by
+    /// overriding it.
     ///
     /// # Return value
     ///
@@ -428,19 +403,19 @@ where
     ///
     /// - `Ok(Ok(()))` — the actor started, ran, and stopped cleanly.
     /// - `Ok(Err(error))` — a lifecycle method returned an [`Actor::Error`] (from
-    ///   [`post_start`][Actor::post_start], [`process_loop`][Self::process_loop], or
+    ///   [`post_start`][Actor::post_start], [`run_loop`][Self::run_loop], or
     ///   [`post_stop`][Actor::post_stop]).
-    /// - `Err(panic_payload)` — a lifecycle method panicked. The payload is the value caught by
-    ///   [`catch_unwind`][panic::catch_unwind]. When [`process_loop`][Self::process_loop] panics,
-    ///   [`post_stop`][Actor::post_stop] is skipped because the actor's state is not assumed to
-    ///   be safe to observe after a panic.
+    /// - `Err(Box<dyn Any + Send>>)` — a lifecycle method panicked. The payload is the value
+    ///   caught by [`catch_unwind`][panic::catch_unwind]. When
+    ///   [`run_loop`][Self::run_loop] panics, [`post_stop`][Actor::post_stop] is skipped since
+    ///   the actor's state is not assumed to be safe to observe after a panic.
     ///
-    /// If both [`process_loop`][Self::process_loop] and [`post_stop`][Actor::post_stop] return
-    /// errors (neither panics), the `process_loop` error is returned and the `post_stop` error
-    /// is discarded.
-    fn process(
+    /// If both [`run_loop`][Self::run_loop] and [`post_stop`][Actor::post_stop] return
+    /// errors (neither panics), the `run_loop` error is returned and the `post_stop` error
+    /// is discarded with a debug log.
+    fn run(
         &mut self,
-        actor: &mut A,
+        mut actor: A,
         mut mailbox: Mailbox<A>,
     ) -> impl Future<Output = Result<Result<(), A::Error>, Box<dyn Any + Send>>> + Send {
         async move {
@@ -460,12 +435,12 @@ where
             debug!("Actor {} is started", self.index());
             self.set_state(ActorState::Running);
 
-            let result = AssertUnwindSafe(self.process_loop(actor, &mut mailbox))
+            let result = AssertUnwindSafe(self.run_loop(&mut actor, &mut mailbox))
                 .catch_unwind()
                 .await
                 .inspect_err(|e| {
                     let msg: String = panic_info_to_string(e);
-                    error!("Actor {} panicked in process_loop: {}", self.index(), msg);
+                    error!("Actor {} panicked in run_loop: {}", self.index(), msg);
                 });
 
             if self.state() != ActorState::Stopped {
@@ -492,7 +467,7 @@ where
             match (result, result_post_stop) {
                 (Err(e), Err(post_stop_err)) => {
                     debug!(
-                        "Actor {} post_stop error discarded: {}",
+                        "Actor {} also failed in post_stop: {}",
                         self.index(),
                         post_stop_err,
                     );
@@ -504,59 +479,6 @@ where
         }
     }
 }
-
-/// Return type of [`Sender::type_erased_recipient`] and [`TypeErasedRecipientFn`].
-///
-/// It wraps a type-erased trait object with its original type name for better error messages when
-/// downcasting fails.
-#[cfg(feature = "type-erased-recipient-hook")]
-#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-pub struct TypeErasedRecipient {
-    inner: Box<dyn Any + Send + Sync>,
-    type_name: &'static str,
-}
-
-#[cfg(feature = "type-erased-recipient-hook")]
-impl TypeErasedRecipient {
-    /// Constructs a new [`TypeErasedRecipient`] from a concrete value.
-    pub fn new<T>(value: T) -> Self
-    where
-        T: Any + Send + Sync,
-    {
-        Self {
-            inner: Box::new(value),
-            type_name: std::any::type_name::<T>(),
-        }
-    }
-
-    /// Attempts to downcast the type-erased recipient to a concrete type.
-    pub fn downcast<T>(self) -> Result<Box<T>, (Self, String)>
-    where
-        T: Any + Send + Sync,
-    {
-        self.inner.downcast::<T>().map_err(|inner| {
-            let error_msg = format!(
-                "Could not downcast TypeErasedRecipient: expected type {}, actual type {}",
-                crate::utils::ShortName::of::<T>(),
-                crate::utils::ShortName(self.type_name),
-            );
-            (
-                Self {
-                    inner,
-                    type_name: self.type_name,
-                },
-                error_msg,
-            )
-        })
-    }
-}
-
-/// Function-pointer type returned by [`Actor::type_erased_recipient_fn`], which converts an
-/// [`Address<A>`] into a type-erased trait object that can be downcast into a concrete
-/// [`Recipient<M>`].
-#[cfg(feature = "type-erased-recipient-hook")]
-#[cfg_attr(docsrs, doc(cfg(feature = "type-erased-recipient-hook")))]
-pub type TypeErasedRecipientFn<A> = fn(&Address<A>) -> TypeErasedRecipient;
 
 #[cfg(test)]
 mod tests {
@@ -572,39 +494,5 @@ mod tests {
         assert_eq!(ActorState::try_from(3), Ok(ActorState::Stopping));
         assert_eq!(ActorState::try_from(4), Ok(ActorState::Stopped));
         assert_eq!(ActorState::try_from(5), Err(()));
-    }
-
-    #[cfg(feature = "type-erased-recipient-hook")]
-    #[test]
-    fn test_type_erased_recipient() -> anyhow::Result<()> {
-        // downcast to the original type succeeds
-        let erased = TypeErasedRecipient::new(42_u32);
-        let value = erased
-            .downcast::<u32>()
-            .map_err(|(_, e)| anyhow::anyhow!(e))?;
-        assert_eq!(*value, 42);
-
-        // downcast to a wrong type returns the original recipient and a descriptive error
-        let erased = TypeErasedRecipient::new(42_u32);
-        let (recovered, error_msg) = erased
-            .downcast::<String>()
-            .err()
-            .ok_or(anyhow::anyhow!("downcast to wrong type should have failed"))?;
-        assert!(
-            error_msg.contains("expected type String"),
-            "missing expected type in error: {error_msg}"
-        );
-        assert!(
-            error_msg.contains("actual type u32"),
-            "missing actual type in error: {error_msg}"
-        );
-
-        // the recovered recipient still holds the original value
-        let value = recovered
-            .downcast::<u32>()
-            .map_err(|(_, e)| anyhow::anyhow!(e))?;
-        assert_eq!(*value, 42);
-
-        Ok(())
     }
 }

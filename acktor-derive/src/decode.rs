@@ -15,29 +15,29 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let body = match (config.method, config.bridge) {
         (CodecMethod::Prost, None) => quote! {
             <Self as ::prost::Message>::decode(buf)
-                .map_err(::core::convert::Into::<::acktor_ipc::errors::DecodeError>::into)
+                .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
         },
         (CodecMethod::Prost, Some(bridge)) => quote! {
             let bridge = <#bridge as ::prost::Message>::decode(buf)
-                .map_err(::core::convert::Into::<::acktor_ipc::errors::DecodeError>::into)?;
+                .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)?;
             <Self as ::core::convert::TryFrom<#bridge>>::try_from(bridge)
-                .map_err(::core::convert::Into::<::acktor_ipc::errors::DecodeError>::into)
+                .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
         },
         (CodecMethod::Zerocopy, None) => quote! {
             <Self as ::zerocopy::FromBytes>::read_from_bytes(&buf[..])
-                .map_err(::core::convert::Into::<::acktor_ipc::errors::DecodeError>::into)
+                .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
         },
         (CodecMethod::Zerocopy, Some(bridge)) => quote! {
             let bridge = <#bridge as ::zerocopy::FromBytes>::read_from_bytes(&buf[..])
-                .map_err(::core::convert::Into::<::acktor_ipc::errors::DecodeError>::into)?;
+                .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)?;
             <Self as ::core::convert::TryFrom<#bridge>>::try_from(bridge)
-                .map_err(::core::convert::Into::<::acktor_ipc::errors::DecodeError>::into)
+                .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
         },
         (CodecMethod::Rkyv, None) => quote! {
             match ::rkyv::from_bytes::<Self, ::rkyv::rancor::Error>(&buf[..]) {
                 ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
                 ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                    ::acktor_ipc::errors::DecodeError::from(err.to_string()),
+                    ::acktor::error::DecodeError::from(err.to_string()),
                 ),
             }
         },
@@ -45,22 +45,22 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
             match ::rkyv::from_bytes::<#bridge, ::rkyv::rancor::Error>(&buf[..]) {
                 ::core::result::Result::Ok(bridge) => {
                     <Self as ::core::convert::TryFrom<#bridge>>::try_from(bridge)
-                        .map_err(::core::convert::Into::<::acktor_ipc::errors::DecodeError>::into)
+                        .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
                 }
                 ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                    ::acktor_ipc::errors::DecodeError::from(err.to_string()),
+                    ::acktor::error::DecodeError::from(err.to_string()),
                 ),
             }
         },
     };
 
     quote! {
-        impl #impl_generics ::acktor_ipc::Decode for #name #ty_generics #where_clause {
+        impl #impl_generics ::acktor::codec::Decode for #name #ty_generics #where_clause {
             #[inline]
             fn decode(
-                buf: ::acktor_ipc::bytes::Bytes,
-                _ctx: ::core::option::Option<&::acktor_ipc::DecodeContext>,
-            ) -> ::core::result::Result<Self, ::acktor_ipc::errors::DecodeError> {
+                buf: ::acktor::bytes::Bytes,
+                _ctx: ::core::option::Option<&dyn ::acktor::codec::DecodeContext>,
+            ) -> ::core::result::Result<Self, ::acktor::error::DecodeError> {
                 #body
             }
         }

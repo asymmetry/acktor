@@ -33,7 +33,7 @@ impl Handler<Work> for Slow {
 
 #[tokio::test]
 async fn test_handler_done() -> Result<()> {
-    let (address, _) = Slow.run("slow")?;
+    let (address, _) = Slow.start("slow")?;
 
     let result = address
         .send(Timed::new(
@@ -52,7 +52,7 @@ async fn test_handler_done() -> Result<()> {
 
 #[tokio::test]
 async fn test_unpack_message() -> Result<()> {
-    let (address, join_handle) = Slow.run("slow")?;
+    let (address, join_handle) = Slow.start("slow")?;
 
     // close the actor's mailbox by terminating it
     address.do_send(Signal::Terminate).await?;
@@ -64,7 +64,7 @@ async fn test_unpack_message() -> Result<()> {
             expense: Duration::from_millis(100),
             value: 99,
         },
-        Duration::from_millis(50),
+        Duration::from_millis(10),
     );
     let recovered = match address.try_send(timed) {
         Ok(_) => panic!("send should fail after the actor is terminated"),
@@ -73,14 +73,14 @@ async fn test_unpack_message() -> Result<()> {
     };
     let (work, budget) = recovered.into_parts();
     assert_eq!(work.value, 99);
-    assert_eq!(budget, Duration::from_millis(50));
+    assert_eq!(budget, Duration::from_millis(10));
 
     Ok(())
 }
 
 #[tokio::test]
 async fn test_handler_cancelled() -> Result<()> {
-    let (address, _) = Slow.run("slow")?;
+    let (address, _) = Slow.start("slow")?;
 
     // oneshot closes empty because the proxy dropped the handler future
     let result = address
