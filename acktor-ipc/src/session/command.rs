@@ -37,7 +37,7 @@ impl<A> RemoteCreateActor<A>
 where
     A: Actor + RemoteSpawnable,
 {
-    /// Constructs a new [`CreateRemoteActor`] command for the actor type `A`.
+    /// Constructs a new [`RemoteCreateActor`] command for the actor type `A`.
     pub fn new(label: String, config: String) -> Self {
         Self {
             label,
@@ -68,7 +68,7 @@ impl<A> RemoteGetActor<A>
 where
     A: Actor + RemoteAddressable,
 {
-    /// Constructs a new [`GetRemoteActor`] command for the actor type `A`.
+    /// Constructs a new [`RemoteGetActor`] command for the actor type `A`.
     pub fn new(actor: ActorRef) -> Self {
         Self {
             actor,

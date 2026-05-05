@@ -21,12 +21,19 @@ use crate::codec::{DecodeContext, EncodeContext};
 /// encode the message response. They are only required by the second use case and runtime should
 /// take care of this automatically.
 pub struct BinaryMessage {
-    /// The local index part of an [`ActorId`].
+    /// The local index part of an [`ActorId`][crate::actor::ActorId].
     pub actor_id: u64,
+    /// The message id derived from the [`MessageId`][crate::message::MessageId] trait.
     pub message_id: u64,
+    /// The encoded message.
     pub bytes: Bytes,
+    /// An optional sender for the message response.
+    ///
+    /// If this is `None`, the sender of the message does not expect a response.
     pub result_tx: Option<oneshot::Sender<Bytes>>,
+    /// An optional decode context for decoding the message.
     pub decode_msg_ctx: Option<Arc<dyn DecodeContext + Send + Sync>>,
+    /// An optional encode context for encoding the message response.
     pub encode_res_ctx: Option<Arc<dyn EncodeContext + Send + Sync>>,
 }
 

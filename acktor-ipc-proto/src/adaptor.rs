@@ -5,7 +5,7 @@ use ahash::HashMap;
 use bytes::{Bytes, BytesMut};
 use prost::Message as _;
 
-use crate::{actor_message, ipc_message};
+use crate::message;
 
 /// A parsed actor message.
 #[derive(Debug)]
@@ -52,7 +52,7 @@ impl ActorAdaptor {
     /// Sends a message to a remote actor identified by `actor_id` without expecting a response.
     pub fn do_send<'a, F, E>(
         &'a mut self,
-        actor_id: usize,
+        actor_id: u64,
         message_id: u64,
         message: Bytes,
         send_func: F,
@@ -60,9 +60,9 @@ impl ActorAdaptor {
     where
         F: FnOnce(&'a [u8]) -> Result<(), E>,
     {
-        let ipc_message = ipc_message::IpcMessage::actor_message(
-            actor_message::ActorMessage::do_send(actor_id as u64, message_id, message),
-        );
+        let ipc_message = message::IpcMessage::actor_message(message::ActorMessage::do_send(
+            actor_id, message_id, message,
+        ));
 
         let len = ipc_message.encoded_len();
         self.buffer.resize(len, 0);
@@ -76,7 +76,7 @@ impl ActorAdaptor {
     /// Sends a message to a remote actor identified by `actor_id` and expects a response.
     pub fn send<'a, F, E>(
         &'a mut self,
-        actor_id: usize,
+        actor_id: u64,
         message_id: u64,
         message: Bytes,
         result_tx: Sender<Bytes>,
@@ -88,9 +88,9 @@ impl ActorAdaptor {
         let tag = self.next_tag();
         self.result_senders.insert(tag, result_tx);
 
-        let ipc_message = ipc_message::IpcMessage::actor_message(
-            actor_message::ActorMessage::send(actor_id as u64, message_id, message, tag),
-        );
+        let ipc_message = message::IpcMessage::actor_message(message::ActorMessage::send(
+            actor_id, message_id, message, tag,
+        ));
 
         let len = ipc_message.encoded_len();
         self.buffer.resize(len, 0);
@@ -102,13 +102,13 @@ impl ActorAdaptor {
     }
 
     pub fn parse(&mut self, msg: Bytes) -> Result<Option<ParsedActorMessage>, io::Error> {
-        let ipc_msg = ipc_message::IpcMessage::decode(msg)?;
+        let ipc_msg = message::IpcMessage::decode(msg)?;
 
         // in WebAssembly environments, we ignore the NodeMessage and the NodeMessageResponse, and
         // we also ignore the ActorMessage that expects a response
 
         match ipc_msg.message {
-            Some(ipc_message::IpcMessageType::ActorMessage(actor_message::ActorMessage {
+            Some(message::IpcMessageType::ActorMessage(message::ActorMessage {
                 actor_id,
                 message_id,
                 message,
@@ -119,13 +119,11 @@ impl ActorAdaptor {
                 message,
             })),
 
-            Some(ipc_message::IpcMessageType::ActorMessageResponse(
-                actor_message::ActorMessageResponse {
-                    tag,
-                    response: Some(response),
-                },
-            )) => match response {
-                actor_message::ResponseType::Ok(ok) => {
+            Some(message::IpcMessageType::MessageResponse(message::MessageResponse {
+                tag,
+                response: Some(response),
+            })) => match response {
+                message::ResponseType::Ok(ok) => {
                     if let Some(rx) = self.result_senders.remove(&tag) {
                         let _ = rx.try_send(ok);
                     }
@@ -133,7 +131,7 @@ impl ActorAdaptor {
                     Ok(None)
                 }
 
-                actor_message::ResponseType::Err(err) => Err(io::Error::other(err)),
+                message::ResponseType::Err(err) => Err(io::Error::other(err)),
             },
 
             _ => Err(io::Error::other("unsupported ipc message type")),

@@ -62,7 +62,7 @@ impl Hasher for NopHasher {
     }
 }
 
-/// A special HashMap which uses [`TypeId`] as keys and a custom [`NoOpHasher`] to avoid rehashing
+/// A special HashMap which uses [`TypeId`] as keys and a custom [`NopHasher`] to avoid rehashing
 /// the [`TypeId`]s.
 pub type TypeMap<V> = HashMap<TypeId, V, BuildHasherDefault<NopHasher>>;
 

@@ -203,7 +203,8 @@ where
     }
 
     /// Sends a message, waiting until there is capacity, and returns a
-    /// [`Receiver`][oneshot::Receiver] which can be used to receive the message response.
+    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
+    /// response.
     pub async fn send<M, EP>(&self, msg: M) -> SendResult<M>
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
@@ -228,7 +229,8 @@ where
     }
 
     /// Attempts to immediately send a message and returns a
-    /// [`Receiver`][oneshot::Receiver] which can be used to receive the message response.
+    /// [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
+    /// response.
     pub fn try_send<M, EP>(&self, msg: M) -> SendResult<M>
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,
@@ -253,7 +255,8 @@ where
     }
 
     /// Sends a message, waiting until there is capacity, but only for a limited time, and returns
-    /// a [`Receiver`][oneshot::Receiver] which can be used to receive the message response.
+    /// a [`Receiver`][crate::channel::oneshot::Receiver] which can be used to receive the message
+    /// response.
     pub async fn send_timeout<M, EP>(&self, msg: M, timeout: Duration) -> SendResult<M>
     where
         M: Message + IntoEnvelope<A, EP> + FromEnvelope<A, EP>,

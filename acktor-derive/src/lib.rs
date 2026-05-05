@@ -105,7 +105,7 @@ pub fn stable_id_derive(input: TokenStream) -> TokenStream {
 /// By default, the derive also emits a [`StableId`] impl and sets
 /// `MessageId::ID = StableId::TYPE_ID.as_u64()`. In this case, do **not** also derive
 /// [`StableId`] separately, as that would produce conflicting impls. See derive macro
-/// [`StableId`][StableId] for the hashing scheme and the rules around generic parameters.
+/// [`StableId`][macro@StableId] for the hashing scheme and the rules around generic parameters.
 ///
 /// An optional `#[custom_id(<u64 value>)]` attribute lets the user supply the id directly. When
 /// present, no [`StableId`] impl is emitted, and it is the user's responsibility to ensure the

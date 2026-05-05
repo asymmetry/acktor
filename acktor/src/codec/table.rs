@@ -13,9 +13,9 @@ pub type EncodeMsgFn = fn(&dyn Any, Option<&dyn EncodeContext>) -> Result<Bytes,
 pub type DecodeResFn = fn(Bytes, Option<&dyn DecodeContext>) -> Result<Box<dyn Any>, DecodeError>;
 
 /// A codec for a specific message type, containing the message id
-/// ([`MessageId::ID`][crate::message::MessageId::ID]), an [`EncodeMsgFn`] for encoding the
-/// message to bytes, and a [`DecodeResFn`] for decoding the message response bytes back to the
-/// concrete message response type.
+/// ([`MessageId::ID`][crate::message::MessageId::ID]), an `EncodeMsgFn` for encoding the message
+/// to bytes, and a `DecodeResFn` for decoding the message response bytes back to the concrete
+/// message response type.
 #[derive(Clone, Copy)]
 pub struct MessageCodec {
     pub message_id: u64,
@@ -43,8 +43,8 @@ impl Deref for CodecTable {
 /// A codec table for encoding messages and decoding message responses.
 ///
 /// Each entry in the codec table corresponds to a message type the actor can receive from
-/// another actor remotely. It records the message id, an [`EncodeMsgFn`] for encoding the message
-/// to bytes before sending, and a [`DecodeResFn`] for decoding the message response bytes back
+/// another actor remotely. It records the message id, an `EncodeMsgFn` for encoding the message
+/// to bytes before sending, and a `DecodeResFn` for decoding the message response bytes back
 /// to the concrete message response type.
 ///
 /// For example, if actor `B` needs to send a message to actor `A` with `A`'s `Address<A>`, `B`

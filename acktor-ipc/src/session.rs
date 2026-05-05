@@ -1,8 +1,8 @@
 //! Per-connection session actor.
 //!
 //! A [`Session`] wraps a single [`IpcConnection`] and mediates all traffic over it: routing
-//! inbound frames to local actors, forwarding outbound messages from [`RemoteAddress`]es, and
-//! tracking pending request tags for response correlation. Sessions are owned by a
+//! inbound frames to local actors, forwarding outbound messages from local actors, and tracking
+//! pending request tags for response correlation. Sessions are owned by a
 //! [`Node`][crate::node::Node] and are created through it rather than directly.
 //!
 

@@ -83,7 +83,8 @@ pub trait Actor: Sized + Send + 'static {
     /// synchronously. The actor will enter the [`Starting`][ActorState::Starting] state after
     /// this method returns.
     ///
-    /// Panics in this method propagate to the caller of [`run`][Actor::run].
+    /// Panics in this method propagate to the caller of [`start`][Actor::start] or
+    /// [`create`][Actor::create].
     #[allow(unused_variables)]
     fn pre_start(&mut self, ctx: &mut Self::Context) -> Result<(), Self::Error> {
         Ok(())
@@ -208,9 +209,9 @@ where
     /// Moves the mailbox of the actor out of the context, leaving `None` in its place.
     ///
     /// Typically the address and the mailbox are created together in the constructor of the
-    /// context. However, since the [`process`][Self::process] method consumes the mailbox, the
-    /// context needs to provide a way to move the mailbox out of itself so that it can be
-    /// passed into the [`process`][Self::process] method.
+    /// context. However, since the [`run`][Self::run] method consumes the mailbox, the context
+    /// needs to provide a way to move the mailbox out of itself so that it can be passed into the
+    /// [`run`][Self::run] method.
     ///
     /// # Example
     ///
