@@ -161,6 +161,7 @@ async fn test_remote_address() -> Result<()> {
     let recipient: Recipient<Echo> = remote.clone().into();
 
     assert!(!recipient.is_closed());
+    time::sleep(Duration::from_millis(100)).await;
     assert_eq!(recipient.capacity(), acktor::DEFAULT_MAILBOX_CAPACITY);
 
     // send via Recipient
