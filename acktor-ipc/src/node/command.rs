@@ -53,10 +53,10 @@ impl Message for RemoveListener {
 
 /// A command which is used to actively connect to another node like a client.
 ///
-/// A new session will be created if the operation is successful. The endpoint of the connection
-/// will be used as the actor label of the new session actor. The user can provide a
-/// `session_label` as an alias to the endpoint, both labels can be used to refer to the session
-/// actor in other commands.
+/// A new session will be created if the operation is successful. The user can provide a
+/// `session_label` as an alias to the session, and it can be used to refer to the session actor
+/// in other commands. If `session_label` is not provided, the endpoint of the connection will be
+/// used as the alias of the new session actor.
 ///
 /// The command will return the address of the session actor if it succeeds.
 pub struct Connect<C>

@@ -1,11 +1,9 @@
 use tokio::time::Duration;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{
-    Actor, Address, Context, Handler, JoinHandle, Message, MessageId, Sender, SenderInfo,
-};
+use acktor::{Actor, Address, Context, Handler, JoinHandle, Message, MessageId, SenderInfo};
 use acktor_ipc::{
-    Decode, Encode, Node, NodeError, RemoteActor, RemoteSpawnable,
+    Decode, Encode, Node, NodeError, RemoteAddressable, RemoteSpawnable, StableId,
     ipc_method::websocket::{WebSocketConnection, WebSocketListener},
     node::command,
     remote,
@@ -34,16 +32,25 @@ pub struct Inc {
     pub by: i64,
 }
 
-#[derive(Debug, Default, RemoteActor)]
+#[derive(Debug, Default, RemoteAddressable, StableId)]
 #[message(Inc)]
 pub struct Counter {
     total: i64,
 }
 
-#[remote_actor]
+#[remote]
 impl Actor for Counter {
     type Context = Context<Self>;
     type Error = anyhow::Error;
+}
+
+impl RemoteSpawnable for Counter {
+    fn create_remote(
+        label: String,
+        _config: String,
+    ) -> Result<(Address<Self>, JoinHandle<()>), Self::Error> {
+        Counter::default().start(label)
+    }
 }
 
 impl Handler<Inc> for Counter {
@@ -55,19 +62,8 @@ impl Handler<Inc> for Counter {
     }
 }
 
-impl RemoteSpawnable for Counter {
-    const LABEL: &'static str = "Counter";
-
-    fn create_remote(
-        label: String,
-        _config: String,
-    ) -> Result<(Address<Self>, JoinHandle<()>), Self::Error> {
-        Counter::default().start(label)
-    }
-}
-
 #[tokio::test]
-async fn test_create_actor() -> anyhow::Result<()> {
+async fn test_remote_spawnable() -> anyhow::Result<()> {
     let port = pick_free_port().await?;
     let bind_addr = format!("127.0.0.1:{port}");
     let endpoint = format!("ws://{bind_addr}");
@@ -75,31 +71,30 @@ async fn test_create_actor() -> anyhow::Result<()> {
     let listener = WebSocketListener::bind(&bind_addr).await?;
     let (server, server_join_handle) = Node::new()
         .with_listener(listener)
-        .with_remote_spawnable_actor::<Counter>()
+        .with_factory::<Counter>()
         .start("server")?;
 
     let (client, client_join_handle) = start_client()?;
     let session = connect::<WebSocketConnection>(&client, endpoint).await?;
 
-    // test CreateRemoteActor
+    // test RemoteCreateActor
     let remote = client
-        .send(command::RemoteCreateActor {
-            session: session.clone().into(),
-            label: "counter-1".to_string(),
-            r#type: Counter::LABEL.to_string(),
-            config: String::new(),
-        })
+        .send(command::RemoteCreateActor::<Counter>::new(
+            session.clone().into(),
+            "counter-1".to_string(),
+            String::new(),
+        ))
         .await?
         .await??;
     assert!(remote.is_remote());
     assert!(!remote.is_closed());
 
-    // test GetRemoteActor by label
+    // test RemoteGetActor by label
     let same = client
-        .send(command::RemoteGetActor {
-            session: session.clone().into(),
-            actor: "counter-1".into(),
-        })
+        .send(command::RemoteGetActor::<Counter>::new(
+            session.clone().into(),
+            "counter-1".into(),
+        ))
         .await?
         .await??;
     assert_eq!(same.index(), remote.index());
@@ -113,21 +108,17 @@ async fn test_create_actor() -> anyhow::Result<()> {
     let total = rx.recv_timeout(Duration::from_millis(500)).await?;
     assert_eq!(total, 15);
 
-    // test CreateRemoteActor with duplicate label
+    // test RemoteCreateActor with duplicate label
     let error = client
-        .send(command::RemoteCreateActor {
-            session: session.clone().into(),
-            label: "counter-1".to_string(),
-            r#type: Counter::LABEL.to_string(),
-            config: String::new(),
-        })
+        .send(command::RemoteCreateActor::<Counter>::new(
+            session.clone().into(),
+            "counter-1".to_string(),
+            String::new(),
+        ))
         .await?
         .await?
         .unwrap_err();
-    assert!(
-        matches!(error, NodeError::CreateRemoteActorFailed(_)),
-        "expected CreateRemoteActorFailed for duplicate label, got {error:?}"
-    );
+    assert!(matches!(error, NodeError::SessionError(_)),);
 
     acktor::utils::terminate_actor(client, client_join_handle).await;
     acktor::utils::terminate_actor(server, server_join_handle).await;

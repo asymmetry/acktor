@@ -29,7 +29,7 @@ pub fn expand(input: TokenStream) -> TokenStream {
     let shim_method: syn::ImplItem = syn::parse_quote! {
         fn remote_mailbox(
             address: ::acktor::Address<Self>
-        ) -> ::core::option::Option<::acktor::actor::RemoteMailbox<Self>> {
+        ) -> ::core::option::Option<::acktor::address::RemoteMailbox> {
             ::core::option::Option::Some(::core::convert::Into::into(address))
         }
     };

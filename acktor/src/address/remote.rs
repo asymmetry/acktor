@@ -194,7 +194,7 @@ impl RemoteAddress {
                     let (raw_tx, raw_rx) = oneshot::channel();
                     self.proxy()
                         .do_send(BinaryMessage::send(
-                            self.index(),
+                            self.index().as_local(),
                             codec.message_id,
                             bytes,
                             raw_tx,
@@ -226,7 +226,7 @@ impl RemoteAddress {
                 Ok(bytes) => self
                     .proxy()
                     .do_send(BinaryMessage::do_send(
-                        self.index(),
+                        self.index().as_local(),
                         codec.message_id,
                         bytes,
                     ))
@@ -252,7 +252,7 @@ impl RemoteAddress {
                     let (raw_tx, raw_rx) = oneshot::channel();
                     self.proxy()
                         .try_do_send(BinaryMessage::send(
-                            self.index(),
+                            self.index().as_local(),
                             codec.message_id,
                             bytes,
                             raw_tx,
@@ -284,7 +284,7 @@ impl RemoteAddress {
                 Ok(bytes) => self
                     .proxy()
                     .try_do_send(BinaryMessage::do_send(
-                        self.index(),
+                        self.index().as_local(),
                         codec.message_id,
                         bytes,
                     ))
@@ -309,7 +309,12 @@ impl RemoteAddress {
                     let (raw_tx, raw_rx) = oneshot::channel();
                     self.proxy()
                         .do_send_timeout(
-                            BinaryMessage::send(self.index(), codec.message_id, bytes, raw_tx),
+                            BinaryMessage::send(
+                                self.index().as_local(),
+                                codec.message_id,
+                                bytes,
+                                raw_tx,
+                            ),
                             timeout,
                         )
                         .await
@@ -341,7 +346,7 @@ impl RemoteAddress {
                 Ok(bytes) => self
                     .proxy()
                     .do_send_timeout(
-                        BinaryMessage::do_send(self.index(), codec.message_id, bytes),
+                        BinaryMessage::do_send(self.index().as_local(), codec.message_id, bytes),
                         timeout,
                     )
                     .await
@@ -372,7 +377,7 @@ impl RemoteAddress {
                     let (raw_tx, raw_rx) = oneshot::channel();
                     self.proxy()
                         .blocking_do_send(BinaryMessage::send(
-                            self.index(),
+                            self.index().as_local(),
                             codec.message_id,
                             bytes,
                             raw_tx,
@@ -412,7 +417,7 @@ impl RemoteAddress {
                 Ok(bytes) => self
                     .proxy()
                     .blocking_do_send(BinaryMessage::do_send(
-                        self.index(),
+                        self.index().as_local(),
                         codec.message_id,
                         bytes,
                     ))
@@ -557,7 +562,12 @@ where
         tokio::spawn(decode_res_with_bound::<M>(raw_rx, tx, proxy));
 
         self.proxy
-            .do_send(BinaryMessage::send(self.index(), M::ID, bytes, raw_tx))
+            .do_send(BinaryMessage::send(
+                self.index().as_local(),
+                M::ID,
+                bytes,
+                raw_tx,
+            ))
             .map(|result| match result {
                 Ok(_) => Ok(rx),
                 Err(e) => Err(e.with_msg(msg)),
@@ -572,7 +582,11 @@ where
         };
 
         self.proxy
-            .do_send(BinaryMessage::do_send(self.index(), M::ID, bytes))
+            .do_send(BinaryMessage::do_send(
+                self.index().as_local(),
+                M::ID,
+                bytes,
+            ))
             .map_err(|e| e.with_msg(msg))
             .boxed()
     }
@@ -590,10 +604,12 @@ where
 
         tokio::spawn(decode_res_with_bound::<M>(raw_rx, tx, proxy));
 
-        match self
-            .proxy
-            .try_do_send(BinaryMessage::send(self.index(), M::ID, bytes, raw_tx))
-        {
+        match self.proxy.try_do_send(BinaryMessage::send(
+            self.index().as_local(),
+            M::ID,
+            bytes,
+            raw_tx,
+        )) {
             Ok(_) => Ok(rx),
             Err(e) => Err(e.with_msg(msg)),
         }
@@ -606,7 +622,11 @@ where
         };
 
         self.proxy
-            .try_do_send(BinaryMessage::do_send(self.index(), M::ID, bytes))
+            .try_do_send(BinaryMessage::do_send(
+                self.index().as_local(),
+                M::ID,
+                bytes,
+            ))
             .map_err(|e| e.with_msg(msg))
     }
 
@@ -625,7 +645,7 @@ where
 
         self.proxy
             .do_send_timeout(
-                BinaryMessage::send(self.index(), M::ID, bytes, raw_tx),
+                BinaryMessage::send(self.index().as_local(), M::ID, bytes, raw_tx),
                 timeout,
             )
             .map(|result| match result {
@@ -642,7 +662,10 @@ where
         };
 
         self.proxy
-            .do_send_timeout(BinaryMessage::do_send(self.index(), M::ID, bytes), timeout)
+            .do_send_timeout(
+                BinaryMessage::do_send(self.index().as_local(), M::ID, bytes),
+                timeout,
+            )
             .map_err(|e| e.with_msg(msg))
             .boxed()
     }
@@ -661,10 +684,12 @@ where
 
         runtime.spawn(decode_res_with_bound::<M>(raw_rx, tx, proxy));
 
-        match self
-            .proxy
-            .blocking_do_send(BinaryMessage::send(self.index(), M::ID, bytes, raw_tx))
-        {
+        match self.proxy.blocking_do_send(BinaryMessage::send(
+            self.index().as_local(),
+            M::ID,
+            bytes,
+            raw_tx,
+        )) {
             Ok(_) => Ok(rx),
             Err(e) => Err(e.with_msg(msg)),
         }
@@ -677,7 +702,11 @@ where
         };
 
         self.proxy
-            .blocking_do_send(BinaryMessage::do_send(self.index(), M::ID, bytes))
+            .blocking_do_send(BinaryMessage::do_send(
+                self.index().as_local(),
+                M::ID,
+                bytes,
+            ))
             .map_err(|e| e.with_msg(msg))
     }
 }

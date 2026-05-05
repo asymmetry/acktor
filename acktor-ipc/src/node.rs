@@ -157,11 +157,11 @@ impl Node {
     ) -> Result<Address<Session>> {
         let endpoint = connection.peer_endpoint().to_string();
 
-        let session_label = session_label.unwrap_or_else(|| endpoint.clone());
+        let label = session_label.unwrap_or_else(|| endpoint.clone());
 
-        if self.sessions.contains_key2(&endpoint) || self.sessions.contains_key2(&session_label) {
+        if self.sessions.contains_key2(&label) {
             return Err(NodeError::CreateSessionFailed(
-                format!("session with endpoint '{}' already exists", endpoint).into(),
+                format!("session with label '{}' already exists", label).into(),
             ));
         }
 
@@ -185,16 +185,11 @@ impl Node {
         // is also unique as an actor id
         let _ = self
             .sessions
-            .insert(session_id, endpoint.clone(), address.clone());
-        if session_label != endpoint {
-            let _ = self
-                .sessions
-                .insert(session_id, session_label.clone(), address.clone());
-        }
+            .insert(session_id, label.clone(), address.clone());
 
         self.children.insert(address.clone().into(), join_handle);
 
-        self.notify_observers(NodeEvent::SessionCreated(address.clone(), session_label))
+        self.notify_observers(NodeEvent::SessionCreated(address.clone(), label))
             .await;
 
         Ok(address)

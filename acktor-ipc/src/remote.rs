@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use acktor::utils::NopHasher;
 
-pub use acktor::{RemoteAddressable, RemoteSpawnable};
-pub(crate) use acktor::{RemoteProxy, address::RemoteMailbox, message::BinaryMessage};
+pub use acktor::{RemoteAddressable, RemoteSpawnable, StableId, message::BinaryMessage};
+pub(crate) use acktor::{RemoteProxy, address::RemoteMailbox};
 
 mod factory;
 pub(crate) use factory::{RemoteFactory, RemoteFactoryShim};

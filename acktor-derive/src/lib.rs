@@ -240,10 +240,6 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
 /// message type `Mi`. The `Handler<BinaryMessage>` impl dispatches inbound messages by matching
 /// the message id and invoking the corresponding message handler.
 ///
-/// This macro also emits a [`StableId`] impl, do **not** also derive [`StableId`] separately, as
-/// that would produce conflicting impls. See the [`StableId`] derive for the hashing scheme and
-/// the rules of generic parameters.
-///
 /// # Example
 ///
 /// ```ignore
@@ -260,7 +256,6 @@ pub fn decode_derive(input: TokenStream) -> TokenStream {
 /// [`Encode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Encode.html
 /// [`Decode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Decode.html
 /// [`Codec`]: https://docs.rs/acktor/latest/acktor/codec/table/trait.Codec.html
-/// [`StableId`]: https://docs.rs/acktor/latest/acktor/stable_type_id/trait.StableId.html
 #[cfg(feature = "ipc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
 #[proc_macro_derive(RemoteAddressable, attributes(message))]

@@ -9,9 +9,8 @@ use acktor::{
     supervisor::{SupervisionEvent, Supervisor},
 };
 use acktor_ipc::{
-    Decode, DecodeContext, Encode, EncodeContext, RemoteActor, RemoteAddress,
-    ipc_method::websocket::WebSocketConnection, remote, remote::RemoteMailboxRegistry,
-    remote_message::RemoteSupervisionEvent,
+    Decode, DecodeContext, Encode, EncodeContext, RemoteAddressable,
+    ipc_method::websocket::WebSocketConnection, node::command, remote,
 };
 
 mod common;
@@ -37,11 +36,11 @@ pub struct Ping {
     pub value: u64,
 }
 
-#[derive(Debug, RemoteActor)]
+#[derive(Debug, RemoteAddressable)]
 #[message(Ping)]
 pub struct Probe;
 
-#[remote_actor]
+#[remote]
 impl Actor for Probe {
     type Context = Context<Self>;
     type Error = anyhow::Error;
@@ -52,7 +51,7 @@ impl Handler<Ping> for Probe {
     async fn handle(&mut self, _: Ping, _: &mut Self::Context) {}
 }
 
-// Required so `Address<Probe>` can convert to `Recipient<SupervisionEvent<Probe>>`.
+// required so `Address<Probe>` can convert to `Recipient<SupervisionEvent<Probe>>`.
 impl Handler<SupervisionEvent<Probe>> for Probe {
     type Result = ();
     async fn handle(&mut self, _: SupervisionEvent<Probe>, _: &mut Self::Context) {}
@@ -65,46 +64,31 @@ async fn test_codec_with_session() -> Result<()> {
     let endpoint = format!("ws://{bind_addr}");
 
     let (server, server_join_handle) = start_websocket_server(&bind_addr).await?;
+    let (address, join_handle) = Probe.start("probe")?;
+
+    let result = server
+        .send(command::AddActor {
+            label: "probe".to_string(),
+            address: address.clone(),
+        })
+        .await?
+        .await?;
+    assert!(result);
+
     let (client, client_join_handle) = start_client()?;
     let session = connect::<WebSocketConnection>(&client, endpoint).await?;
 
-    // use an external RemoteActorRegistry so we can check
-    let registry = RemoteMailboxRegistry::with_capacity(8);
-    assert!(registry.capacity() >= 8);
-    let encode_ctx = EncodeContext::new(registry.clone());
-    let decode_ctx = DecodeContext::new(session.clone(), registry.clone());
-
-    let (address, join_handle) = Probe.start("probe")?;
-    let expected_index =
-        RemoteAddress::REMOTE_FLAG | ((session.index().reverse_bits() >> 1) ^ address.index());
-
-    let verify_registry = || {
-        assert_eq!(
-            registry.len(),
-            1,
-            "expected one auto-registered entry after encode"
-        );
-        assert!(
-            registry.contains_index(address.index()),
-            "expected address.index() to be registered"
-        );
-        registry.retain(|_, _| false);
-        assert!(registry.is_empty());
-    };
-
-    // Signal — no context, no registry interaction.
+    // Signal
     for signal in [Signal::Stop, Signal::Terminate] {
         let bytes = signal.encode_to_bytes(None)?;
         assert_eq!(Signal::decode(bytes, None)?, signal);
     }
-    assert!(registry.is_empty());
 
-    // CronSignal — no context, no registry interaction.
+    // CronSignal
     for signal in [CronSignal::Pause, CronSignal::Resume] {
         let bytes = signal.encode_to_bytes(None)?;
         assert_eq!(CronSignal::decode(bytes, None)?, signal);
     }
-    assert!(registry.is_empty());
 
     // Address<A>
     assert!(registry.is_empty());

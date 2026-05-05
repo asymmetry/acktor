@@ -7,7 +7,7 @@ pub mod ipc_method;
 pub use ipc_method::{IpcConnection, IpcListener};
 
 pub(crate) mod remote;
-pub use remote::{RemoteAddressable, RemoteSpawnable};
+pub use remote::{RemoteAddressable, RemoteSpawnable, StableId};
 
 mod actor_ref;
 pub use actor_ref::ActorRef;
@@ -23,6 +23,6 @@ pub use acktor::codec::{Decode, DecodeContext, DecodeError, Encode, EncodeContex
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use acktor_derive::{/* RemoteAddressable, */ remote};
+pub use acktor_derive::remote;
 
 pub mod double_map;

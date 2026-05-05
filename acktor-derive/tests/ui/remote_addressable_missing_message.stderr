@@ -1,0 +1,5 @@
+error: `#[derive(RemoteAddressable)]` requires a `#[message(..)]` attribute listing at least one message type
+ --> tests/ui/remote_addressable_missing_message.rs:4:1
+  |
+4 | struct MyActor;
+  | ^^^^^^^^^^^^^^^

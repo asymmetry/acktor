@@ -16,7 +16,7 @@ rustc-args = ["--cfg", "tokio_unstable"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["derive", "websocket", "pipe"]
+default = ["derive", "pipe", "websocket"]
 derive = ["dep:acktor-derive", "acktor/derive"]
 # pre-implemented IPC methods
 # enable one of these features to select the IPC method to use
@@ -70,21 +70,13 @@ name = "test_basic"
 required-features = ["pipe", "websocket"]
 
 [[test]]
-name = "test_codec_with_session"
-required-features = ["derive", "websocket"]
-
-[[test]]
-name = "test_create_actor"
-required-features = ["derive", "websocket"]
-
-[[test]]
 name = "test_node"
 required-features = ["derive", "websocket"]
 
 [[test]]
-name = "test_remote_actor"
-required-features = ["derive"]
+name = "test_remote_address"
+required-features = ["derive", "websocket"]
 
 [[test]]
-name = "test_remote_address"
+name = "test_remote_spawnable"
 required-features = ["derive", "websocket"]

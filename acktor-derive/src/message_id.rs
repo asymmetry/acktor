@@ -49,7 +49,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
         (None, false) => quote! { where #(#extra_bounds),* },
     };
 
-    let has_stable_type_id_impl = stable_id::expand(ast);
+    let stable_id_impl = stable_id::expand(ast);
 
     quote! {
         impl #impl_generics ::acktor::MessageId for #name #ty_generics #where_clause_tokens
@@ -57,7 +57,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
             const ID: u64 = <Self as ::acktor::StableId>::TYPE_ID.as_u64();
         }
 
-        #has_stable_type_id_impl
+        #stable_id_impl
     }
 }
 

@@ -2,22 +2,27 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Token, Type, punctuated::Punctuated};
 
-use crate::stable_id;
-
-fn parse_message_list(ast: &syn::DeriveInput) -> syn::Result<Option<Vec<Type>>> {
-    let Some(attr) = ast.attrs.iter().find(|a| a.path().is_ident("message")) else {
-        return Ok(None);
-    };
+fn parse_message_list(ast: &syn::DeriveInput) -> syn::Result<Vec<Type>> {
+    let attr = ast
+        .attrs
+        .iter()
+        .find(|a| a.path().is_ident("message"))
+        .ok_or_else(|| {
+            syn::Error::new_spanned(
+                ast,
+                "`#[derive(RemoteAddressable)]` requires a `#[message(..)]` attribute listing at \
+             least one message type",
+            )
+        })?;
 
     let list = attr.parse_args_with(Punctuated::<Type, Token![,]>::parse_terminated)?;
     if list.is_empty() {
         return Err(syn::Error::new_spanned(
             attr,
-            "`#[message(..)]` requires at least one message type; omit the attribute to use the \
-             marker-only derive",
+            "`#[message(..)]` requires at least one message type",
         ));
     }
-    Ok(Some(list.into_iter().collect()))
+    Ok(list.into_iter().collect())
 }
 
 pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
@@ -29,66 +34,8 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
-    // also emit the `StableId` impl so `#[derive(RemoteAddressable)]` alone is enough
-    let has_stable_type_id_impl = stable_id::expand(ast);
-
-    let marker_impl = quote! {
+    let self_impl = quote! {
         impl #impl_generics ::acktor::RemoteAddressable for #name #ty_generics #where_clause {}
-
-        #has_stable_type_id_impl
-    };
-
-    let Some(messages) = messages else {
-        return marker_impl;
-    };
-
-    let arms = messages.iter().map(|m| {
-        quote! {
-            <#m as ::acktor::MessageId>::ID => {
-                match <#m as ::acktor::codec::Decode>::decode(
-                    bytes,
-                    decode_msg_ctx.as_deref(),
-                ) {
-                    ::core::result::Result::Ok(msg) => {
-                        let result =
-                            <Self as ::acktor::Handler<#m>>::handle(self, msg, ctx).await;
-                        if let ::core::option::Option::Some(tx) = result_tx {
-                            send_result(tx, &result, encode_res_ctx.as_deref());
-                        }
-                    }
-                    ::core::result::Result::Err(e) => {
-                        ::acktor::tracing::debug!(
-                            "Could not decode the message: {}", ::acktor::ErrorReport::report(&e)
-                        );
-                        if let ::core::option::Option::Some(tx) = result_tx {
-                            send_err(tx, e);
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    let ids = messages.iter().map(|m| {
-        quote! { <#m as ::acktor::MessageId>::ID }
-    });
-    let n = messages.len();
-    let uniqueness_check = quote! {
-        const _: () = {
-            const IDS: [u64; #n] = [#(#ids),*];
-            let mut i = 0;
-            while i < IDS.len() {
-                let mut j = i + 1;
-                while j < IDS.len() {
-                    assert!(
-                        IDS[i] != IDS[j],
-                        "duplicate message ids in #[message(...)]",
-                    );
-                    j += 1;
-                }
-                i += 1;
-            }
-        };
     };
 
     let codec_impl = quote! {
@@ -126,18 +73,45 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
         }
     };
 
+    let arms = messages.iter().map(|m| {
+        quote! {
+            <#m as ::acktor::MessageId>::ID => {
+                match <#m as ::acktor::codec::Decode>::decode(bytes, decode_msg_ctx) {
+                    ::core::result::Result::Ok(msg) => {
+                        let result =
+                            <Self as ::acktor::Handler<#m>>::handle(self, msg, ctx).await;
+                        if let ::core::option::Option::Some(tx) = result_tx {
+                            let encode_res_ctx = encode_res_ctx
+                                .as_deref()
+                                .map(|ctx| ctx as &dyn ::acktor::codec::EncodeContext);
+                            send_result(tx, &result, encode_res_ctx);
+                        }
+                    }
+                    ::core::result::Result::Err(e) => {
+                        ::acktor::tracing::debug!(
+                            "Could not decode the message: {}", ::acktor::ErrorReport::report(&e)
+                        );
+                        if let ::core::option::Option::Some(tx) = result_tx {
+                            send_err(tx, e);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
     let handler_impl = quote! {
-        impl #impl_generics ::acktor::Handler<::acktor::BinaryMessage>
+        impl #impl_generics ::acktor::Handler<::acktor::message::BinaryMessage>
             for #name #ty_generics #where_clause
         {
             type Result = ();
 
             async fn handle(
                 &mut self,
-                msg: ::acktor::BinaryMessage,
+                msg: ::acktor::message::BinaryMessage,
                 ctx: &mut <Self as ::acktor::Actor>::Context,
             ) -> Self::Result {
-                let ::acktor::BinaryMessage {
+                let ::acktor::message::BinaryMessage {
                     message_id,
                     bytes,
                     result_tx,
@@ -184,6 +158,10 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                     }
                 }
 
+                let decode_msg_ctx = decode_msg_ctx
+                    .as_deref()
+                    .map(|ctx| ctx as &dyn ::acktor::codec::DecodeContext);
+
                 match message_id {
                     #(#arms)*
                     _ => {
@@ -203,8 +181,30 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
         }
     };
 
+    let ids = messages.iter().map(|m| {
+        quote! { <#m as ::acktor::MessageId>::ID }
+    });
+    let n = messages.len();
+    let uniqueness_check = quote! {
+        const _: () = {
+            const IDS: [u64; #n] = [#(#ids),*];
+            let mut i = 0;
+            while i < IDS.len() {
+                let mut j = i + 1;
+                while j < IDS.len() {
+                    assert!(
+                        IDS[i] != IDS[j],
+                        "duplicate message ids in #[message(...)]",
+                    );
+                    j += 1;
+                }
+                i += 1;
+            }
+        };
+    };
+
     quote! {
-        #marker_impl
+        #self_impl
         #codec_impl
         #handler_impl
         #uniqueness_check
@@ -223,15 +223,18 @@ mod tests {
 
     #[test]
     fn test_parse_message_list() -> Result<()> {
-        // absent attribute → None
-        assert!(parse_message_list(&input("struct Foo;"))?.is_none());
+        // absent attribute → error
+        assert!(parse_message_list(&input("struct Foo;")).is_err());
+
+        // empty list → error
+        assert!(parse_message_list(&input("#[message()] struct Foo;")).is_err());
 
         // list of plain types
-        let list = parse_message_list(&input("#[message(Ping, Echo)] struct Foo;"))?.unwrap();
+        let list = parse_message_list(&input("#[message(Ping, Echo)] struct Foo;"))?;
         assert_eq!(list.len(), 2);
 
         // generic paths are accepted
-        let list = parse_message_list(&input("#[message(Observer<Pong>)] struct Foo;"))?.unwrap();
+        let list = parse_message_list(&input("#[message(Observer<Pong>)] struct Foo;"))?;
         assert_eq!(list.len(), 1);
 
         Ok(())

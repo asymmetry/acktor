@@ -4,7 +4,6 @@ use std::sync::Arc;
 use bytes::Bytes;
 
 use super::Message;
-use crate::actor::ActorId;
 use crate::channel::oneshot;
 use crate::codec::{DecodeContext, EncodeContext};
 
@@ -49,10 +48,10 @@ impl Message for BinaryMessage {
 }
 
 impl BinaryMessage {
-    /// Constructs a new [`RemoteMessage`] which does not expect a response.
-    pub fn do_send(actor_id: ActorId, message_id: u64, bytes: Bytes) -> Self {
+    /// Constructs a new [`BinaryMessage`] which does not expect a response.
+    pub fn do_send(actor_id: u64, message_id: u64, bytes: Bytes) -> Self {
         Self {
-            actor_id: actor_id.as_local(),
+            actor_id,
             message_id,
             bytes,
             result_tx: None,
@@ -61,15 +60,10 @@ impl BinaryMessage {
         }
     }
 
-    /// Constructs a new [`RemoteMessage`] which expects a response.
-    pub fn send(
-        actor_id: ActorId,
-        message_id: u64,
-        bytes: Bytes,
-        tx: oneshot::Sender<Bytes>,
-    ) -> Self {
+    /// Constructs a new [`BinaryMessage`] which expects a response.
+    pub fn send(actor_id: u64, message_id: u64, bytes: Bytes, tx: oneshot::Sender<Bytes>) -> Self {
         Self {
-            actor_id: actor_id.as_local(),
+            actor_id,
             message_id,
             bytes,
             result_tx: Some(tx),
@@ -100,7 +94,7 @@ mod tests {
     #[test]
     fn test_debug_fmt() {
         // do_send variant: result_tx is None
-        let msg = BinaryMessage::do_send(ActorId::new(7), 99, Bytes::from_static(b"hello"));
+        let msg = BinaryMessage::do_send(7, 99, Bytes::from_static(b"hello"));
         assert_eq!(
             format!("{:?}", msg),
             "BinaryMessage<DoSend> { actor_id: 7, message_id: 99, bytes: Bytes(5) }"
@@ -108,7 +102,7 @@ mod tests {
 
         // send variant: result_tx is Some
         let (tx, _rx) = oneshot::channel::<Bytes>();
-        let msg = BinaryMessage::send(ActorId::new(7), 99, Bytes::from_static(b"hi"), tx);
+        let msg = BinaryMessage::send(7, 99, Bytes::from_static(b"hi"), tx);
         assert_eq!(
             format!("{:?}", msg),
             "BinaryMessage<Send> { actor_id: 7, message_id: 99, bytes: Bytes(2) }"

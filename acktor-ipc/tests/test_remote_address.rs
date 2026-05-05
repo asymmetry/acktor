@@ -1,19 +1,20 @@
 use std::collections::HashSet;
+use std::num::NonZeroU64;
 
 use tokio::time::{Duration, timeout};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{Actor, Context, Handler, Message, MessageId, Recipient, Sender, SenderInfo};
+use acktor::{Actor, ActorId, Context, Handler, Message, MessageId, Recipient, Sender, SenderInfo};
 use acktor_ipc::{
-    ActorRef, Decode, Encode, RemoteActor, RemoteAddress,
-    ipc_method::websocket::WebSocketConnection, node::command, remote,
-    session::command as session_command,
+    ActorRef, Decode, Encode, RemoteAddressable, ipc_method::websocket::WebSocketConnection,
+    node::command as node_command, remote, session::command as session_command,
 };
 
 mod common;
 use common::{connect, pick_free_port, start_client, start_websocket_server};
 
-// Minimal echo remote actor: doubles the input.
+// echo actor: double the input
+
 #[derive(
     Debug,
     Clone,
@@ -34,11 +35,11 @@ pub struct Echo {
     pub value: i64,
 }
 
-#[derive(Debug, RemoteActor)]
+#[derive(Debug, RemoteAddressable)]
 #[message(Echo)]
 pub struct EchoServer;
 
-#[remote_actor]
+#[remote]
 impl Actor for EchoServer {
     type Context = Context<Self>;
     type Error = anyhow::Error;
@@ -63,7 +64,7 @@ async fn test_remote_address() -> anyhow::Result<()> {
     let (address, join_handle) = EchoServer.start("echo")?;
     let (server, server_join_handle) = start_websocket_server(&bind_addr).await?;
     server
-        .send(command::AddActor {
+        .send(node_command::AddActor {
             label: "echo".to_string(),
             address: address.clone(),
         })
@@ -75,22 +76,24 @@ async fn test_remote_address() -> anyhow::Result<()> {
 
     // resolve the remote echo actor by its known index
     let remote = client_session
-        .send(session_command::RemoteGetActor {
-            actor: ActorRef::Index(address.index()),
-        })
+        .send(session_command::RemoteGetActor::<EchoServer>::new(
+            ActorRef::Index(address.index()),
+        ))
         .await?
         .await??;
     assert_eq!(
         remote.index(),
-        RemoteAddress::REMOTE_FLAG
-            | ((client_session.index().reverse_bits() >> 1) ^ address.index())
+        ActorId::new_remote(
+            address.index().as_local(),
+            NonZeroU64::new(client_session.index().as_local()).unwrap()
+        )
     );
 
     // two remote addresses created with GetRemoteActor should be equal
     let duplicate = client_session
-        .send(session_command::RemoteGetActor {
-            actor: ActorRef::Index(address.index()),
-        })
+        .send(session_command::RemoteGetActor::<EchoServer>::new(
+            ActorRef::Index(address.index()),
+        ))
         .await?
         .await??;
     assert_eq!(remote, duplicate);

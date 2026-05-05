@@ -131,7 +131,7 @@ pub use acktor_derive::{Message, MessageResponse};
 pub use acktor_derive::{MessageId, StableId};
 #[cfg(all(feature = "derive", feature = "ipc"))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "ipc"))))]
-pub use acktor_derive::{/* RemoteAddressable,*/ remote};
+pub use acktor_derive::{RemoteAddressable, remote};
 
 // re-export for use in derived code
 

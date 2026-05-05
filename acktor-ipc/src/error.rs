@@ -67,7 +67,7 @@ pub enum SessionError {
     #[error("could not create the actor on behalf of the remote node")]
     CreateActorFailed(#[source] BoxError),
 
-    #[error("could not find actor {0} in the current process")]
+    #[error("could not find actor {0}")]
     ActorNotFound(String),
 
     #[error("could not handle inbound remote message")]

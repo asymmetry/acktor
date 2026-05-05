@@ -17,7 +17,7 @@ use tokio::time::{Duration, Instant};
 use tracing::{Instrument, debug, info, warn};
 
 use acktor::{
-    Actor, ActorContext, ActorId, Address, ErrorReport, Handler, Message, Sender, SenderInfo,
+    Actor, ActorContext, Address, ErrorReport, Handler, Message, Sender, SenderInfo,
     channel::oneshot,
     message::FutureMessageResult,
     utils::{ShortName, debug_trace},
@@ -159,13 +159,9 @@ impl Session {
             as Arc<dyn DecodeContext + Send + Sync>
     }
 
-    fn find_mailbox(&self, actor_id: ActorId) -> Result<RemoteMailbox> {
-        if actor_id.is_remote() {
-            return Err(DecodeError::DecodeRemoteAddress.into());
-        }
-
+    fn find_mailbox(&self, actor_id: u64) -> Result<RemoteMailbox> {
         self.registry
-            .get(actor_id.as_local())
+            .get(actor_id)
             .ok_or_else(|| SessionError::ActorNotFound(actor_id.to_string()))
     }
 
@@ -240,7 +236,7 @@ impl Session {
                 let result = match actor {
                     Some(proto_utils::ActorRef { r#ref }) => match r#ref {
                         Some(proto_utils::ActorRefType::Index(actor_id)) => {
-                            self.find_mailbox(ActorId::new(actor_id))
+                            self.find_mailbox(actor_id)
                         }
                         Some(proto_utils::ActorRefType::Label(label)) => {
                             self.find_mailbox_by_label(label).await
@@ -289,8 +285,6 @@ impl Session {
             message,
             tag,
         } = message;
-
-        let actor_id = ActorId::new(actor_id);
 
         match tag {
             Some(tag) => {

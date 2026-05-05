@@ -170,7 +170,7 @@ impl ActorContext<Node> for NodeContext {
                     }
                 },
                 LoopEvent::Accept(Ok(connection), label) => {
-                    debug!("Accepted a new connection from {}", label);
+                    debug!("Accepted a new connection on listener {}", label);
                     if let Err(e) = actor.create_session(connection, None, self).await {
                         warn!("Could not create new session: {}", e.report());
                     }
@@ -178,7 +178,11 @@ impl ActorContext<Node> for NodeContext {
                 LoopEvent::Accept(Err(e), label) => {
                     // IO error is normal when accepting connections, so we just log it and
                     // continue accepting new connections.
-                    warn!("Could not accept connection from {}: {}", label, e.report(),);
+                    warn!(
+                        "Could not accept connection on listener {}: {}",
+                        label,
+                        e.report(),
+                    );
                 }
                 LoopEvent::ListenerPanicked(e, label) => {
                     warn!("Listener {} panicked, terminate the actor: {}", label, e);

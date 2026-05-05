@@ -6,8 +6,8 @@ use crate::stable_type_id::StableId;
 
 /// An actor which can be reached from other processes.
 ///
-/// To make an actor reachable, the user should implement [`Codec`] trait,
-/// [`Handler<BinaryMessage>`] trait and [`StableId`] trait for it.
+/// To make an actor reachable, the user should implement [`Codec`] trait and
+/// [`Handler<BinaryMessage>`] trait for it.
 ///
 /// The [`Codec`] trait provides a [`CodecTable`][crate::codec::CodecTable], which is mandatory
 /// when sending messages to a remote addressable actor from other processes. Each message type
@@ -22,11 +22,6 @@ use crate::stable_type_id::StableId;
 /// binary message to a concrete message type, handle it with the corresponding handler, and
 /// encode the message response (if any) to bytes and send it back to the sender.
 ///
-/// The [`StableId`] trait gives the actor a stable unique type identifier. This is required by
-/// message types which has type generic parameters (e.g.
-/// [`SupervisonEvent<A>`][crate::supervisor::SupervisionEvent]) to receive a message id by
-/// deriving the [`MessageId`][crate::message::MessageId] trait.
-///
 /// # Implementation
 ///
 /// **Do not implement this trait yourself!** Instead, use
@@ -34,16 +29,17 @@ use crate::stable_type_id::StableId;
 /// [`#[remote]`][acktor_derive::remote] attribute macro.
 ///
 /// [`#[derive(RemoteAddressable)]`][acktor_derive::RemoteAddressable] will
-/// emit implementations for all three required supertraits as well as the marker trait itself.
+/// emit implementations for both required supertraits as well as the `RemoteAddressable` trait
+/// itself.
 ///
 /// The [`#[remote]`][acktor_derive::remote] attribute macro is used to annotate the
 /// `impl Actor for MyActor` block to override the `remote_mailbox` method. This internal method
-/// is used to return a [`RemoteMailbox`] for a remote addressable actor. It is a temporary
-/// workaround since specialization is not yet stable in Rust.
-pub trait RemoteAddressable: Actor + Codec + Handler<BinaryMessage> + StableId {}
+/// is used to return a [`RemoteMailbox`][crate::address::RemoteMailbox] for a remote addressable
+/// actor. It is a temporary workaround since specialization is not yet stable in Rust.
+pub trait RemoteAddressable: Actor + Codec + Handler<BinaryMessage> {}
 
 /// An actor type which can be created from another process.
-pub trait RemoteSpawnable: RemoteAddressable {
+pub trait RemoteSpawnable: RemoteAddressable + StableId {
     /// Creates an instance of this actor with the given label and config string.
     ///
     /// Implementations typically call [`Actor::start`] or [`Actor::create`] internally.

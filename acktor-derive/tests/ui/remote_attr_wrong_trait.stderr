@@ -1,0 +1,5 @@
+error: #[remote] must be applied to an `impl Actor for ..` block
+ --> tests/ui/remote_attr_wrong_trait.rs:8:6
+  |
+8 | impl NotActor for MyActor {}
+  |      ^^^^^^^^
