@@ -14,7 +14,7 @@ use crate::codec::{DecodeContext, EncodeContext};
 /// - The message sent via an [`Address`][crate::address::Address], if the address is a remote
 ///   address, the message will be encoded to a `BinaryMessage` and the runtime will route the
 ///   `bytes` part to the proper remote process.
-/// - The binary message recieved by the runtime will be parsed as a `BinaryMessage` and be routed
+/// - The binary message received by the runtime will be parsed as a `BinaryMessage` and be routed
 ///   to the proper local actor to handle it.
 ///
 /// It carries optional encode and decode contexts which can be used to decode the message and

@@ -17,7 +17,7 @@ use crate::stable_type_id::StableId;
 /// [`Address`][crate::address::Address] for more details on how the table is used to encode
 /// messages.
 ///
-/// The [`Handler<BinaryMessage>`] trait defines how a remote addressible actor handles inbound
+/// The [`Handler<BinaryMessage>`] trait defines how a remote addressable actor handles inbound
 /// binary messages received from other processes. The actor should decode the byte array in the
 /// binary message to a concrete message type, handle it with the corresponding handler, and
 /// encode the message response (if any) to bytes and send it back to the sender.
