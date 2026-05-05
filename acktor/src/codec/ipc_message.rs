@@ -27,3 +27,24 @@ impl Decode for IpcMessage {
         prost::Message::decode(buf).map_err(Into::into)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use acktor_ipc_proto::message::ActorMessage;
+
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_ipc_message() -> anyhow::Result<()> {
+        let value =
+            IpcMessage::actor_message(ActorMessage::send(1, 2, Bytes::from_static(b"hello"), 3));
+
+        let buf = value.encode_to_bytes(None)?;
+        let decoded = IpcMessage::decode(buf, None)?;
+        assert_eq!(value, decoded);
+
+        Ok(())
+    }
+}

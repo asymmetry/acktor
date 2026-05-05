@@ -716,3 +716,176 @@ where
         Self::new(Arc::new(recipient))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use pretty_assertions::assert_eq;
+    use tokio::time;
+
+    use super::*;
+    use crate::codec::Codec;
+    use crate::utils::test_utils::{Dummy, DummyProxy, Ping};
+
+    /// A message with no codec registered in `Dummy`'s codec table — used to exercise the
+    /// `NoEncodeFn` error path.
+    #[derive(Debug)]
+    struct Unknown;
+
+    impl Message for Unknown {
+        type Result = ();
+    }
+
+    #[tokio::test]
+    async fn test_remote_address() -> Result<()> {
+        let proxy = DummyProxy::new();
+        let address = RemoteAddress::new(7, Dummy::codec_table(), proxy.clone());
+
+        assert_eq!(
+            address.index(),
+            ActorId::new_remote(7, NonZeroU64::new(42).unwrap())
+        );
+
+        // clone
+        let cloned = address.clone();
+        assert_eq!(cloned.index(), address.index());
+
+        // properties
+        assert!(address.index().is_remote());
+        assert!(!address.is_closed());
+        assert_eq!(address.capacity(), usize::MAX);
+
+        // send functions
+        address.send(Ping(1)).await?.await?;
+        address.do_send(Ping(2)).await?;
+        address.try_send(Ping(3))?.await?;
+        address.try_do_send(Ping(4))?;
+        address
+            .send_timeout(Ping(5), Duration::from_millis(100))
+            .await?
+            .await?;
+        address
+            .do_send_timeout(Ping(6), Duration::from_millis(100))
+            .await?;
+        let address = tokio::task::spawn_blocking(move || -> Result<RemoteAddress> {
+            address.blocking_send(Ping(7))?.blocking_recv()?;
+            address.blocking_do_send(Ping(8))?;
+            Ok(address)
+        })
+        .await??;
+
+        // closed
+        let closed = address.closed();
+        time::timeout(Duration::from_millis(500), closed).await?;
+
+        let index = address.index();
+        let address: super::super::Address<Dummy> = address.into();
+        assert_eq!(address.index(), index);
+
+        let address = RemoteAddress::new(7, Dummy::codec_table(), proxy.clone());
+        assert!(matches!(
+            address.do_send(Unknown).await,
+            Err(SendError::NoEncodeFn(_))
+        ));
+        assert!(matches!(
+            address.send(Unknown).await,
+            Err(SendError::NoEncodeFn(_))
+        ));
+        assert!(matches!(
+            address.try_do_send(Unknown),
+            Err(SendError::NoEncodeFn(_))
+        ));
+        assert!(matches!(
+            address.try_send(Unknown),
+            Err(SendError::NoEncodeFn(_))
+        ));
+        assert!(matches!(
+            address
+                .do_send_timeout(Unknown, Duration::from_millis(100))
+                .await,
+            Err(SendError::NoEncodeFn(_))
+        ));
+        assert!(matches!(
+            address
+                .send_timeout(Unknown, Duration::from_millis(100))
+                .await,
+            Err(SendError::NoEncodeFn(_))
+        ));
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            assert!(matches!(
+                address.blocking_do_send(Unknown),
+                Err(SendError::NoEncodeFn(_))
+            ));
+            assert!(matches!(
+                address.blocking_send(Unknown),
+                Err(SendError::NoEncodeFn(_))
+            ));
+            Ok(())
+        })
+        .await??;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_remote_recipient() -> Result<()> {
+        let proxy = DummyProxy::new();
+        let raw = RemoteRecipient::<Ping>::new(7, proxy.clone());
+
+        assert_eq!(
+            raw.index(),
+            ActorId::new_remote(7, NonZeroU64::new(42).unwrap())
+        );
+
+        // clone
+        assert_eq!(raw.clone().index(), raw.index());
+
+        // properties
+        assert!(raw.index().is_remote());
+        assert!(!raw.is_closed());
+        assert_eq!(raw.capacity(), usize::MAX);
+
+        // send functions
+        let recipient: Recipient<Ping> = raw.into();
+        recipient.send(Ping(1)).await?.await?;
+        recipient.do_send(Ping(2)).await?;
+        recipient.try_send(Ping(3))?.await?;
+        recipient.try_do_send(Ping(4))?;
+        recipient
+            .send_timeout(Ping(5), Duration::from_millis(100))
+            .await?
+            .await?;
+        recipient
+            .do_send_timeout(Ping(6), Duration::from_millis(100))
+            .await?;
+        let recipient = tokio::task::spawn_blocking(move || -> Result<Recipient<Ping>> {
+            recipient.blocking_send(Ping(7))?.blocking_recv()?;
+            recipient.blocking_do_send(Ping(8))?;
+            Ok(recipient)
+        })
+        .await??;
+
+        // closed
+        let closed = recipient.closed();
+        time::timeout(Duration::from_millis(500), closed).await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_debug_fmt() {
+        let proxy = DummyProxy::new();
+
+        let address = RemoteAddress::new(7, Dummy::codec_table(), proxy.clone());
+        assert_eq!(
+            format!("{:?}", address),
+            format!("RemoteAddress({})", address.index())
+        );
+
+        let recipient = RemoteRecipient::<Ping>::new(7, proxy.clone());
+        assert_eq!(
+            format!("{:?}", recipient),
+            format!("RemoteRecipient<Ping>({})", recipient.index())
+        );
+    }
+}

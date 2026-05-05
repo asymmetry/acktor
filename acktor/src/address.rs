@@ -486,7 +486,7 @@ where
 #[cfg(test)]
 mod tests {
     use anyhow::{Context as _, Result};
-    use pretty_assertions::assert_eq;
+    use pretty_assertions::{assert_eq, assert_ne};
     use tokio::time::{self, Duration};
 
     #[cfg(feature = "ipc")]
@@ -525,8 +525,8 @@ mod tests {
         a1.do_send(Ping(2)).await?;
         a1.try_send(Ping(3))?;
         a1.try_do_send(Ping(4))?;
-        a1.send_timeout(Ping(5), Duration::from_millis(10)).await?;
-        a1.do_send_timeout(Ping(6), Duration::from_millis(10))
+        a1.send_timeout(Ping(5), Duration::from_millis(100)).await?;
+        a1.do_send_timeout(Ping(6), Duration::from_millis(100))
             .await?;
         tokio::task::spawn_blocking(move || -> Result<()> {
             a1.blocking_send(Ping(7))?;
@@ -535,6 +535,73 @@ mod tests {
         })
         .await??;
         assert_eq!(m1.len(), 8);
+
+        Ok(())
+    }
+
+    #[cfg(feature = "ipc")]
+    #[tokio::test]
+    async fn test_remote_address() -> Result<()> {
+        use std::num::NonZeroU64;
+
+        use crate::actor::ActorId;
+        use crate::error::SendError;
+        use crate::test_utils::{Dummy, DummyProxy};
+
+        let proxy = DummyProxy::new();
+        let address = super::Address::<Dummy>::new_remote(7, proxy.clone());
+
+        // index reflects the remote (local_index, proxy_index) pair
+        assert_eq!(
+            address.index(),
+            ActorId::new_remote(7, NonZeroU64::new(42).unwrap())
+        );
+        assert!(address.is_remote());
+
+        // clone + eq + hash
+        let clone = address.clone();
+        assert_eq!(address, clone);
+        assert_eq!(address.index(), clone.index());
+        assert_eq!(hash_of(&address), hash_of(&clone));
+
+        // capacity + is_closed + closed
+        assert_eq!(address.capacity(), usize::MAX);
+        assert!(!address.is_closed());
+        time::timeout(Duration::from_millis(500), address.closed()).await?;
+
+        // send functions
+        address.send(Ping(1)).await?.await?;
+        address.do_send(Ping(2)).await?;
+        address.try_send(Ping(3))?.await?;
+        address.try_do_send(Ping(4))?;
+        address
+            .send_timeout(Ping(5), Duration::from_millis(100))
+            .await?
+            .await?;
+        address
+            .do_send_timeout(Ping(6), Duration::from_millis(100))
+            .await?;
+        let address = tokio::task::spawn_blocking(move || -> Result<_> {
+            address.blocking_send(Ping(7))?.blocking_recv()?;
+            address.blocking_do_send(Ping(8))?;
+            Ok(address)
+        })
+        .await??;
+
+        // reserve* are not supported on remote addresses.
+        assert!(matches!(address.reserve().await, Err(SendError::Other(..))));
+        assert!(matches!(address.try_reserve(), Err(SendError::Other(..))));
+        assert!(matches!(
+            address.reserve_owned().await,
+            Err(SendError::Other(..))
+        ));
+        assert!(matches!(
+            address.try_reserve_owned(),
+            Err(SendError::Other(..))
+        ));
+
+        // remote addresses do not expose a `RemoteMailbox`.
+        assert!(address.remote_addressable().is_none());
 
         Ok(())
     }

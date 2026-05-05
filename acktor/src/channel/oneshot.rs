@@ -202,13 +202,13 @@ mod tests {
     async fn test_recv_timeout() -> Result<()> {
         let (tx, mut rx) = channel::<u32>();
         assert!(matches!(
-            rx.recv_timeout(Duration::from_millis(10)).await,
+            rx.recv_timeout(Duration::from_millis(100)).await,
             Err(RecvError::Timeout)
         ));
 
         // receiver remains usable after timeout
         tx.send(99)?;
-        assert_eq!(rx.recv_timeout(Duration::from_millis(10)).await?, 99);
+        assert_eq!(rx.recv_timeout(Duration::from_millis(100)).await?, 99);
 
         Ok(())
     }

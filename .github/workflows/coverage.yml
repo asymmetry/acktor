@@ -26,7 +26,7 @@ jobs:
       - name: generate code coverage
         run: |
           cargo llvm-cov clean --workspace
-          cargo llvm-cov --no-report --workspace
+          cargo llvm-cov --no-report --features="ipc" --workspace
           cargo llvm-cov --no-report --all-features --workspace
           cargo llvm-cov report --lcov --output-path lcov.info
         env:

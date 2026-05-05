@@ -64,7 +64,7 @@ async fn test_unpack_message() -> Result<()> {
             expense: Duration::from_millis(100),
             value: 99,
         },
-        Duration::from_millis(50),
+        Duration::from_millis(10),
     );
     let recovered = match address.try_send(timed) {
         Ok(_) => panic!("send should fail after the actor is terminated"),
@@ -73,7 +73,7 @@ async fn test_unpack_message() -> Result<()> {
     };
     let (work, budget) = recovered.into_parts();
     assert_eq!(work.value, 99);
-    assert_eq!(budget, Duration::from_millis(50));
+    assert_eq!(budget, Duration::from_millis(10));
 
     Ok(())
 }

@@ -302,9 +302,12 @@ mod tests {
     #[test]
     fn test_debug_fmt() {
         let result = MessageResult::<M<i32>>(42);
-        assert_eq!(format!("{result:?}"), "MessageResult<M<i32>>");
+        assert_eq!(format!("{:?}", result), "MessageResult<M<i32>>");
 
         let future_result = FutureMessageResult::<M<i32>>::new(async { 42 });
-        assert_eq!(format!("{future_result:?}"), "FutureMessageResult<M<i32>>");
+        assert_eq!(
+            format!("{:?}", future_result),
+            "FutureMessageResult<M<i32>>"
+        );
     }
 }

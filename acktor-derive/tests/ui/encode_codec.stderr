@@ -1,7 +1,13 @@
 error: missing required attribute `#[codec(method)]`, where `method` is one of `prost`, `zerocopy`, `rkyv`, optionally followed by a bridge type: `#[codec(method, Bridge)]`
- --> tests/ui/encode_missing_codec.rs:3:10
+ --> tests/ui/encode_codec.rs:3:10
   |
-3 | #[derive(Encode)]
+3 | #[derive(Encode)] // missing codec
   |          ^^^^^^
   |
   = note: this error originates in the derive macro `Encode` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: unknown codec method, expected one of: `prost`, `zerocopy`, `rkyv`
+ --> tests/ui/encode_codec.rs:7:9
+  |
+7 | #[codec(json)] // unknown codec
+  |         ^^^^

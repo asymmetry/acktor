@@ -1,0 +1,17 @@
+error: expected `impl`
+ --> tests/ui/remote_attr.rs:4:1
+  |
+4 | struct NotAnImpl; // not impl
+  | ^^^^^^
+
+error: #[remote] must be applied to an `impl Actor for ..` block
+  --> tests/ui/remote_attr.rs:11:6
+   |
+11 | impl NotActor for MyActor {} // wrong trait
+   |      ^^^^^^^^
+
+error: #[remote] must be applied to an `impl Actor for ..` block
+  --> tests/ui/remote_attr.rs:14:6
+   |
+14 | impl MyActor {} // not a trait
+   |      ^^^^^^^

@@ -1,4 +1,4 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{Token, Type, punctuated::Punctuated};
 
@@ -8,8 +8,8 @@ fn parse_message_list(ast: &syn::DeriveInput) -> syn::Result<Vec<Type>> {
         .iter()
         .find(|a| a.path().is_ident("message"))
         .ok_or_else(|| {
-            syn::Error::new_spanned(
-                ast,
+            syn::Error::new(
+                Span::call_site(),
                 "`#[derive(RemoteAddressable)]` requires a `#[message(..)]` attribute listing at \
              least one message type",
             )
@@ -214,6 +214,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
+    use pretty_assertions::assert_eq;
 
     use super::*;
 

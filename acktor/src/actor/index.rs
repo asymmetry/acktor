@@ -64,8 +64,8 @@ mod tests {
     fn test_local_id() {
         let id = ActorId::new(42);
         assert_eq!(id.as_local(), 42);
-        assert_eq!(format!("{id:?}"), "42");
-        assert_eq!(format!("{id}"), "42");
+        assert_eq!(format!("{:?}", id), "42");
+        assert_eq!(format!("{}", id), "42");
         assert!(ActorId::new(1) < ActorId::new(2));
         assert_eq!(ActorId::new(1), ActorId::new(1));
     }
@@ -76,7 +76,7 @@ mod tests {
         let remote = ActorId::new_remote(3, std::num::NonZeroU64::new(5).unwrap());
         assert!(remote.is_remote());
         assert_eq!(remote.as_local(), 3);
-        assert_eq!(format!("{remote:?}"), "3@5");
+        assert_eq!(format!("{:?}", remote), "3@5");
         assert!(!ActorId::new(3).is_remote());
     }
 }

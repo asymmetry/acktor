@@ -43,17 +43,15 @@ macro_rules! impl_encode_decode_for {
 impl Encode for () {
     #[inline]
     fn encoded_len(&self) -> usize {
-        1
+        0
     }
 
     #[inline]
     fn encode(
         &self,
-        buf: &mut BytesMut,
+        _buf: &mut BytesMut,
         _ctx: Option<&dyn EncodeContext>,
     ) -> Result<(), EncodeError> {
-        buf.extend_from_slice(&[0]);
-
         Ok(())
     }
 }
@@ -200,6 +198,10 @@ macro_rules! impl_encode_decode_for_vec {
         impl Decode for Vec<$type> {
             #[inline]
             fn decode(buf: Bytes, _ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
+                if buf.is_empty() {
+                    return Ok(Vec::new());
+                }
+
                 Ok(Ref::<_, [$type]>::from_bytes(buf.as_ref())?.to_vec())
             }
         }
@@ -227,6 +229,10 @@ impl Encode for Vec<bool> {
 impl Decode for Vec<bool> {
     #[inline]
     fn decode(buf: Bytes, _ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
+        if buf.is_empty() {
+            return Ok(Vec::new());
+        }
+
         Ok(buf.iter().map(|&b| b != 0).collect())
     }
 }
@@ -264,9 +270,13 @@ impl Encode for Vec<isize> {
 impl Decode for Vec<isize> {
     #[inline]
     fn decode(buf: Bytes, _ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
+        if buf.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let vec: Vec<i64> = Ref::<_, [i64]>::from_bytes(buf.as_ref())?.to_vec();
         vec.into_iter()
-            .map(|v| isize::try_from(v).map_err(|e| e.to_string().into()))
+            .map(|v| isize::try_from(v).map_err(DecodeError::other))
             .collect()
     }
 }
@@ -293,9 +303,13 @@ impl Encode for Vec<usize> {
 impl Decode for Vec<usize> {
     #[inline]
     fn decode(buf: Bytes, _ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
+        if buf.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let vec: Vec<u64> = Ref::<_, [u64]>::from_bytes(buf.as_ref())?.to_vec();
         vec.into_iter()
-            .map(|v| usize::try_from(v).map_err(|e| e.to_string().into()))
+            .map(|v| usize::try_from(v).map_err(DecodeError::other))
             .collect()
     }
 }

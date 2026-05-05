@@ -102,6 +102,7 @@ fn combine_const_param(ident: &syn::Ident, ty: &Type) -> syn::Result<TokenStream
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
 
     fn input(src: &str) -> syn::DeriveInput {
         syn::parse_str(src).unwrap()

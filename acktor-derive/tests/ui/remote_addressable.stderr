@@ -1,0 +1,13 @@
+error: `#[message(..)]` requires at least one message type
+ --> tests/ui/remote_addressable.rs:4:1
+  |
+4 | #[message()] // empty message list
+  | ^^^^^^^^^^^^
+
+error: `#[derive(RemoteAddressable)]` requires a `#[message(..)]` attribute listing at least one message type
+ --> tests/ui/remote_addressable.rs:7:10
+  |
+7 | #[derive(RemoteAddressable)] // missing message list
+  |          ^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the derive macro `RemoteAddressable` (in Nightly builds, run with -Z macro-backtrace for more info)

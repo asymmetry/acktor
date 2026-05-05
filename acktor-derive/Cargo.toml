@@ -28,6 +28,7 @@ syn = { version = "2.0", features = ["full"] }
 
 [dev-dependencies]
 anyhow.workspace = true
+pretty_assertions.workspace = true
 trybuild = "1.0"
 
 [[test]]

@@ -708,6 +708,8 @@ mod tests {
     }
 
     mod construction {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -726,6 +728,8 @@ mod tests {
     }
 
     mod capacity {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -769,6 +773,8 @@ mod tests {
     }
 
     mod insert {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -802,6 +808,8 @@ mod tests {
     }
 
     mod get {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -877,6 +885,8 @@ mod tests {
     }
 
     mod modify {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -935,6 +945,8 @@ mod tests {
     }
 
     mod remove {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -1003,6 +1015,8 @@ mod tests {
     }
 
     mod iter {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -1149,6 +1163,8 @@ mod tests {
     }
 
     mod entry {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -1382,6 +1398,8 @@ mod tests {
     }
 
     mod traits {
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]

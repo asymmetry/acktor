@@ -1,13 +1,13 @@
 error: StableId derive only supports legal const generic parameter types
- --> tests/ui/stable_id_wrong_const_param.rs:4:21
+ --> tests/ui/stable_id_const_generics.rs:4:21
   |
-4 | struct Bad<const N: [u8; 4]>;
+4 | struct Bad<const N: [u8; 4]>; // wrong const generic type
   |                     ^^^^^^^
 
 error: `[u8; 4]` is forbidden as the type of a const generic parameter
- --> tests/ui/stable_id_wrong_const_param.rs:4:21
+ --> tests/ui/stable_id_const_generics.rs:4:21
   |
-4 | struct Bad<const N: [u8; 4]>;
+4 | struct Bad<const N: [u8; 4]>; // wrong const generic type
   |                     ^^^^^^^
   |
   = note: the only supported types are integers, `bool`, and `char`

@@ -15,14 +15,14 @@ pub enum EncodeError {
     #[error("remote address should not be encoded into a message")]
     EncodeRemoteAddress,
 
-    #[error("the actor is not remote accessible")]
-    NotRemoteAccessible,
+    #[error("the actor is not remote addressable")]
+    NotRemoteAddressable,
 
     #[error(transparent)]
     ProstEncodeError(#[from] prost::EncodeError),
 
     #[error("could not encode the message")]
-    Other(BoxError),
+    Other(#[source] BoxError),
 }
 
 impl EncodeError {
@@ -75,7 +75,7 @@ pub enum DecodeError {
     ZerocopyError(String),
 
     #[error("could not decode the message")]
-    Other(BoxError),
+    Other(#[source] BoxError),
 }
 
 impl DecodeError {

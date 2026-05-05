@@ -85,14 +85,14 @@ async fn test_basic() -> Result<()> {
 
     // test send_timeout
     let result = address
-        .send_timeout(Arithmetic::Multiply(2), Duration::from_millis(10))
+        .send_timeout(Arithmetic::Multiply(2), Duration::from_millis(100))
         .await?
         .await?;
     assert_eq!(result.0, -22);
 
     // test do_send_timeout
     address
-        .do_send_timeout(Arithmetic::Divide(2), Duration::from_millis(10))
+        .do_send_timeout(Arithmetic::Divide(2), Duration::from_millis(100))
         .await?;
     let result = address.send(Command::Get).await?.await?;
     assert_eq!(result, -11);

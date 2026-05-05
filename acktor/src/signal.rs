@@ -79,6 +79,8 @@ impl crate::stable_type_id::StableId for Signal {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]

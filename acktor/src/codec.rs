@@ -88,7 +88,7 @@ where
         } else {
             ctx.register(
                 self.remote_mailbox()
-                    .ok_or(EncodeError::NotRemoteAccessible)?,
+                    .ok_or(EncodeError::NotRemoteAddressable)?,
             )
         }
     }
@@ -146,7 +146,7 @@ where
         } else {
             ctx.register(
                 self.remote_mailbox()
-                    .ok_or(EncodeError::NotRemoteAccessible)?,
+                    .ok_or(EncodeError::NotRemoteAddressable)?,
             )
         }
     }
@@ -196,137 +196,193 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
+    use std::fmt::Debug;
+    use std::sync::Arc;
+
+    use pretty_assertions::assert_eq;
+
     use super::*;
+    use crate::utils::test_utils::{Dummy, DummyProxy, Ping, make_address};
 
-    macro_rules! create_test {
-        ($name:ident, $type:ty, $value:expr) => {
-            #[test]
-            fn $name() -> anyhow::Result<()> {
-                let value = $value;
-                let buf = Encode::encode_to_bytes(&value, None)?;
-                let decoded = <$type as Decode>::decode(buf, None)?;
-                assert_eq!(value, decoded);
+    fn roundtrip<T>(value: T) -> anyhow::Result<()>
+    where
+        T: Encode + Decode + PartialEq + Debug,
+    {
+        let expected_len = value.encoded_len();
+        let mut buf = BytesMut::with_capacity(expected_len);
+        value.encode(&mut buf, None)?;
+        let buf = buf.freeze();
+        assert_eq!(buf.len(), expected_len);
 
-                Ok(())
-            }
-        };
+        let direct = value.encode_to_bytes(None)?;
+        assert_eq!(direct.len(), expected_len);
+        assert_eq!(buf, direct);
+
+        let decoded = T::decode(buf, None)?;
+        assert_eq!(value, decoded);
+
+        Ok(())
     }
 
-    create_test!(test_unit, (), ());
-    create_test!(test_bool, bool, true);
-    create_test!(test_u8, u8, 42_u8);
-    create_test!(test_u16, u16, 4242_u16);
-    create_test!(test_u32, u32, 424242_u32);
-    create_test!(test_u64, u64, 42424242_u64);
-    create_test!(test_usize, usize, 4242424242_usize);
-    create_test!(test_i8, i8, -42_i8);
-    create_test!(test_i16, i16, -4242_i16);
-    create_test!(test_i32, i32, -424242_i32);
-    create_test!(test_i64, i64, -42424242_i64);
-    create_test!(test_isize, isize, -4242424242_isize);
-    create_test!(test_f32, f32, 42.42_f32);
-    create_test!(test_f64, f64, 42.42_f64);
-    create_test!(test_string, String, "hello".to_string());
+    #[test]
+    fn test_primitive() -> anyhow::Result<()> {
+        roundtrip(())?;
+        roundtrip(true)?;
+        roundtrip(42_u8)?;
+        roundtrip(4242_u16)?;
+        roundtrip(424242_u32)?;
+        roundtrip(42424242_u64)?;
+        roundtrip(4242424242_usize)?;
+        roundtrip(-42_i8)?;
+        roundtrip(-4242_i16)?;
+        roundtrip(-424242_i32)?;
+        roundtrip(-42424242_i64)?;
+        roundtrip(-4242424242_isize)?;
+        roundtrip(42.42_f32)?;
+        roundtrip(42.42_f64)?;
+        roundtrip("hello".to_string())?;
 
-    create_test!(test_vec_bool, Vec<bool>, vec![true, false, true]);
-    create_test!(test_vec_u8, Vec<u8>, vec![42_u8, 42_u8, 42_u8]);
-    create_test!(test_vec_u16, Vec<u16>, vec![4242_u16, 4242_u16, 4242_u16]);
-    create_test!(
-        test_vec_u32,
-        Vec<u32>,
-        vec![424242_u32, 424242_u32, 424242_u32]
-    );
-    create_test!(
-        test_vec_u64,
-        Vec<u64>,
-        vec![42424242_u64, 42424242_u64, 42424242_u64]
-    );
-    create_test!(
-        test_vec_usize,
-        Vec<usize>,
-        vec![4242424242_usize, 4242424242_usize, 4242424242_usize]
-    );
-    create_test!(test_vec_i8, Vec<i8>, vec![-42_i8, -42_i8, -42_i8]);
-    create_test!(
-        test_vec_i16,
-        Vec<i16>,
-        vec![-4242_i16, -4242_i16, -4242_i16]
-    );
-    create_test!(
-        test_vec_i32,
-        Vec<i32>,
-        vec![-424242_i32, -424242_i32, -424242_i32]
-    );
-    create_test!(
-        test_vec_i64,
-        Vec<i64>,
-        vec![-42424242_i64, -42424242_i64, -42424242_i64]
-    );
-    create_test!(
-        test_vec_isize,
-        Vec<isize>,
-        vec![-4242424242_isize, -4242424242_isize, -4242424242_isize]
-    );
-    create_test!(
-        test_vec_f32,
-        Vec<f32>,
-        vec![42.42_f32, 42.42_f32, 42.42_f32]
-    );
-    create_test!(
-        test_vec_f64,
-        Vec<f64>,
-        vec![42.42_f64, 42.42_f64, 42.42_f64]
-    );
-
-    create_test!(test_option_none, Option<u16>, None::<u16>);
-    create_test!(test_option_some, Option<u16>, Some(4242_u16));
-
-    create_test!(test_result_ok, Result<u32, String>, Ok::<u32, String>(424242_u32));
-    create_test!(test_result_err, Result<u32, String>, Err::<u32, String>("hello".into()));
-    create_test!(
-        test_result_nested_option,
-        Result<Option<u32>, String>,
-        Ok::<Option<u32>, String>(Some(424242_u32))
-    );
-
-    create_test!(
-        test_box_vec,
-        Box<Vec<u16>>,
-        Box::new(vec![4242_u16, 4242_u16, 4242_u16])
-    );
-    create_test!(
-        test_arc_string,
-        std::sync::Arc<String>,
-        std::sync::Arc::new("hello".to_string())
-    );
-
-    create_test!(test_tuple2, (u32, String), (42_u32, "hello".to_string()));
-    create_test!(
-        test_tuple4,
-        (i64, bool, String, Option<u16>),
-        (-42424242_i64, true, "hello".to_string(), Some(4242_u16))
-    );
-    create_test!(
-        test_nested_tuple,
-        (u8, (i32, String)),
-        (42_u8, (-424242_i32, "hello".to_string()))
-    );
+        Ok(())
+    }
 
     #[test]
-    fn test_result_string() -> anyhow::Result<()> {
-        for value in [
-            Ok::<String, String>("hello".to_string()),
-            Err::<String, String>("boom".to_string()),
-        ] {
-            let expected_len = value.encoded_len();
-            let mut buf = BytesMut::with_capacity(expected_len);
-            value.encode(&mut buf, None)?;
-            assert_eq!(buf.len(), expected_len);
+    fn test_vector() -> anyhow::Result<()> {
+        roundtrip(vec![true, false, true])?;
+        roundtrip(vec![42_u8, 42_u8, 42_u8])?;
+        roundtrip(vec![4242_u16, 4242_u16, 4242_u16])?;
+        roundtrip(vec![424242_u32, 424242_u32, 424242_u32])?;
+        roundtrip(vec![42424242_u64, 42424242_u64, 42424242_u64])?;
+        roundtrip(vec![42424242_usize, 42424242_usize, 42424242_usize])?;
+        roundtrip(vec![-42_i8, -42_i8, -42_i8])?;
+        roundtrip(vec![-4242_i16, -4242_i16, -4242_i16])?;
+        roundtrip(vec![-424242_i32, -424242_i32, -424242_i32])?;
+        roundtrip(vec![-42424242_i64, -42424242_i64, -42424242_i64])?;
+        roundtrip(vec![-42424242_isize, -42424242_isize, -42424242_isize])?;
+        roundtrip(vec![42.42_f32, 42.42_f32, 42.42_f32])?;
+        roundtrip(vec![42.42_f64, 42.42_f64, 42.42_f64])?;
+        // empty vector
+        roundtrip(Vec::<bool>::new())?;
+        roundtrip(Vec::<u16>::new())?;
+        roundtrip(Vec::<f32>::new())?;
+        roundtrip(Vec::<usize>::new())?;
+        roundtrip(Vec::<isize>::new())?;
 
-            let decoded = <Result<String, String> as Decode>::decode(buf.freeze(), None)?;
-            assert_eq!(value, decoded);
+        Ok(())
+    }
+
+    #[test]
+    fn test_option() -> anyhow::Result<()> {
+        roundtrip(None::<u16>)?;
+        roundtrip(Some(4242_u16))?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_result() -> anyhow::Result<()> {
+        roundtrip(Ok::<String, String>("hello".to_string()))?;
+        roundtrip(Err::<String, String>("boom".to_string()))?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_smart_pointer() -> anyhow::Result<()> {
+        roundtrip(Box::new(vec![4242_u16, 4242_u16, 4242_u16]))?;
+        roundtrip(Arc::new(vec![4242_u16, 4242_u16, 4242_u16]))?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tuple() -> anyhow::Result<()> {
+        roundtrip((42_u32, "hello".to_string()))?;
+        roundtrip((-42424242_i64, true, "hello".to_string(), Some(4242_u16)))?;
+        // tuple in tuple
+        roundtrip((42_u8, (-424242_i32, "hello".to_string())))?;
+
+        #[cfg(not(feature = "prost-codec"))]
+        {
+            use crate::error::ErrorReport;
+
+            let bad: Bytes = vec![0_u8, 1_u8, 2_u8].into();
+            let result = <(u32, u32)>::decode(bad, None);
+            assert_eq!(
+                result.unwrap_err().report(),
+                "could not decode the message: missing the tuple element length"
+            );
+
+            let bad: Bytes = vec![0xff_u8, 0xff_u8, 0xff_u8, 0xff_u8, 42_u8].into();
+            let result = <(u32, u32)>::decode(bad, None);
+            assert_eq!(
+                result.unwrap_err().report(),
+                "could not decode the message: missing the tuple element data"
+            );
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_address() -> anyhow::Result<()> {
+        use crate::error::ErrorReport;
+
+        let proxy = DummyProxy::new();
+
+        let (address, _) = make_address(1);
+
+        let expected_len = address.encoded_len();
+        let mut buf = BytesMut::with_capacity(expected_len);
+        address.encode(&mut buf, proxy.encode_context())?;
+        let buf = buf.freeze();
+        assert_eq!(buf.len(), expected_len);
+
+        let direct = address.encode_to_bytes(proxy.encode_context())?;
+        assert_eq!(direct.len(), expected_len);
+        assert_eq!(buf, direct);
+
+        let decoded = Address::<Dummy>::decode(buf, proxy.decode_context())?;
+        assert_eq!(address.index().as_local(), decoded.index().as_local());
+
+        let address = Address::<Dummy>::new_remote(42, proxy.clone());
+        let result = address.encode_to_bytes(proxy.encode_context());
+        assert_eq!(
+            result.unwrap_err().report(),
+            "remote address should not be encoded into a message"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_recipient() -> anyhow::Result<()> {
+        use crate::error::ErrorReport;
+
+        let proxy = DummyProxy::new();
+
+        let (address, _) = make_address(1);
+        let recipient: Recipient<Ping> = address.into();
+
+        let expected_len = recipient.encoded_len();
+        let mut buf = BytesMut::with_capacity(expected_len);
+        recipient.encode(&mut buf, proxy.encode_context())?;
+        let buf = buf.freeze();
+        assert_eq!(buf.len(), expected_len);
+
+        let direct = recipient.encode_to_bytes(proxy.encode_context())?;
+        assert_eq!(direct.len(), expected_len);
+        assert_eq!(buf, direct);
+
+        let decoded = Recipient::<Ping>::decode(buf, proxy.decode_context())?;
+        assert_eq!(recipient.index().as_local(), decoded.index().as_local());
+
+        let recipient = Recipient::<Ping>::new_remote(42, proxy.clone());
+        let result = recipient.encode_to_bytes(proxy.encode_context());
+        assert_eq!(
+            result.unwrap_err().report(),
+            "remote address should not be encoded into a message"
+        );
 
         Ok(())
     }

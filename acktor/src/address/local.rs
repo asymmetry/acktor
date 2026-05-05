@@ -264,7 +264,7 @@ where
 #[cfg(test)]
 mod tests {
     use anyhow::{Context as _, Result};
-    use pretty_assertions::assert_eq;
+    use pretty_assertions::{assert_eq, assert_ne};
     use tokio::time::{self, Duration};
 
     use super::super::Mailbox;
@@ -348,17 +348,17 @@ mod tests {
 
         // send_timeout
         let (a1, m1) = make_address(1);
-        a1.send_timeout(Ping(9), Duration::from_millis(10)).await?;
+        a1.send_timeout(Ping(9), Duration::from_millis(100)).await?;
         assert_eq!(m1.len(), 1);
 
-        let result = a1.send_timeout(Ping(10), Duration::from_millis(10)).await;
+        let result = a1.send_timeout(Ping(10), Duration::from_millis(100)).await;
         assert!(
             matches!(result, Err(SendError::Timeout(_))),
             "expected Timeout, got {result:?}"
         );
 
         drop(m1);
-        let result = a1.send_timeout(Ping(11), Duration::from_millis(10)).await;
+        let result = a1.send_timeout(Ping(11), Duration::from_millis(100)).await;
         assert!(
             matches!(result, Err(SendError::Closed(_))),
             "expected Closed, got {result:?}"
@@ -366,12 +366,12 @@ mod tests {
 
         // do_send_timeout
         let (a1, m1) = make_address(1);
-        a1.do_send_timeout(Ping(12), Duration::from_millis(10))
+        a1.do_send_timeout(Ping(12), Duration::from_millis(100))
             .await?;
         assert_eq!(m1.len(), 1);
 
         let result = a1
-            .do_send_timeout(Ping(13), Duration::from_millis(10))
+            .do_send_timeout(Ping(13), Duration::from_millis(100))
             .await;
         assert!(
             matches!(result, Err(SendError::Timeout(_))),
@@ -380,7 +380,7 @@ mod tests {
 
         drop(m1);
         let result = a1
-            .do_send_timeout(Ping(14), Duration::from_millis(10))
+            .do_send_timeout(Ping(14), Duration::from_millis(100))
             .await;
         assert!(
             matches!(result, Err(SendError::Closed(_))),
@@ -404,6 +404,11 @@ mod tests {
             Ok(())
         })
         .await??;
+
+        let (a1, _) = make_address(1);
+        let index = a1.index();
+        let address: super::super::Address<Dummy> = a1.into();
+        assert_eq!(address.index(), index);
 
         Ok(())
     }

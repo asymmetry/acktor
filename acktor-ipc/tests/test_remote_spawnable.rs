@@ -101,11 +101,11 @@ async fn test_remote_spawnable() -> anyhow::Result<()> {
 
     // test the created actor
     let mut rx = remote.send(Inc { by: 5 }).await?;
-    let total = rx.recv_timeout(Duration::from_millis(500)).await?;
+    let total = rx.recv_timeout(Duration::from_millis(100)).await?;
     assert_eq!(total, 5);
 
     let mut rx = same.send(Inc { by: 10 }).await?;
-    let total = rx.recv_timeout(Duration::from_millis(500)).await?;
+    let total = rx.recv_timeout(Duration::from_millis(100)).await?;
     assert_eq!(total, 15);
 
     // test RemoteCreateActor with duplicate label

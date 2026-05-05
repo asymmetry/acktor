@@ -1,10 +1,21 @@
 #![allow(dead_code)]
 
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use anyhow::Result;
 use tokio::time::{Duration, sleep, timeout};
 
 use acktor::{Actor, Address, JoinHandle};
 use acktor_ipc::{Node, Session, ipc_method::IpcConnection, node::command};
+
+pub fn hash_of<T>(value: &T) -> u64
+where
+    T: Hash,
+{
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
 
 #[cfg(feature = "websocket")]
 pub async fn pick_free_port() -> Result<u16> {
@@ -50,7 +61,7 @@ where
             if let Ok(session) = result {
                 return Ok::<_, anyhow::Error>(session);
             }
-            sleep(Duration::from_millis(50)).await;
+            sleep(Duration::from_millis(100)).await;
         }
     })
     .await??;

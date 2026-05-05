@@ -160,6 +160,8 @@ impl IpcConnection for WebSocketConnection {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::{assert_eq, assert_ne};
+
     use super::*;
 
     #[tokio::test]

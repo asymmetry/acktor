@@ -251,14 +251,14 @@ mod tests {
 
         let cmd: Observer<Ping> = Observer::Register(recipient.clone());
         assert_eq!(
-            format!("{cmd:?}"),
-            format!("Observer<Ping>::Register({recipient_index})")
+            format!("{:?}", cmd),
+            format!("Observer<Ping>::Register({})", recipient_index)
         );
 
         let cmd: Observer<Ping> = Observer::Unregister(recipient);
         assert_eq!(
-            format!("{cmd:?}"),
-            format!("Observer<Ping>::Unregister({recipient_index})")
+            format!("{:?}", cmd),
+            format!("Observer<Ping>::Unregister({})", recipient_index)
         );
     }
 }

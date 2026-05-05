@@ -278,3 +278,137 @@ impl Decode for CronSignal {
             .map_err(|_| "invalid signal value in the `CronSignal` message".into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+    use crate::address::RemoteProxy;
+    use crate::utils::test_utils::{Dummy, DummyProxy, Ping, TestError, make_address};
+
+    fn encode_with_ctx<T>(value: &T, ctx: Option<&dyn EncodeContext>) -> anyhow::Result<Bytes>
+    where
+        T: Encode,
+    {
+        let expected_len = value.encoded_len();
+        let mut buf = BytesMut::with_capacity(expected_len);
+        value.encode(&mut buf, ctx)?;
+        let buf = buf.freeze();
+        assert_eq!(buf.len(), expected_len);
+
+        let direct = value.encode_to_bytes(ctx)?;
+        assert_eq!(direct.len(), expected_len);
+        assert_eq!(buf, direct);
+
+        Ok(buf)
+    }
+
+    #[test]
+    fn test_signal() -> anyhow::Result<()> {
+        for value in [Signal::Stop, Signal::Terminate] {
+            let buf = encode_with_ctx(&value, None)?;
+            let decoded = Signal::decode(buf, None)?;
+            assert_eq!(value, decoded);
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_supervisor() -> anyhow::Result<()> {
+        let proxy = DummyProxy::new();
+
+        let (recipient, _rx) = Recipient::<SupervisionEvent<Dummy>>::create_remote(1);
+        let recipient_index = recipient.index().as_local();
+
+        let value: Supervisor<Dummy> = Supervisor::Set(recipient);
+        let buf = encode_with_ctx(&value, proxy.encode_context())?;
+        let decoded = Supervisor::<Dummy>::decode(buf, proxy.decode_context())?;
+        assert!(matches!(decoded, Supervisor::Set(r) if r.index().as_local() == recipient_index));
+
+        let value: Supervisor<Dummy> = Supervisor::Unset;
+        let buf = encode_with_ctx(&value, proxy.encode_context())?;
+        let decoded = Supervisor::<Dummy>::decode(buf, proxy.decode_context())?;
+        assert!(matches!(decoded, Supervisor::Unset));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_observer() -> anyhow::Result<()> {
+        let proxy = DummyProxy::new();
+
+        let (recipient, _rx) = Recipient::<Ping>::create_remote(1);
+        let recipient_index = recipient.index().as_local();
+
+        let value: Observer<Ping> = Observer::Register(recipient.clone());
+        let buf = encode_with_ctx(&value, proxy.encode_context())?;
+        let decoded = Observer::<Ping>::decode(buf, proxy.decode_context())?;
+        assert!(
+            matches!(decoded, Observer::Register(r) if r.index().as_local() == recipient_index)
+        );
+
+        let value: Observer<Ping> = Observer::Unregister(recipient);
+        let buf = encode_with_ctx(&value, proxy.encode_context())?;
+        let decoded = Observer::<Ping>::decode(buf, proxy.decode_context())?;
+        assert!(
+            matches!(decoded, Observer::Unregister(r) if r.index().as_local() == recipient_index)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_supervision_event() -> anyhow::Result<()> {
+        let proxy = DummyProxy::new();
+
+        let (address, _) = make_address(1);
+        let address_index = address.index().as_local();
+
+        let value: SupervisionEvent<Dummy> =
+            SupervisionEvent::Warn(address.clone(), TestError::from("oops"));
+        let buf = encode_with_ctx(&value, proxy.encode_context())?;
+        let decoded = SupervisionEvent::<Dummy>::decode(buf, proxy.decode_context())?;
+        assert!(
+            matches!(decoded, SupervisionEvent::Warn(a, e) if a.index().as_local() == address_index && e.to_string() == "oops")
+        );
+
+        let value: SupervisionEvent<Dummy> =
+            SupervisionEvent::Terminated(address.clone(), Some(TestError::from("boom")));
+        let buf = encode_with_ctx(&value, proxy.encode_context())?;
+        let decoded = SupervisionEvent::<Dummy>::decode(buf, proxy.decode_context())?;
+        assert!(
+            matches!(decoded, SupervisionEvent::Terminated(a, Some(e)) if a.index().as_local() == address_index && e.to_string() == "boom")
+        );
+
+        let value: SupervisionEvent<Dummy> =
+            SupervisionEvent::Panicked(address.clone(), "panicked!".to_string());
+        let buf = encode_with_ctx(&value, proxy.encode_context())?;
+        let decoded = SupervisionEvent::<Dummy>::decode(buf, proxy.decode_context())?;
+        assert!(
+            matches!(decoded, SupervisionEvent::Panicked(a, info) if a.index().as_local() == address_index && info == "panicked!")
+        );
+
+        let value: SupervisionEvent<Dummy> =
+            SupervisionEvent::State(address.clone(), ActorState::Running);
+        let buf = encode_with_ctx(&value, proxy.encode_context())?;
+        let decoded = SupervisionEvent::<Dummy>::decode(buf, proxy.decode_context())?;
+        assert!(
+            matches!(decoded, SupervisionEvent::State(a, state) if a.index().as_local() == address_index && state == ActorState::Running)
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cron_signal() -> anyhow::Result<()> {
+        for value in [CronSignal::Pause, CronSignal::Resume] {
+            let buf = encode_with_ctx(&value, None)?;
+            let decoded = CronSignal::decode(buf, None)?;
+            assert_eq!(value, decoded);
+        }
+
+        Ok(())
+    }
+}

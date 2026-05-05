@@ -663,6 +663,8 @@ impl Handler<MessageResponse> for Session {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]
@@ -671,12 +673,12 @@ mod tests {
             tag: 42,
             result: Ok(Bytes::from_static(b"payload")),
         };
-        assert_eq!(format!("{ok:?}"), "MessageResponse(42)");
+        assert_eq!(format!("{:?}", ok), "MessageResponse(42)");
 
         let err = MessageResponse {
             tag: 7,
             result: Err("boom".to_string()),
         };
-        assert_eq!(format!("{err:?}"), "MessageResponse(7)");
+        assert_eq!(format!("{:?}", err), "MessageResponse(7)");
     }
 }

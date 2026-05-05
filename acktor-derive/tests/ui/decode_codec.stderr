@@ -1,5 +1,5 @@
 error: the correct syntax is `#[codec(method)]` or `#[codec(method, Bridge)]`
- --> tests/ui/decode_codec_wrong_syntax.rs:4:1
+ --> tests/ui/decode_codec.rs:4:1
   |
-4 | #[codec = "prost"]
+4 | #[codec = "prost"] // wrong syntax
   | ^^^^^^^^^^^^^^^^^^

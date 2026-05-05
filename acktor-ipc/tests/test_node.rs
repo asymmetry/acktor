@@ -185,7 +185,7 @@ async fn test_actor_commands() -> anyhow::Result<()> {
         "expected SessionNotFound, got {error:?}"
     );
 
-    // test CreateRemoteActor with failure
+    // test RemoteCreateActor with failure
     let error = client
         .send(command::RemoteCreateActor::<Dummy>::new(
             session.index().into(),
@@ -197,6 +197,7 @@ async fn test_actor_commands() -> anyhow::Result<()> {
         .unwrap_err();
     assert!(matches!(error, NodeError::SessionError(_)),);
 
+    // terminate session
     session.do_send(acktor::Signal::Terminate).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 

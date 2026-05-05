@@ -209,6 +209,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct SenderProxy<M>
 where
     M: Message<Result = ()>,
@@ -343,6 +344,7 @@ where
 // RemoteAddressableProxy is exactly the same as SenderPorxy, except for the trait bounds
 // we can not merge them since specialization is not yet in stable Rust
 #[cfg(feature = "ipc")]
+#[derive(Debug)]
 struct RemoteAddressableProxy<M>
 where
     M: Message<Result = ()> + MessageId + Decode,
@@ -540,7 +542,7 @@ where
 #[cfg(test)]
 mod tests {
     use anyhow::{Context as _, Result};
-    use pretty_assertions::assert_eq;
+    use pretty_assertions::{assert_eq, assert_ne};
     use tokio::time::{self, Duration};
 
     use super::*;
@@ -578,12 +580,12 @@ mod tests {
         recipient.try_do_send(Ping(5))?;
         assert!(
             recipient
-                .send_timeout(Ping(6), Duration::from_millis(10))
+                .send_timeout(Ping(6), Duration::from_millis(100))
                 .await
                 .is_err()
         );
         recipient
-            .do_send_timeout(Ping(7), Duration::from_millis(10))
+            .do_send_timeout(Ping(7), Duration::from_millis(100))
             .await?;
         tokio::task::spawn_blocking(move || -> Result<()> {
             assert!(recipient.blocking_send(Ping(8)).is_err());
@@ -621,8 +623,9 @@ mod tests {
         r1.do_send(Ping(11)).await?;
         r1.try_send(Ping(12))?;
         r1.try_do_send(Ping(13))?;
-        r1.send_timeout(Ping(14), Duration::from_millis(10)).await?;
-        r1.do_send_timeout(Ping(15), Duration::from_millis(10))
+        r1.send_timeout(Ping(14), Duration::from_millis(100))
+            .await?;
+        r1.do_send_timeout(Ping(15), Duration::from_millis(100))
             .await?;
         tokio::task::spawn_blocking(move || -> Result<()> {
             r1.blocking_send(Ping(16))?;
@@ -635,6 +638,86 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "ipc")]
+    #[tokio::test]
+    async fn test_remote_recipient() -> Result<()> {
+        // create() delivers to the receiver
+        let (recipient, mut rx) = Recipient::<Ping>::create_remote(4);
+        recipient.do_send(Ping(1)).await?;
+        let msg = rx.recv().await?;
+        assert_eq!(msg.0, 1);
+
+        // clone + eq + hash
+        let clone = recipient.clone();
+        assert_eq!(recipient, clone);
+        assert_eq!(recipient.index(), clone.index());
+        assert_eq!(hash_of(&recipient), hash_of(&clone));
+
+        // capacity + is_closed + closed
+        assert_eq!(recipient.capacity(), 4);
+        assert!(!recipient.is_closed());
+        drop(rx);
+        assert!(recipient.is_closed());
+        time::timeout(Duration::from_millis(500), recipient.closed())
+            .await
+            .context("closed() should resolve after receiver drop")?;
+
+        // send functions
+        let (recipient, rx) = Recipient::<Ping>::create_remote(8);
+        assert!(recipient.send(Ping(2)).await.is_err());
+        recipient.do_send(Ping(3)).await?;
+        assert!(recipient.try_send(Ping(4)).is_err());
+        recipient.try_do_send(Ping(5))?;
+        assert!(
+            recipient
+                .send_timeout(Ping(6), Duration::from_millis(100))
+                .await
+                .is_err()
+        );
+        recipient
+            .do_send_timeout(Ping(7), Duration::from_millis(100))
+            .await?;
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            assert!(recipient.blocking_send(Ping(8)).is_err());
+            recipient.blocking_do_send(Ping(9))?;
+            Ok(())
+        })
+        .await??;
+        assert_eq!(rx.len(), 4);
+
+        use crate::message::BinaryMessage;
+        // remote mailbox
+        let (recipient, mut rx) = Recipient::<Ping>::create_remote(8);
+        let mailbox = recipient
+            .remote_mailbox()
+            .context("remote_mailbox should return Some for RemoteAddressableProxy")?;
+        let message = BinaryMessage {
+            actor_id: recipient.index().as_local(),
+            message_id: Ping::ID,
+            bytes: 42_u32.to_le_bytes().to_vec().into(),
+            result_tx: None,
+            decode_msg_ctx: None,
+            encode_res_ctx: None,
+        };
+        mailbox.do_send(message).await?;
+        // send twice
+        let message = BinaryMessage {
+            actor_id: recipient.index().as_local(),
+            message_id: Ping::ID,
+            bytes: 42_u32.to_le_bytes().to_vec().into(),
+            result_tx: None,
+            decode_msg_ctx: None,
+            encode_res_ctx: None,
+        };
+        mailbox.do_send(message).await?;
+        let msg = rx.recv().await?;
+        assert_eq!(msg.0, 42);
+        let msg = rx.recv().await?;
+        assert_eq!(msg.0, 42);
+
+        Ok(())
+    }
+
     #[test]
     fn test_proxy() {
         let (tx, _rx) = mpsc::channel::<Ping>(1);
@@ -642,12 +725,14 @@ mod tests {
 
         // clone + eq + hash
         let clone = proxy.clone();
+        assert_eq!(proxy, clone);
         assert_eq!(proxy.index(), clone.index());
         assert_eq!(hash_of(&proxy), hash_of(&clone));
 
         // distinct proxies with different indices are not equal
         let (tx2, _rx2) = mpsc::channel::<Ping>(1);
         let other = SenderProxy::new(next_actor_id(), tx2);
+        assert_ne!(proxy, other);
         assert_ne!(proxy.index(), other.index());
     }
 
@@ -659,12 +744,14 @@ mod tests {
 
         // clone + eq + hash
         let clone = proxy.clone();
+        assert_eq!(proxy, clone);
         assert_eq!(proxy.index(), clone.index());
         assert_eq!(hash_of(&proxy), hash_of(&clone));
 
         // distinct proxies with different indices are not equal
         let (tx2, _rx2) = mpsc::channel::<Ping>(1);
         let other = RemoteAddressableProxy::new(next_actor_id(), tx2);
+        assert_ne!(proxy, other);
         assert_ne!(proxy.index(), other.index());
     }
 

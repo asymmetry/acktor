@@ -1,5 +1,0 @@
-error: the correct syntax is `#[result_type(T)]`
- --> tests/ui/message_result_type_wrong_syntax.rs:4:1
-  |
-4 | #[result_type = "()"]
-  | ^^^^^^^^^^^^^^^^^^^^^

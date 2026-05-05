@@ -189,18 +189,18 @@ mod tests {
 
         // times out when nothing is sent
         assert!(matches!(
-            rx.recv_timeout(Duration::from_millis(10)).await,
+            rx.recv_timeout(Duration::from_millis(100)).await,
             Err(RecvError::Timeout),
         ));
 
         // recv succeeds if a value is sent before the timeout
         tx.send(7).await?;
-        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).await?, 7);
+        assert_eq!(rx.recv_timeout(Duration::from_millis(100)).await?, 7);
 
         // closed channel returns Closed immediately, not Timeout
         drop(tx);
         assert!(matches!(
-            rx.recv_timeout(Duration::from_secs(1)).await,
+            rx.recv_timeout(Duration::from_millis(100)).await,
             Err(RecvError::Closed),
         ));
 

@@ -46,7 +46,7 @@ impl Handler<GetCustomResAsync> for MyActor {
 
     async fn handle(&mut self, _msg: GetCustomResAsync, _ctx: &mut Self::Context) -> Self::Result {
         FutureMessageResult::new(async {
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
             99
         })
     }

@@ -79,6 +79,8 @@ fn get_custom_id(ast: &syn::DeriveInput) -> syn::Result<Option<LitInt>> {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     fn input(src: &str) -> syn::DeriveInput {
