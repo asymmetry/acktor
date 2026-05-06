@@ -81,8 +81,8 @@ async fn test_remote_spawnable() -> anyhow::Result<()> {
     let remote = client
         .send(command::RemoteCreateActor::<Counter>::new(
             session.clone().into(),
-            "counter-1".to_string(),
-            String::new(),
+            "counter-1",
+            None,
         ))
         .await?
         .await??;
@@ -112,8 +112,8 @@ async fn test_remote_spawnable() -> anyhow::Result<()> {
     let error = client
         .send(command::RemoteCreateActor::<Counter>::new(
             session.clone().into(),
-            "counter-1".to_string(),
-            String::new(),
+            "counter-1",
+            None,
         ))
         .await?
         .await?

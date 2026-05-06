@@ -162,8 +162,8 @@ pub fn message_id_derive(input: TokenStream) -> TokenStream {
 /// struct Ping(u64);
 /// ```
 ///
-/// [`Encode`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/codec/trait.Encode.html
-/// [`Decode`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/codec/trait.Decode.html
+/// [`Encode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Encode.html
+/// [`Decode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Decode.html
 /// [`prost::Message`]: https://docs.rs/prost/latest/prost/trait.Message.html
 /// [`prost::Message::encode_to_vec`]: https://docs.rs/prost/latest/prost/trait.Message.html#method.encode_to_vec
 /// [`zerocopy::IntoBytes`]: https://docs.rs/zerocopy/latest/zerocopy/trait.IntoBytes.html
@@ -207,8 +207,8 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 /// struct Ping(u64);
 /// ```
 ///
-/// [`Encode`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/codec/trait.Encode.html
-/// [`Decode`]: https://docs.rs/acktor-ipc/latest/acktor_ipc/codec/trait.Decode.html
+/// [`Encode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Encode.html
+/// [`Decode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Decode.html
 /// [`prost::Message`]: https://docs.rs/prost/latest/prost/trait.Message.html
 /// [`prost::Message::decode`]: https://docs.rs/prost/latest/prost/trait.Message.html#method.decode
 /// [`zerocopy::FromBytes`]: https://docs.rs/zerocopy/latest/zerocopy/trait.FromBytes.html
@@ -282,7 +282,7 @@ pub fn remote_addressable_derive(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// [`RemoteMailbox`]: https://docs.rs/acktor/latest/acktor/actor/remote/type.RemoteMailbox.html
+/// [`RemoteMailbox`]: https://docs.rs/acktor/latest/acktor/address/type.RemoteMailbox.html
 #[cfg(feature = "ipc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
 #[proc_macro_attribute]

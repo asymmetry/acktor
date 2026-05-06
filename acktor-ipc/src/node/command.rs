@@ -10,7 +10,7 @@ use crate::actor_ref::ActorRef;
 use crate::error::NodeError;
 use crate::ipc_method::{IpcConnection, IpcListener};
 use crate::remote::{RemoteAddressable, RemoteSpawnable};
-use crate::session::{Session, SessionRef};
+use crate::session::Session;
 
 type Result<T> = std::result::Result<T, NodeError>;
 
@@ -92,10 +92,26 @@ where
     C: IpcConnection,
 {
     /// Constructs a new [`Connect`] command for the connection type `C`.
-    pub fn new(endpoint: String, session_label: Option<String>) -> Self {
+    pub fn new<S1, S2>(endpoint: S1, label: S2) -> Self
+    where
+        S1: AsRef<str>,
+        S2: AsRef<str>,
+    {
         Self {
-            endpoint,
-            session_label,
+            endpoint: endpoint.as_ref().to_string(),
+            session_label: Some(label.as_ref().to_string()),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Constructs a new [`Connect`] command for the connection type `C` without a session label.
+    pub fn no_label<S>(endpoint: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self {
+            endpoint: endpoint.as_ref().to_string(),
+            session_label: None,
             _marker: PhantomData,
         }
     }
@@ -111,6 +127,7 @@ where
 {
     pub label: String,
     pub address: Address<A>,
+    _marker: PhantomData<fn(A) -> A>,
 }
 
 impl<A> Debug for AddActor<A>
@@ -130,6 +147,23 @@ where
     A: Actor + RemoteAddressable,
 {
     type Result = bool;
+}
+
+impl<A> AddActor<A>
+where
+    A: Actor + RemoteAddressable,
+{
+    /// Constructs a new [`AddActor`] command.
+    pub fn new<S>(label: S, address: Address<A>) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self {
+            label: label.as_ref().to_string(),
+            address,
+            _marker: PhantomData,
+        }
+    }
 }
 
 /// A command which is used to remove an actor from a node.
@@ -162,9 +196,9 @@ pub struct RemoteCreateActor<A>
 where
     A: Actor + RemoteSpawnable,
 {
-    pub session: SessionRef,
+    pub session: ActorRef,
     pub label: String,
-    pub config: String,
+    pub config: Option<String>,
     _marker: PhantomData<fn(A) -> A>,
 }
 
@@ -180,10 +214,13 @@ where
     A: Actor + RemoteSpawnable,
 {
     /// Constructs a new [`RemoteCreateActor`] command for the actor type `A`.
-    pub fn new(session: SessionRef, label: String, config: String) -> Self {
+    pub fn new<S>(session: ActorRef, label: S, config: Option<String>) -> Self
+    where
+        S: AsRef<str>,
+    {
         Self {
             session,
-            label,
+            label: label.as_ref().to_string(),
             config,
             _marker: PhantomData,
         }
@@ -196,7 +233,7 @@ pub struct RemoteGetActor<A>
 where
     A: Actor + RemoteAddressable,
 {
-    pub session: SessionRef,
+    pub session: ActorRef,
     pub actor: ActorRef,
     _marker: PhantomData<fn(A) -> A>,
 }
@@ -213,7 +250,7 @@ where
     A: Actor + RemoteAddressable,
 {
     /// Constructs a new [`RemoteGetActor`] command for the actor type `A`.
-    pub fn new(session: SessionRef, actor: ActorRef) -> Self {
+    pub fn new(session: ActorRef, actor: ActorRef) -> Self {
         Self {
             session,
             actor,

@@ -65,7 +65,7 @@ impl Actor for ActorMgr {
 
 impl CronActor for ActorMgr {
     async fn task(&mut self, _ctx: &mut Self::Context) -> Result<Duration, NodeError> {
-        self.registry.retain(|_, recipient| !recipient.is_closed());
+        self.registry.retain(|_, mailbox| !mailbox.is_closed());
         self.actor_labels
             .retain(|_, actor_id| self.registry.contains_index(*actor_id));
 
@@ -156,7 +156,7 @@ where
 
         debug_trace!("Handle command {:?}", msg);
 
-        let command::AddActor { label, address } = msg;
+        let command::AddActor { label, address, .. } = msg;
 
         if self.actor_labels.contains_key(&label) {
             return false;

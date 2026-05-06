@@ -8,7 +8,7 @@ use acktor::{
     cron::{CronActor, CronContext},
     observer::Observer,
 };
-use acktor_ipc::{ActorRef, RemoteAddressable, Session, remote, session::command};
+use acktor_ipc::{RemoteAddressable, Session, remote, session::command};
 
 use crate::message::{Ping, Pong};
 use crate::server::Server;
@@ -42,7 +42,7 @@ impl CronActor for Client {
         if self.server.is_none() {
             let server = self
                 .session
-                .send(command::RemoteGetActor::new(ActorRef::from("pong")))
+                .send(command::RemoteGetActor::new("pong".into()))
                 .await?
                 .await?;
 
@@ -55,10 +55,7 @@ impl CronActor for Client {
                     info!("Could not get server: {}", e.report());
                     match self
                         .session
-                        .send(command::RemoteCreateActor::new(
-                            "pong".to_string(),
-                            String::new(),
-                        ))
+                        .send(command::RemoteCreateActor::new("pong", None))
                         .await?
                         .await?
                     {

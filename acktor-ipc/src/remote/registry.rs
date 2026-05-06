@@ -159,3 +159,106 @@ impl RemoteMailboxRegistry {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use acktor::{Recipient, channel::mpsc, message::BinaryMessage};
+
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    fn make_mailbox() -> (RemoteMailbox, mpsc::Receiver<BinaryMessage>) {
+        Recipient::<BinaryMessage>::create(4)
+    }
+
+    #[test]
+    fn test_registry() {
+        // new() / default
+        let registry = RemoteMailboxRegistry::new();
+        assert_eq!(registry.len(), 0);
+        assert!(registry.is_empty());
+
+        // with_capacity reserves space
+        let sized = RemoteMailboxRegistry::with_capacity(64);
+        assert!(sized.capacity() >= 64);
+        assert!(sized.is_empty());
+
+        // insert: first insert returns true, duplicate returns false (no-op)
+        let (mailbox, _rx) = make_mailbox();
+        let index = mailbox.index().as_local();
+        assert!(registry.insert(mailbox.clone()));
+        assert_eq!(registry.len(), 1);
+        assert!(!registry.insert(mailbox));
+        assert_eq!(registry.len(), 1);
+
+        // get / contains_index find the inserted mailbox
+        assert!(registry.contains_index(index));
+        let fetched = registry.get(index).expect("mailbox should be present");
+        assert_eq!(fetched.index().as_local(), index);
+
+        // remove takes it out and is idempotent
+        let removed = registry.remove(index).expect("mailbox should be removed");
+        assert_eq!(removed.index().as_local(), index);
+        assert!(registry.is_empty());
+        assert!(registry.remove(index).is_none());
+        assert!(registry.get(index).is_none());
+    }
+
+    #[test]
+    fn test_cleanup_closed() {
+        let registry = RemoteMailboxRegistry::new();
+
+        // get() evicts a closed mailbox
+        let (mailbox, rx) = make_mailbox();
+        let index = mailbox.index().as_local();
+        registry.insert(mailbox);
+        drop(rx);
+        assert!(registry.get(index).is_none());
+        assert_eq!(registry.len(), 0);
+
+        // contains_index() evicts a closed mailbox
+        let (mailbox, rx) = make_mailbox();
+        let index = mailbox.index().as_local();
+        registry.insert(mailbox);
+        drop(rx);
+        assert!(!registry.contains_index(index));
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn test_clone_and_retain() {
+        let registry = RemoteMailboxRegistry::new();
+        let clone = registry.clone();
+
+        let (m1, _r1) = make_mailbox();
+        let (m2, _r2) = make_mailbox();
+        let i1 = m1.index().as_local();
+        let i2 = m2.index().as_local();
+        registry.insert(m1);
+        registry.insert(m2);
+
+        // clone observes inserts through the shared map
+        assert_eq!(clone.len(), 2);
+        assert!(clone.contains_index(i1));
+        assert!(clone.contains_index(i2));
+
+        // retain filters in place, visible through both handles
+        clone.retain(|index, _| index == i1);
+        assert_eq!(registry.len(), 1);
+        assert!(registry.contains_index(i1));
+        assert!(!registry.contains_index(i2));
+    }
+
+    #[test]
+    fn test_debug_fmt() {
+        let registry = RemoteMailboxRegistry::new();
+        assert_eq!(format!("{:?}", registry), "[]");
+
+        let (mailbox, _rx) = make_mailbox();
+        let index = mailbox.index().as_local();
+        registry.insert(mailbox);
+
+        assert_eq!(format!("{:?}", registry), format!("[{}]", index));
+    }
+}
