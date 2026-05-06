@@ -16,7 +16,7 @@ pub mod node;
 pub use node::{Node, NodeEvent};
 
 pub mod session;
-pub use session::{Session, SessionRef};
+pub use session::Session;
 
 pub use acktor::codec;
 pub use acktor::codec::{Decode, DecodeContext, DecodeError, Encode, EncodeContext, EncodeError};

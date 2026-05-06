@@ -52,10 +52,7 @@ where
     let session = timeout(Duration::from_secs(5), async {
         loop {
             let result = client
-                .send(command::Connect::<C>::new(
-                    endpoint.clone(),
-                    Some("server-session".to_string()),
-                ))
+                .send(command::Connect::<C>::new(&endpoint, "server-session"))
                 .await?
                 .await?;
             if let Ok(session) = result {

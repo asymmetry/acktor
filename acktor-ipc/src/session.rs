@@ -35,9 +35,6 @@ use crate::remote::{
 
 pub mod command;
 
-mod session_ref;
-pub use session_ref::SessionRef;
-
 mod context;
 use context::SessionContext;
 
@@ -455,7 +452,7 @@ where
         let ipc_msg = message::IpcMessage::node_message(message::NodeMessage::create_actor(
             A::TYPE_ID.as_u64(),
             label,
-            config,
+            config.unwrap_or_default(),
             tag,
         ));
 

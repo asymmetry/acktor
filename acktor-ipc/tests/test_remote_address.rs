@@ -6,7 +6,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use acktor::{Actor, ActorId, Context, Handler, Message, MessageId, Recipient, Sender, SenderInfo};
 use acktor_ipc::{
-    ActorRef, Decode, Encode, RemoteAddressable, ipc_method::websocket::WebSocketConnection,
+    Decode, Encode, RemoteAddressable, ipc_method::websocket::WebSocketConnection,
     node::command as node_command, remote, session::command as session_command,
 };
 
@@ -64,10 +64,7 @@ async fn test_remote_address() -> Result<()> {
     let (address, join_handle) = EchoServer.start("echo")?;
     let (server, server_join_handle) = start_websocket_server(&bind_addr).await?;
     server
-        .send(node_command::AddActor {
-            label: "echo".to_string(),
-            address: address.clone(),
-        })
+        .send(node_command::AddActor::new("echo", address.clone()))
         .await?
         .await?;
 
@@ -77,7 +74,7 @@ async fn test_remote_address() -> Result<()> {
     // resolve the remote echo actor by its known index
     let remote = client_session
         .send(session_command::RemoteGetActor::<EchoServer>::new(
-            ActorRef::Index(address.index()),
+            address.clone().into(),
         ))
         .await?
         .await??;
@@ -92,7 +89,7 @@ async fn test_remote_address() -> Result<()> {
     // two remote addresses created with RemoteGetActor should be equal
     let duplicate = client_session
         .send(session_command::RemoteGetActor::<EchoServer>::new(
-            ActorRef::Index(address.index()),
+            address.index().into(),
         ))
         .await?
         .await??;

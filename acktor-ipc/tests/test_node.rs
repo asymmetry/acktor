@@ -1,9 +1,9 @@
 use pretty_assertions::assert_eq;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-use acktor::{Actor, ActorId, Context, Handler, Message, MessageId, SenderInfo};
+use acktor::{Actor, Context, Handler, Message, MessageId, Recipient, SenderInfo};
 use acktor_ipc::{
-    ActorRef, Decode, Encode, Node, NodeError, RemoteAddressable, RemoteSpawnable, StableId,
+    Decode, Encode, Node, NodeError, RemoteAddressable, RemoteSpawnable, StableId,
     ipc_method::websocket::{WebSocketConnection, WebSocketListener},
     node::command,
     remote,
@@ -104,38 +104,33 @@ async fn test_add_remove_listener() -> anyhow::Result<()> {
 async fn test_add_remove_actor() -> anyhow::Result<()> {
     let (node, node_join_handle) = Node::new().start("node")?;
     let (dummy, dummy_join_handle) = Dummy.start("dummy")?;
-    let dummy_idx = dummy.index();
+    let dummy_index = dummy.index();
+    let recipient: Recipient<Tick> = dummy.clone().into();
 
     // add
     let succeed = node
-        .send(command::AddActor {
-            label: "dummy".to_string(),
-            address: dummy.clone(),
-        })
+        .send(command::AddActor::new("dummy", dummy.clone()))
         .await?
         .await?;
     assert!(succeed);
 
     // add again with the same label and address
     let succeed = node
-        .send(command::AddActor {
-            label: "dummy".to_string(),
-            address: dummy.clone(),
-        })
+        .send(command::AddActor::new("dummy", dummy.clone()))
         .await?
         .await?;
     assert!(!succeed); // duplicate label rejected
 
     // remove
     let succeed = node
-        .send(command::RemoveActor(ActorRef::Index(dummy_idx)))
+        .send(command::RemoveActor(dummy_index.into()))
         .await?
         .await?;
     assert!(succeed);
 
     // remove again
     let succeed = node
-        .send(command::RemoveActor(ActorRef::Index(dummy_idx)))
+        .send(command::RemoveActor(recipient.into()))
         .await?
         .await?;
     assert!(!succeed); // should report false
@@ -164,7 +159,7 @@ async fn test_actor_commands() -> anyhow::Result<()> {
     let error = client
         .send(command::RemoteGetActor::<Dummy>::new(
             "server-session".into(),
-            ActorId::new(u64::MAX / 2).into(),
+            (u64::MAX / 2).into(),
         ))
         .await?
         .await?
@@ -186,11 +181,12 @@ async fn test_actor_commands() -> anyhow::Result<()> {
     );
 
     // test RemoteCreateActor with failure
+    // Dummy is RemoteSpawnable but not registered in the server node
     let error = client
         .send(command::RemoteCreateActor::<Dummy>::new(
             session.index().into(),
-            "new".to_string(),
-            String::new(),
+            "new",
+            None,
         ))
         .await?
         .await?
@@ -222,10 +218,7 @@ async fn test_debug_fmt() -> anyhow::Result<()> {
     // AddActor
     let (dummy, dummy_join_handle) = Dummy.start("dummy")?;
     let dummy_idx = dummy.index();
-    let cmd = command::AddActor {
-        label: "dummy".to_string(),
-        address: dummy.clone(),
-    };
+    let cmd = command::AddActor::new("dummy", dummy.clone());
     assert_eq!(
         format!("{:?}", cmd),
         format!("AddActor<Dummy>(\"dummy\", {})", dummy_idx)
@@ -233,17 +226,14 @@ async fn test_debug_fmt() -> anyhow::Result<()> {
     acktor::utils::terminate_actor(dummy, dummy_join_handle).await;
 
     // Connect with a session label
-    let cmd = command::Connect::<WebSocketConnection>::new(
-        "ws://localhost:9000".to_string(),
-        Some("session-x".to_string()),
-    );
+    let cmd = command::Connect::<WebSocketConnection>::new("ws://localhost:9000", "session-x");
     assert_eq!(
         format!("{:?}", cmd),
         "Connect<WebSocketConnection>(\"ws://localhost:9000\", Some(\"session-x\"))"
     );
 
     // Connect without a session label
-    let cmd = command::Connect::<WebSocketConnection>::new("ws://localhost:9000".to_string(), None);
+    let cmd = command::Connect::<WebSocketConnection>::no_label("ws://localhost:9000");
     assert_eq!(
         format!("{:?}", cmd),
         "Connect<WebSocketConnection>(\"ws://localhost:9000\", None)"

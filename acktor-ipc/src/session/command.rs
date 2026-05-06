@@ -22,7 +22,7 @@ where
     A: Actor + RemoteSpawnable,
 {
     pub label: String,
-    pub config: String,
+    pub config: Option<String>,
     _marker: PhantomData<fn(A) -> A>,
 }
 
@@ -38,9 +38,12 @@ where
     A: Actor + RemoteSpawnable,
 {
     /// Constructs a new [`RemoteCreateActor`] command for the actor type `A`.
-    pub fn new(label: String, config: String) -> Self {
+    pub fn new<S>(label: S, config: Option<String>) -> Self
+    where
+        S: AsRef<str>,
+    {
         Self {
-            label,
+            label: label.as_ref().to_string(),
             config,
             _marker: PhantomData,
         }

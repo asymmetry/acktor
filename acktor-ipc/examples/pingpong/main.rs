@@ -69,8 +69,8 @@ async fn client() -> Result<()> {
     let session_address = loop {
         if let Ok(session_address) = node_address
             .send(command::Connect::<Connection>::new(
-                ENDPOINT.to_string(),
-                Some("server-session".to_string()),
+                ENDPOINT,
+                "server-session",
             ))
             .await?
             .await?

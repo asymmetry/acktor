@@ -16,6 +16,7 @@ use acktor::{
     utils::{ShortName, debug_trace, terminate_actor},
 };
 
+use crate::actor_ref::ActorRef;
 use crate::double_map::DoubleMap;
 use crate::error::NodeError;
 use crate::ipc_method::{IpcConnection, IpcListener};
@@ -23,7 +24,7 @@ use crate::remote::{
     RemoteAddressable, RemoteFactoryRegistry, RemoteFactoryShim, RemoteMailboxRegistry,
     RemoteSpawnable,
 };
-use crate::session::{self, Session, SessionRef};
+use crate::session::{self, Session};
 
 pub mod command;
 
@@ -195,21 +196,15 @@ impl Node {
         Ok(address)
     }
 
-    fn get_session(&self, session_ref: &SessionRef) -> Result<Address<Session>> {
+    fn get_session(&self, session_ref: &ActorRef) -> Result<Address<Session>> {
         match session_ref {
-            SessionRef::Address(address) => self
-                .sessions
-                .get_by_key1(&address.index())
-                .cloned()
-                .ok_or_else(|| NodeError::SessionNotFound(address.index().to_string())),
-
-            SessionRef::Index(index) => self
+            ActorRef::Index(index) => self
                 .sessions
                 .get_by_key1(index)
                 .cloned()
                 .ok_or_else(|| NodeError::SessionNotFound(index.to_string())),
 
-            SessionRef::Label(label) => self
+            ActorRef::Label(label) => self
                 .sessions
                 .get_by_key2(label)
                 .cloned()
