@@ -69,8 +69,11 @@ async fn test_remote_spawnable() -> anyhow::Result<()> {
     let endpoint = format!("ws://{bind_addr}");
 
     let listener = WebSocketListener::bind(&bind_addr).await?;
+    // start a server with a pre-registered local actor
+    let (address, _) = Counter::default().start("counter-0")?;
     let (server, server_join_handle) = Node::new()
         .with_listener(listener)
+        .with_actor("counter-0", address)
         .with_factory::<Counter>()
         .start("server")?;
 

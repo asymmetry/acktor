@@ -120,14 +120,15 @@ impl Node {
     /// user-friendly name.
     ///
     /// Duplicate actors and labels are silently skipped.
-    pub fn with_actor<A>(mut self, label: String, actor: Address<A>) -> Self
+    pub fn with_actor<A, S>(mut self, label: S, actor: Address<A>) -> Self
     where
         A: Actor + RemoteAddressable,
+        S: AsRef<str>,
     {
         if let Some(actor_labels) = &mut self._actor_labels {
             let actor_id = actor.index();
-            if !actor_labels.contains_key(&label) && self.registry.insert(actor.into()) {
-                actor_labels.insert(label, actor_id.as_local());
+            if !actor_labels.contains_key(label.as_ref()) && self.registry.insert(actor.into()) {
+                actor_labels.insert(label.as_ref().to_string(), actor_id.as_local());
             }
         }
         self
