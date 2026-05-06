@@ -31,6 +31,38 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                 ::core::result::Result::Ok(())
             },
         ),
+        (CodecMethod::SerdeJson, None) => (
+            quote! { ::serde_json::to_vec(self).map(|vec| vec.len()).unwrap_or(0) },
+            quote! {
+                match ::serde_json::to_vec(self) {
+                    ::core::result::Result::Ok(vec) => {
+                        buf.extend_from_slice(vec.as_slice());
+                        ::core::result::Result::Ok(())
+                    }
+                    ::core::result::Result::Err(err) => ::core::result::Result::Err(
+                        ::acktor::error::EncodeError::other(err),
+                    ),
+                }
+            },
+        ),
+        (CodecMethod::SerdeJson, Some(bridge)) => (
+            quote! {
+                let bridge = <#bridge as ::core::convert::From<&Self>>::from(self);
+                ::serde_json::to_vec(&bridge).map(|vec| vec.len()).unwrap_or(0)
+            },
+            quote! {
+                let bridge = <#bridge as ::core::convert::From<&Self>>::from(self);
+                match ::serde_json::to_vec(&bridge) {
+                    ::core::result::Result::Ok(vec) => {
+                        buf.extend_from_slice(vec.as_slice());
+                        ::core::result::Result::Ok(())
+                    }
+                    ::core::result::Result::Err(err) => ::core::result::Result::Err(
+                        ::acktor::error::EncodeError::other(err),
+                    ),
+                }
+            },
+        ),
         (CodecMethod::Zerocopy, None) => (
             quote! { ::core::mem::size_of::<Self>() },
             quote! {
@@ -61,7 +93,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                         ::core::result::Result::Ok(())
                     }
                     ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                        ::acktor::error::EncodeError::from(err.to_string()),
+                        ::acktor::error::EncodeError::other(err),
                     ),
                 }
             },
@@ -76,7 +108,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                         ::core::result::Result::Ok(())
                     }
                     ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                        ::acktor::error::EncodeError::from(err.to_string()),
+                        ::acktor::error::EncodeError::other(err),
                     ),
                 }
             },

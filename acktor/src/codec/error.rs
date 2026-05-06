@@ -1,8 +1,4 @@
-use std::fmt::{Debug, Display};
-use std::ops::Deref;
-
 use thiserror::Error;
-use zerocopy::{KnownLayout, TryFromBytes};
 
 use crate::error::BoxError;
 
@@ -17,9 +13,6 @@ pub enum EncodeError {
 
     #[error("the actor is not remote addressable")]
     NotRemoteAddressable,
-
-    #[error(transparent)]
-    ProstEncodeError(#[from] prost::EncodeError),
 
     #[error("could not encode the message")]
     Other(#[source] BoxError),
@@ -36,20 +29,30 @@ impl EncodeError {
 }
 
 impl From<BoxError> for EncodeError {
+    #[inline]
     fn from(e: BoxError) -> Self {
-        Self::Other(e)
+        Self::other(e)
     }
 }
 
 impl From<String> for EncodeError {
+    #[inline]
     fn from(s: String) -> Self {
         Self::other(s)
     }
 }
 
 impl From<&str> for EncodeError {
+    #[inline]
     fn from(s: &str) -> Self {
         Self::other(s)
+    }
+}
+
+impl From<prost::EncodeError> for EncodeError {
+    #[inline]
+    fn from(e: prost::EncodeError) -> Self {
+        Self::other(e)
     }
 }
 
@@ -68,12 +71,6 @@ pub enum DecodeError {
     #[error("decode context does not contain a remote proxy")]
     MissingRemoteProxy,
 
-    #[error(transparent)]
-    ProstDecodeError(#[from] prost::DecodeError),
-
-    #[error("could not decode the message: {0}")]
-    ZerocopyError(String),
-
     #[error("could not decode the message")]
     Other(#[source] BoxError),
 }
@@ -89,59 +86,53 @@ impl DecodeError {
 }
 
 impl From<BoxError> for DecodeError {
+    #[inline]
     fn from(e: BoxError) -> Self {
-        Self::Other(e)
+        Self::other(e)
     }
 }
 
 impl From<String> for DecodeError {
+    #[inline]
     fn from(s: String) -> Self {
         Self::other(s)
     }
 }
 
 impl From<&str> for DecodeError {
+    #[inline]
     fn from(s: &str) -> Self {
         Self::other(s)
     }
 }
 
-impl<A, S, V> From<zerocopy::ConvertError<A, S, V>> for DecodeError
-where
-    A: Debug + Display,
-    S: Debug + Display,
-    V: Debug + Display,
-{
-    fn from(err: zerocopy::ConvertError<A, S, V>) -> Self {
-        DecodeError::ZerocopyError(err.to_string())
+impl From<prost::DecodeError> for DecodeError {
+    #[inline]
+    fn from(e: prost::DecodeError) -> Self {
+        Self::other(e)
     }
 }
 
-impl<Src, Dst> From<zerocopy::AlignmentError<Src, Dst>> for DecodeError
-where
-    Src: Deref,
-    Dst: KnownLayout + ?Sized,
-{
-    fn from(err: zerocopy::AlignmentError<Src, Dst>) -> Self {
-        DecodeError::ZerocopyError(err.to_string())
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl<Src, Dst> From<zerocopy::SizeError<Src, Dst>> for DecodeError
-where
-    Src: Deref,
-    Dst: KnownLayout + ?Sized,
-{
-    fn from(err: zerocopy::SizeError<Src, Dst>) -> Self {
-        DecodeError::ZerocopyError(err.to_string())
-    }
-}
+    #[test]
+    fn test_encode_decode_errors() {
+        let from_str: EncodeError = "boom".into();
+        assert!(matches!(from_str, EncodeError::Other(_)));
+        let from_string: EncodeError = String::from("boom").into();
+        assert!(matches!(from_string, EncodeError::Other(_)));
+        let boxed: BoxError = "boom".into();
+        let from_box: EncodeError = boxed.into();
+        assert!(matches!(from_box, EncodeError::Other(_)));
 
-impl<Src, Dst> From<zerocopy::ValidityError<Src, Dst>> for DecodeError
-where
-    Dst: KnownLayout + TryFromBytes + ?Sized,
-{
-    fn from(err: zerocopy::ValidityError<Src, Dst>) -> Self {
-        DecodeError::ZerocopyError(err.to_string())
+        let from_str: DecodeError = "boom".into();
+        assert!(matches!(from_str, DecodeError::Other(_)));
+        let from_string: DecodeError = String::from("boom").into();
+        assert!(matches!(from_string, DecodeError::Other(_)));
+        let boxed: BoxError = "boom".into();
+        let from_box: DecodeError = boxed.into();
+        assert!(matches!(from_box, DecodeError::Other(_)));
     }
 }

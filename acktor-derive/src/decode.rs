@@ -23,13 +23,34 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
             <Self as ::core::convert::TryFrom<#bridge>>::try_from(bridge)
                 .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
         },
+        (CodecMethod::SerdeJson, None) => quote! {
+            match ::serde_json::from_slice::<Self>(&buf) {
+                ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
+                ::core::result::Result::Err(err) => ::core::result::Result::Err(
+                    ::acktor::error::DecodeError::other(err),
+                ),
+            }
+        },
+        (CodecMethod::SerdeJson, Some(bridge)) => quote! {
+            match ::serde_json::from_slice::<#bridge>(&buf) {
+                ::core::result::Result::Ok(bridge) => {
+                    <Self as ::core::convert::TryFrom<#bridge>>::try_from(bridge)
+                        .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
+                }
+                ::core::result::Result::Err(err) => ::core::result::Result::Err(
+                    ::acktor::error::DecodeError::other(err),
+                ),
+            }
+        },
         (CodecMethod::Zerocopy, None) => quote! {
             <Self as ::zerocopy::FromBytes>::read_from_bytes(&buf[..])
-                .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
+                .map_err(|e| {
+                    ::core::convert::Into::<::acktor::error::DecodeError>::into(e.to_string())
+                })
         },
         (CodecMethod::Zerocopy, Some(bridge)) => quote! {
             let bridge = <#bridge as ::zerocopy::FromBytes>::read_from_bytes(&buf[..])
-                .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)?;
+                .map_err(|e| e.to_string())?;
             <Self as ::core::convert::TryFrom<#bridge>>::try_from(bridge)
                 .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
         },
@@ -37,7 +58,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
             match ::rkyv::from_bytes::<Self, ::rkyv::rancor::Error>(&buf[..]) {
                 ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
                 ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                    ::acktor::error::DecodeError::from(err.to_string()),
+                    ::acktor::error::DecodeError::other(err),
                 ),
             }
         },
@@ -48,7 +69,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                         .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
                 }
                 ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                    ::acktor::error::DecodeError::from(err.to_string()),
+                    ::acktor::error::DecodeError::other(err),
                 ),
             }
         },

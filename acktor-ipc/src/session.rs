@@ -482,7 +482,7 @@ where
         FutureMessageResult::new(async move {
             let bytes = rx.await?;
             let result = <proto_utils::ResultAddress as prost::Message>::decode(bytes)
-                .map_err(DecodeError::ProstDecodeError)?;
+                .map_err(DecodeError::other)?;
             match result.result {
                 Some(proto_utils::ResultAddressType::Ok(actor_id)) => {
                     Address::new_with_decode_context(actor_id, decode_context.as_ref())
@@ -549,7 +549,7 @@ where
         FutureMessageResult::new(async move {
             let bytes = rx.await?;
             let result = <proto_utils::ResultAddress as prost::Message>::decode(bytes)
-                .map_err(DecodeError::ProstDecodeError)?;
+                .map_err(DecodeError::other)?;
             match result.result {
                 Some(proto_utils::ResultAddressType::Ok(actor_id)) => {
                     Address::new_with_decode_context(actor_id, decode_context.as_ref())

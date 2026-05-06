@@ -144,6 +144,8 @@ pub fn message_id_derive(input: TokenStream) -> TokenStream {
 ///
 /// - `#[codec(prost)]` — delegates to [`prost::Message::encode_to_vec`]. The target type (or the
 ///   bridge type) must implement [`prost::Message`].
+/// - `#[codec(serde_json)]` — delegates to [`serde_json::to_vec`]. The target type (or the bridge
+///   type) must implement [`serde::Serialize`].
 /// - `#[codec(zerocopy)]` — delegates to [`zerocopy::IntoBytes::as_bytes`]. The target type (or
 ///   the bridge type) must implement [`zerocopy::IntoBytes`].
 /// - `#[codec(rkyv)]` — delegates to [`rkyv::to_bytes`]. The target type (or the bridge type)
@@ -166,6 +168,8 @@ pub fn message_id_derive(input: TokenStream) -> TokenStream {
 /// [`Decode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Decode.html
 /// [`prost::Message`]: https://docs.rs/prost/latest/prost/trait.Message.html
 /// [`prost::Message::encode_to_vec`]: https://docs.rs/prost/latest/prost/trait.Message.html#method.encode_to_vec
+/// [`serde::Serialize`]: https://docs.rs/serde/latest/serde/ser/trait.Serialize.html
+/// [`serde_json::to_vec`]: https://docs.rs/serde_json/latest/serde_json/fn.to_vec.html
 /// [`zerocopy::IntoBytes`]: https://docs.rs/zerocopy/latest/zerocopy/trait.IntoBytes.html
 /// [`zerocopy::IntoBytes::as_bytes`]: https://docs.rs/zerocopy/latest/zerocopy/trait.IntoBytes.html#method.as_bytes
 /// [`rkyv::to_bytes`]: https://docs.rs/rkyv/latest/rkyv/fn.to_bytes.html
@@ -189,6 +193,8 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 ///
 /// - `#[codec(prost)]` — delegates to [`prost::Message::decode`]. The target type (or the bridge
 ///   type) must implement [`prost::Message`].
+/// - `#[codec(serde_json)]` — delegates to [`serde_json::from_slice`]. The target type (or the
+///   bridge type) must implement [`serde::Deserialize`].
 /// - `#[codec(zerocopy)]` — delegates to [`zerocopy::FromBytes::read_from_bytes`]. The target
 ///   type (or the bridge type) must implement [`zerocopy::FromBytes`].
 /// - `#[codec(rkyv)]` — delegates to [`rkyv::from_bytes`]. The target type (or the bridge type)
@@ -211,6 +217,8 @@ pub fn encode_derive(input: TokenStream) -> TokenStream {
 /// [`Decode`]: https://docs.rs/acktor/latest/acktor/codec/trait.Decode.html
 /// [`prost::Message`]: https://docs.rs/prost/latest/prost/trait.Message.html
 /// [`prost::Message::decode`]: https://docs.rs/prost/latest/prost/trait.Message.html#method.decode
+/// [`serde::Deserialize`]: https://docs.rs/serde/latest/serde/de/trait.Deserialize.html
+/// [`serde_json::from_slice`]: https://docs.rs/serde_json/latest/serde_json/fn.from_slice.html
 /// [`zerocopy::FromBytes`]: https://docs.rs/zerocopy/latest/zerocopy/trait.FromBytes.html
 /// [`zerocopy::FromBytes::read_from_bytes`]: https://docs.rs/zerocopy/latest/zerocopy/trait.FromBytes.html#method.read_from_bytes
 /// [`rkyv::from_bytes`]: https://docs.rs/rkyv/latest/rkyv/fn.from_bytes.html

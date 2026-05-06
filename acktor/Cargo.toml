@@ -1,6 +1,6 @@
 [package]
 name = "acktor"
-version = "1.0.14"
+version = "1.0.15"
 description = "Pure-Rust actor framework built on top of the Tokio async runtime"
 edition.workspace = true
 rust-version.workspace = true
@@ -34,7 +34,7 @@ ipc = [
     "dep:bytes",
     "dep:prost",
     "dep:zerocopy",
-    "acktor-derive/ipc",
+    "acktor-derive?/ipc",
 ]
 # emits debug-level tracing logs when an observer's mailbox is full and becomes a bottleneck
 bottleneck-warning = []
@@ -62,6 +62,8 @@ anyhow.workspace = true
 clap.workspace = true
 pretty_assertions.workspace = true
 rkyv.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [[example]]
 name = "ring"
