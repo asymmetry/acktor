@@ -1,6 +1,5 @@
 use anyhow::Result;
 use pretty_assertions::assert_eq;
-use rkyv::{Archive, Deserialize, Serialize};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use acktor::codec::{Decode, DecodeError, Encode};
@@ -35,6 +34,40 @@ impl TryFrom<ProstBridge> for Prost {
 
     fn try_from(value: ProstBridge) -> Result<Self, Self::Error> {
         Ok(Prost {
+            string: value.string,
+            number: value.number,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Encode, Decode)]
+#[codec(serde_json, SerdeJsonBridge)]
+struct SerdeJson {
+    string: String,
+    number: u64,
+}
+
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize, Encode, Decode)]
+#[codec(serde_json)]
+struct SerdeJsonBridge {
+    string: String,
+    number: u64,
+}
+
+impl From<&SerdeJson> for SerdeJsonBridge {
+    fn from(value: &SerdeJson) -> Self {
+        SerdeJsonBridge {
+            string: value.string.clone(),
+            number: value.number,
+        }
+    }
+}
+
+impl TryFrom<SerdeJsonBridge> for SerdeJson {
+    type Error = DecodeError;
+
+    fn try_from(value: SerdeJsonBridge) -> Result<Self, Self::Error> {
+        Ok(SerdeJson {
             string: value.string,
             number: value.number,
         })
@@ -86,7 +119,7 @@ struct Rkyv {
     option: Option<Vec<u32>>,
 }
 
-#[derive(Debug, PartialEq, Archive, Deserialize, Serialize, Encode, Decode)]
+#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Encode, Decode)]
 #[codec(rkyv)]
 struct RkyvBridge {
     number: u64,
@@ -132,6 +165,29 @@ fn test_codec_prost() -> Result<()> {
 
     let value_decoded = <Prost as Decode>::decode(value_bytes, None)?;
     let bridge_value_decoded = <ProstBridge as Decode>::decode(bridge_value_bytes, None)?;
+
+    assert_eq!(value, value_decoded);
+    assert_eq!(bridge_value, bridge_value_decoded);
+
+    Ok(())
+}
+
+#[test]
+fn test_codec_serde_json() -> Result<()> {
+    let value = SerdeJson {
+        string: "hello".to_owned(),
+        number: 42,
+    };
+
+    let bridge_value = SerdeJsonBridge::from(&value);
+
+    let value_bytes = Encode::encode_to_bytes(&value, None)?;
+    let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None)?;
+
+    assert_eq!(value_bytes, bridge_value_bytes);
+
+    let value_decoded = <SerdeJson as Decode>::decode(value_bytes, None)?;
+    let bridge_value_decoded = <SerdeJsonBridge as Decode>::decode(bridge_value_bytes, None)?;
 
     assert_eq!(value, value_decoded);
     assert_eq!(bridge_value, bridge_value_decoded);

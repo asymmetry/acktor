@@ -34,7 +34,7 @@ macro_rules! impl_encode_decode_for {
         impl Decode for $type {
             #[inline]
             fn decode(buf: Bytes, _ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
-                Self::read_from_bytes(&buf).map_err(Into::into)
+                Self::read_from_bytes(&buf).map_err(|e| e.to_string().into())
             }
         }
     };
@@ -84,7 +84,7 @@ impl Encode for bool {
 impl Decode for bool {
     #[inline]
     fn decode(buf: Bytes, _ctx: Option<&dyn DecodeContext>) -> Result<Self, DecodeError> {
-        Ok(u8::read_from_bytes(&buf)? != 0)
+        Ok(u8::read_from_bytes(&buf).map_err(|e| e.to_string())? != 0)
     }
 }
 
@@ -202,7 +202,9 @@ macro_rules! impl_encode_decode_for_vec {
                     return Ok(Vec::new());
                 }
 
-                Ok(Ref::<_, [$type]>::from_bytes(buf.as_ref())?.to_vec())
+                Ok(Ref::<_, [$type]>::from_bytes(buf.as_ref())
+                    .map_err(|e| e.to_string())?
+                    .to_vec())
             }
         }
     };
@@ -274,7 +276,9 @@ impl Decode for Vec<isize> {
             return Ok(Vec::new());
         }
 
-        let vec: Vec<i64> = Ref::<_, [i64]>::from_bytes(buf.as_ref())?.to_vec();
+        let vec: Vec<i64> = Ref::<_, [i64]>::from_bytes(buf.as_ref())
+            .map_err(|e| e.to_string())?
+            .to_vec();
         vec.into_iter()
             .map(|v| isize::try_from(v).map_err(DecodeError::other))
             .collect()
@@ -307,7 +311,9 @@ impl Decode for Vec<usize> {
             return Ok(Vec::new());
         }
 
-        let vec: Vec<u64> = Ref::<_, [u64]>::from_bytes(buf.as_ref())?.to_vec();
+        let vec: Vec<u64> = Ref::<_, [u64]>::from_bytes(buf.as_ref())
+            .map_err(|e| e.to_string())?
+            .to_vec();
         vec.into_iter()
             .map(|v| usize::try_from(v).map_err(DecodeError::other))
             .collect()
@@ -334,7 +340,8 @@ fn decode_element(buf: &mut Bytes) -> Result<Bytes, DecodeError> {
     if buf.len() < mem::size_of::<u32>() {
         return Err("missing the tuple element length".into());
     }
-    let len = u32::read_from_bytes(&buf.split_to(mem::size_of::<u32>()))? as usize;
+    let len = u32::read_from_bytes(&buf.split_to(mem::size_of::<u32>()))
+        .map_err(|e| e.to_string())? as usize;
     if buf.len() < len {
         return Err("missing the tuple element data".into());
     }

@@ -5,6 +5,7 @@ pub enum CodecMethod {
     Prost,
     Zerocopy,
     Rkyv,
+    SerdeJson,
 }
 
 pub struct CodecConfig {
@@ -42,8 +43,8 @@ pub fn detect_codec_config(ast: &syn::DeriveInput) -> syn::Result<CodecConfig> {
             syn::Error::new(
                 Span::call_site(),
                 "missing required attribute `#[codec(method)]`, where `method` is one of \
-                 `prost`, `zerocopy`, `rkyv`, optionally followed by a bridge type: \
-                 `#[codec(method, Bridge)]`",
+                 `prost`, `serde_json`, `zerocopy`, `rkyv`, optionally followed by a bridge \
+                 type: `#[codec(method, Bridge)]`",
             )
         })?;
 
@@ -52,6 +53,8 @@ pub fn detect_codec_config(ast: &syn::DeriveInput) -> syn::Result<CodecConfig> {
             let args = list.parse_args::<CodecArgs>()?;
             let backend = if args.ident == "prost" {
                 CodecMethod::Prost
+            } else if args.ident == "serde_json" {
+                CodecMethod::SerdeJson
             } else if args.ident == "zerocopy" {
                 CodecMethod::Zerocopy
             } else if args.ident == "rkyv" {
@@ -59,7 +62,8 @@ pub fn detect_codec_config(ast: &syn::DeriveInput) -> syn::Result<CodecConfig> {
             } else {
                 return Err(syn::Error::new_spanned(
                     &args.ident,
-                    "unknown codec method, expected one of: `prost`, `zerocopy`, `rkyv`",
+                    "unknown codec method, expected one of: `prost`, `serde_json`, `zerocopy`, \
+                     `rkyv`",
                 ));
             };
             if let Some(bridge) = &args.bridge {

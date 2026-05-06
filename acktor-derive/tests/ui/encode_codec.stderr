@@ -1,4 +1,4 @@
-error: missing required attribute `#[codec(method)]`, where `method` is one of `prost`, `zerocopy`, `rkyv`, optionally followed by a bridge type: `#[codec(method, Bridge)]`
+error: missing required attribute `#[codec(method)]`, where `method` is one of `prost`, `serde_json`, `zerocopy`, `rkyv`, optionally followed by a bridge type: `#[codec(method, Bridge)]`
  --> tests/ui/encode_codec.rs:3:10
   |
 3 | #[derive(Encode)] // missing codec
@@ -6,7 +6,7 @@ error: missing required attribute `#[codec(method)]`, where `method` is one of `
   |
   = note: this error originates in the derive macro `Encode` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error: unknown codec method, expected one of: `prost`, `zerocopy`, `rkyv`
+error: unknown codec method, expected one of: `prost`, `serde_json`, `zerocopy`, `rkyv`
  --> tests/ui/encode_codec.rs:7:9
   |
 7 | #[codec(json)] // unknown codec
