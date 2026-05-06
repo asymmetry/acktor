@@ -34,7 +34,7 @@ ipc = [
     "dep:bytes",
     "dep:prost",
     "dep:zerocopy",
-    "acktor-derive/ipc",
+    "acktor-derive?/ipc",
 ]
 # emits debug-level tracing logs when an observer's mailbox is full and becomes a bottleneck
 bottleneck-warning = []

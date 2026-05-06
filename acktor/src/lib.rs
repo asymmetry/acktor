@@ -133,6 +133,11 @@ pub use acktor_derive::{MessageId, StableId};
 #[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "ipc"))))]
 pub use acktor_derive::{RemoteAddressable, remote};
 
+/// Re-export the IPC protocol definitions for convenience.
+#[cfg(feature = "ipc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
+pub use acktor_ipc_proto as proto;
+
 // re-export for use in derived code
 
 #[doc(hidden)]
