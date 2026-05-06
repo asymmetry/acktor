@@ -112,3 +112,27 @@ impl From<prost::DecodeError> for DecodeError {
         Self::other(e)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encode_decode_errors() {
+        let from_str: EncodeError = "boom".into();
+        assert!(matches!(from_str, EncodeError::Other(_)));
+        let from_string: EncodeError = String::from("boom").into();
+        assert!(matches!(from_string, EncodeError::Other(_)));
+        let boxed: BoxError = "boom".into();
+        let from_box: EncodeError = boxed.into();
+        assert!(matches!(from_box, EncodeError::Other(_)));
+
+        let from_str: DecodeError = "boom".into();
+        assert!(matches!(from_str, DecodeError::Other(_)));
+        let from_string: DecodeError = String::from("boom").into();
+        assert!(matches!(from_string, DecodeError::Other(_)));
+        let boxed: BoxError = "boom".into();
+        let from_box: DecodeError = boxed.into();
+        assert!(matches!(from_box, DecodeError::Other(_)));
+    }
+}
