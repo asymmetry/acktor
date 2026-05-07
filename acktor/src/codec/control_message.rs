@@ -30,9 +30,8 @@ impl Encode for Signal {
         buf: &mut BytesMut,
         _ctx: Option<&dyn EncodeContext>,
     ) -> Result<(), EncodeError> {
-        proto::Signal::new(*self as i32)
-            .encode(buf)
-            .map_err(Into::into)
+        let msg = proto::Signal::new(*self as i32);
+        msg.encode(buf).map_err(Into::into)
     }
 }
 
@@ -67,7 +66,6 @@ where
                 recipient.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
                 proto::Supervisor::set(recipient.index().as_local())
             }
-
             Supervisor::Unset => proto::Supervisor::unset(),
         };
         supervisor.encode(buf).map_err(Into::into)
@@ -119,7 +117,6 @@ where
                 recipient.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
                 proto::Observer::register(recipient.index().as_local())
             }
-
             Observer::Unregister(recipient) => {
                 recipient.register(ctx.ok_or(EncodeError::MissingEncodeContext)?)?;
                 proto::Observer::unregister(recipient.index().as_local())
@@ -263,9 +260,8 @@ impl Encode for CronSignal {
         buf: &mut BytesMut,
         _ctx: Option<&dyn EncodeContext>,
     ) -> Result<(), EncodeError> {
-        proto::CronSignal::new(*self as i32)
-            .encode(buf)
-            .map_err(Into::into)
+        let msg = proto::CronSignal::new(*self as i32);
+        msg.encode(buf).map_err(Into::into)
     }
 }
 

@@ -1,7 +1,8 @@
 use bytes::{Bytes, BytesMut};
 
-use acktor_ipc_proto::utils::{
-    Tuple, VecBool, VecDouble, VecFloat, VecInt32, VecInt64, VecUint32, VecUint64,
+use acktor_ipc_proto::{
+    optional_length_delimited_field_encoded_len,
+    utils::{Tuple, VecBool, VecDouble, VecFloat, VecInt32, VecInt64, VecUint32, VecUint64},
 };
 
 use super::error::{DecodeError, EncodeError};
@@ -27,7 +28,7 @@ fn encoded_len_packed_varint<T: Copy>(values: &[T], to_varint: impl Fn(T) -> u64
         .iter()
         .map(|&v| prost::encoding::encoded_len_varint(to_varint(v)))
         .sum();
-    1 + prost::length_delimiter_len(data_len) + data_len
+    optional_length_delimited_field_encoded_len(1, data_len)
 }
 
 #[inline]
@@ -39,7 +40,7 @@ fn encode_packed_varint<T: Copy>(values: &[T], buf: &mut BytesMut, to_varint: im
         .iter()
         .map(|&v| prost::encoding::encoded_len_varint(to_varint(v)))
         .sum();
-    buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
+    buf.reserve(optional_length_delimited_field_encoded_len(1, data_len));
     buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
     prost::encoding::encode_varint(data_len as u64, buf);
     for &value in values.iter() {
@@ -53,7 +54,7 @@ fn encoded_len_packed_fixed<T>(values: &[T]) -> usize {
         return 0;
     }
     let data_len = std::mem::size_of_val(values);
-    1 + prost::length_delimiter_len(data_len) + data_len
+    optional_length_delimited_field_encoded_len(1, data_len)
 }
 
 #[inline]
@@ -66,7 +67,7 @@ fn encode_packed_fixed<T: Copy>(
         return;
     }
     let data_len = std::mem::size_of_val(values);
-    buf.reserve(1 + prost::length_delimiter_len(data_len) + data_len);
+    buf.reserve(optional_length_delimited_field_encoded_len(1, data_len));
     buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
     prost::encoding::encode_varint(data_len as u64, buf);
     for &value in values.iter() {
