@@ -24,12 +24,8 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                 .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
         },
         (CodecMethod::SerdeJson, None) => quote! {
-            match ::serde_json::from_slice::<Self>(&buf) {
-                ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
-                ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                    ::acktor::error::DecodeError::other(err),
-                ),
-            }
+            ::serde_json::from_slice::<Self>(&buf)
+                .map_err(::acktor::error::DecodeError::other)
         },
         (CodecMethod::SerdeJson, Some(bridge)) => quote! {
             match ::serde_json::from_slice::<#bridge>(&buf) {
@@ -43,27 +39,23 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
             }
         },
         (CodecMethod::Zerocopy, None) => quote! {
-            <Self as ::zerocopy::FromBytes>::read_from_bytes(&buf[..])
+            <Self as ::zerocopy::FromBytes>::read_from_bytes(&buf)
                 .map_err(|e| {
                     ::core::convert::Into::<::acktor::error::DecodeError>::into(e.to_string())
                 })
         },
         (CodecMethod::Zerocopy, Some(bridge)) => quote! {
-            let bridge = <#bridge as ::zerocopy::FromBytes>::read_from_bytes(&buf[..])
+            let bridge = <#bridge as ::zerocopy::FromBytes>::read_from_bytes(&buf)
                 .map_err(|e| e.to_string())?;
             <Self as ::core::convert::TryFrom<#bridge>>::try_from(bridge)
                 .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
         },
         (CodecMethod::Rkyv, None) => quote! {
-            match ::rkyv::from_bytes::<Self, ::rkyv::rancor::Error>(&buf[..]) {
-                ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
-                ::core::result::Result::Err(err) => ::core::result::Result::Err(
-                    ::acktor::error::DecodeError::other(err),
-                ),
-            }
+            ::rkyv::from_bytes::<Self, ::rkyv::rancor::Error>(&buf)
+                .map_err(::acktor::error::DecodeError::other)
         },
         (CodecMethod::Rkyv, Some(bridge)) => quote! {
-            match ::rkyv::from_bytes::<#bridge, ::rkyv::rancor::Error>(&buf[..]) {
+            match ::rkyv::from_bytes::<#bridge, ::rkyv::rancor::Error>(&buf) {
                 ::core::result::Result::Ok(bridge) => {
                     <Self as ::core::convert::TryFrom<#bridge>>::try_from(bridge)
                         .map_err(::core::convert::Into::<::acktor::error::DecodeError>::into)
