@@ -1,6 +1,6 @@
 [package]
 name = "acktor-ipc-proto"
-version = "1.0.4"
+version = "1.0.5"
 description = "Interprocess communication protocol for the acktor actor framework"
 edition.workspace = true
 rust-version.workspace = true
@@ -15,10 +15,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-adaptor = ["dep:ahash"]
+adaptor = ["dep:ahash", "dep:crossbeam-channel"]
 
 [dependencies]
 bytes.workspace = true
 prost.workspace = true
 
 ahash = { workspace = true, optional = true }
+crossbeam-channel = { version = "0.5", optional = true }

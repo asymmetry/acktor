@@ -1,8 +1,8 @@
 use std::io;
-use std::sync::mpsc::SyncSender as Sender;
 
 use ahash::HashMap;
 use bytes::{Bytes, BytesMut};
+use crossbeam_channel::Sender;
 use prost::Message as _;
 
 use crate::message;
