@@ -53,6 +53,9 @@ pub trait Encode {
     fn encoded_len(&self) -> usize;
 
     /// Encodes the message into the provided buffer.
+    ///
+    /// The buffer must have at least `self.encoded_len()` bytes of capacity. If not, the encoding
+    /// may or may not fail with an error, depending on the implementation.
     fn encode(
         &self,
         buf: &mut BytesMut,

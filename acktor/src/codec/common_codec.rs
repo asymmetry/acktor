@@ -4,7 +4,10 @@ use std::sync::Arc;
 use bytes::{Bytes, BytesMut};
 use prost::Message as _;
 
-use acktor_ipc_proto::utils::{ProtoOption, ProtoResult, ProtoResultType};
+use acktor_ipc_proto::{
+    optional_length_delimited_field_encoded_len,
+    utils::{ProtoOption, ProtoResult, ProtoResultType},
+};
 
 use super::error::{DecodeError, EncodeError};
 use super::protobuf_helper::LENGTH_DELIMITED_TAGS;
@@ -77,8 +80,8 @@ where
             Ok(ok) => ok.encoded_len(),
             Err(err) => err.to_string().len(),
         };
-        // oneof field: 1 byte tag + varint length + data
-        1 + prost::length_delimiter_len(inner_len) + inner_len
+        // Result is a `oneof` message, so use optional_length_delimited_field_encoded_len
+        optional_length_delimited_field_encoded_len(1, inner_len)
     }
 
     fn encode(
@@ -90,6 +93,8 @@ where
             Ok(ok) => {
                 // field 1, wire type LengthDelimited (bytes)
                 buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
+                // use encode_varint since it bypassed the capacity check and triggers resize if
+                // buf is a BytesMut
                 prost::encoding::encode_varint(ok.encoded_len() as u64, buf);
                 ok.encode(buf, ctx)?;
             }
@@ -97,6 +102,8 @@ where
                 // field 2, wire type LengthDelimited (string)
                 let err_str = err.to_string();
                 buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[2]]);
+                // use encode_varint since it bypassed the capacity check and triggers resize if
+                // buf is a BytesMut
                 prost::encoding::encode_varint(err_str.len() as u64, buf);
                 buf.extend_from_slice(err_str.as_bytes());
             }
@@ -108,8 +115,9 @@ where
     fn encode_to_bytes(&self, ctx: Option<&dyn EncodeContext>) -> Result<Bytes, EncodeError> {
         match self {
             Ok(ok) => {
+                // field 1, wire type LengthDelimited (bytes)
                 let inner_len = ok.encoded_len();
-                let total = 1 + prost::length_delimiter_len(inner_len) + inner_len;
+                let total = optional_length_delimited_field_encoded_len(1, inner_len);
                 let mut buf = BytesMut::with_capacity(total);
                 buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
                 prost::encoding::encode_varint(inner_len as u64, &mut buf);
@@ -118,11 +126,13 @@ where
                 Ok(buf.freeze())
             }
             Err(err) => {
+                // field 2, wire type LengthDelimited (string)
                 let err_string = err.to_string();
-                let total = 1 + prost::length_delimiter_len(err_string.len()) + err_string.len();
+                let inner_len = err_string.len();
+                let total = optional_length_delimited_field_encoded_len(1, inner_len);
                 let mut buf = BytesMut::with_capacity(total);
                 buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[2]]);
-                prost::encoding::encode_varint(err_string.len() as u64, &mut buf);
+                prost::encoding::encode_varint(inner_len as u64, &mut buf);
                 buf.extend_from_slice(err_string.as_bytes());
 
                 Ok(buf.freeze())
@@ -156,7 +166,9 @@ where
             // bytes field: 1 byte tag + varint length + data
             Some(some) => {
                 let inner_len = some.encoded_len();
-                1 + prost::length_delimiter_len(inner_len) + inner_len
+                // Option::Some is a `optional` field, so use
+                // optional_length_delimited_field_encoded_len
+                optional_length_delimited_field_encoded_len(1, inner_len)
             }
             // empty message
             None => 0,
@@ -171,6 +183,8 @@ where
         if let Some(some) = self {
             // field 1, wire type LengthDelimited (bytes)
             buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
+            // use encode_varint since it bypassed the capacity check and triggers resize if
+            // buf is a BytesMut
             prost::encoding::encode_varint(some.encoded_len() as u64, buf);
             some.encode(buf, ctx)?;
         }
@@ -181,8 +195,9 @@ where
     fn encode_to_bytes(&self, ctx: Option<&dyn EncodeContext>) -> Result<Bytes, EncodeError> {
         match self {
             Some(some) => {
+                // field 1, wire type LengthDelimited (bytes)
                 let inner_len = some.encoded_len();
-                let total = 1 + prost::length_delimiter_len(inner_len) + inner_len;
+                let total = optional_length_delimited_field_encoded_len(1, inner_len);
                 let mut buf = BytesMut::with_capacity(total);
                 buf.extend_from_slice(&[LENGTH_DELIMITED_TAGS[1]]);
                 prost::encoding::encode_varint(inner_len as u64, &mut buf);

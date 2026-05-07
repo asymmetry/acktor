@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bytes::BytesMut;
 use pretty_assertions::assert_eq;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -163,6 +164,12 @@ fn test_codec_prost() -> Result<()> {
 
     assert_eq!(value_bytes, bridge_value_bytes);
 
+    let mut indirect_bytes = BytesMut::with_capacity(value.encoded_len());
+    value.encode(&mut indirect_bytes, None)?;
+    let indirect_bytes = indirect_bytes.freeze();
+
+    assert_eq!(value_bytes, indirect_bytes);
+
     let value_decoded = <Prost as Decode>::decode(value_bytes, None)?;
     let bridge_value_decoded = <ProstBridge as Decode>::decode(bridge_value_bytes, None)?;
 
@@ -185,6 +192,12 @@ fn test_codec_serde_json() -> Result<()> {
     let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None)?;
 
     assert_eq!(value_bytes, bridge_value_bytes);
+
+    let mut indirect_bytes = BytesMut::with_capacity(value.encoded_len());
+    value.encode(&mut indirect_bytes, None)?;
+    let indirect_bytes = indirect_bytes.freeze();
+
+    assert_eq!(value_bytes, indirect_bytes);
 
     let value_decoded = <SerdeJson as Decode>::decode(value_bytes, None)?;
     let bridge_value_decoded = <SerdeJsonBridge as Decode>::decode(bridge_value_bytes, None)?;
@@ -209,6 +222,12 @@ fn test_codec_zerocopy() -> Result<()> {
 
     assert_eq!(value_bytes, bridge_value_bytes);
 
+    let mut indirect_bytes = BytesMut::with_capacity(value.encoded_len());
+    value.encode(&mut indirect_bytes, None)?;
+    let indirect_bytes = indirect_bytes.freeze();
+
+    assert_eq!(value_bytes, indirect_bytes);
+
     let value_decoded = <Zerocopy as Decode>::decode(value_bytes, None)?;
     let bridge_value_decoded = <ZerocopyBridge as Decode>::decode(bridge_value_bytes, None)?;
 
@@ -232,6 +251,12 @@ fn test_codec_rkyv() -> Result<()> {
     let bridge_value_bytes = Encode::encode_to_bytes(&bridge_value, None)?;
 
     assert_eq!(value_bytes, bridge_value_bytes);
+
+    let mut indirect_bytes = BytesMut::with_capacity(value.encoded_len());
+    value.encode(&mut indirect_bytes, None)?;
+    let indirect_bytes = indirect_bytes.freeze();
+
+    assert_eq!(value_bytes, indirect_bytes);
 
     let value_decoded = <Rkyv as Decode>::decode(value_bytes, None)?;
     let bridge_value_decoded = <RkyvBridge as Decode>::decode(bridge_value_bytes, None)?;
