@@ -45,14 +45,15 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                     ::std::sync::OnceLock::new();
                 TABLE.get_or_init(|| {
                     let mut map: ::acktor::utils::TypeMap<::acktor::codec::MessageCodec> =
-                        ::std::default::Default::default();
+                        ::core::default::Default::default();
                     #(
                         map.insert(
-                            ::std::any::TypeId::of::<#messages>(),
+                            ::core::any::TypeId::of::<#messages>(),
                             ::acktor::codec::MessageCodec {
                                 message_id: <#messages as ::acktor::MessageId>::ID,
                                 encode_msg: |any, ctx| {
-                                    let m = any.downcast_ref::<#messages>()
+                                    let m = any
+                                        .downcast_ref::<#messages>()
                                         .expect("TypeId invariant");
                                     ::acktor::codec::Encode::encode_to_bytes(m, ctx)
                                 },
@@ -61,7 +62,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                                         as ::acktor::codec::Decode>::decode(bytes, ctx)?;
                                     ::core::result::Result::Ok(
                                         ::std::boxed::Box::new(r)
-                                            as ::std::boxed::Box<dyn ::std::any::Any>
+                                            as ::std::boxed::Box<dyn ::core::any::Any>
                                     )
                                 },
                             },
@@ -80,16 +81,22 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                     ::core::result::Result::Ok(msg) => {
                         let result =
                             <Self as ::acktor::Handler<#m>>::handle(self, msg, ctx).await;
-                        if let ::core::option::Option::Some(tx) = result_tx {
-                            let encode_res_ctx = encode_res_ctx
-                                .as_deref()
-                                .map(|ctx| ctx as &dyn ::acktor::codec::EncodeContext);
-                            send_result(tx, &result, encode_res_ctx);
+                        if let ::core::option::Option::Some(result_tx) = result_tx {
+                            let (tx, rx) = ::acktor::channel::oneshot::channel();
+                            ::acktor::MessageResponse::<Self, #m>::handle(result, ctx, Some(tx))
+                                .await;
+                            let result = rx.await;
+                            send_result(result, result_tx, encode_res_ctx);
+                        }
+                        else {
+                            ::acktor::MessageResponse::<Self, #m>::handle(result, ctx, None)
+                                .await;
                         }
                     }
                     ::core::result::Result::Err(e) => {
                         ::acktor::tracing::debug!(
-                            "Could not decode the message: {}", ::acktor::ErrorReport::report(&e)
+                            "Could not decode the message: {}",
+                            ::acktor::ErrorReport::report(&e)
                         );
                         if let ::core::option::Option::Some(tx) = result_tx {
                             send_err(tx, e);
@@ -135,27 +142,50 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
 
                 #[inline]
                 fn send_result(
+                    result: ::core::result::Result<
+                        impl ::acktor::codec::Encode,
+                        ::acktor::error::RecvError,
+                    >,
                     tx: ::acktor::channel::oneshot::Sender<::acktor::bytes::Bytes>,
-                    result: &impl ::acktor::codec::Encode,
-                    encode_ctx: ::core::option::Option<&dyn ::acktor::codec::EncodeContext>,
+                    encode_ctx: ::core::option::Option<
+                        ::std::sync::Arc<
+                            dyn ::acktor::codec::EncodeContext
+                                + ::core::marker::Send
+                                + ::core::marker::Sync,
+                        >,
+                    >,
                 ) {
-                    match ::acktor::codec::Encode::encode_to_bytes(result, encode_ctx) {
-                        ::core::result::Result::Ok(bytes) => {
-                            if let Err(e) = tx.send(bytes) {
-                                ::acktor::tracing::debug!(
-                                    "Could not send the message response to the sender: {}",
-                                    ::acktor::ErrorReport::report(&e)
-                                );
+                    match result {
+                        ::core::result::Result::Ok(result) => {
+                            let encode_ctx = encode_ctx
+                                .as_deref()
+                                .map(|ctx| ctx as &dyn ::acktor::codec::EncodeContext);
+                            match ::acktor::codec::Encode::encode_to_bytes(&result, encode_ctx) {
+                                ::core::result::Result::Ok(bytes) => {
+                                    if let Err(e) = tx.send(bytes) {
+                                        ::acktor::tracing::debug!(
+                                            "Could not send the message response to the sender: {}",
+                                            ::acktor::ErrorReport::report(&e)
+                                        );
+                                    }
+                                }
+                                ::core::result::Result::Err(e) => {
+                                    ::acktor::tracing::debug!(
+                                        "Could not encode the message response: {}",
+                                        ::acktor::ErrorReport::report(&e)
+                                    );
+                                    send_err(tx, e);
+                                }
                             }
                         }
                         ::core::result::Result::Err(e) => {
                             ::acktor::tracing::debug!(
-                                "Could not encode the message response: {}",
+                                "Could not receive the message response from the handler: {}",
                                 ::acktor::ErrorReport::report(&e)
                             );
                             send_err(tx, e);
                         }
-                    }
+                    };
                 }
 
                 let decode_msg_ctx = decode_msg_ctx
