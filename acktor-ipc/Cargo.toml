@@ -57,7 +57,6 @@ anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
 pretty_assertions.workspace = true
-
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "time"] }
 tracing-subscriber.workspace = true
 
