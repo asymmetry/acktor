@@ -467,8 +467,8 @@ where
                 // we can not do much if sending the error back to the original sender fails, just
                 // log it
                 warn!(
-                    "Could not report the error in `Handler<RemoteCreateActor<{}>>` to original \
-                     sender: {}",
+                    "Could not report the error in `Handler<RemoteCreateActor<{}>>` to the \
+                     original sender: {}",
                     ShortName::of::<A>(),
                     e.report()
                 );
@@ -535,8 +535,8 @@ where
                 // we can not do much if sending the error back to the original sender fails, just
                 // log it
                 warn!(
-                    "Could not report the error in `Handler<GetRemoteActor>` to original sender: \
-                     {}",
+                    "Could not report the error in `Handler<GetRemoteActor>` to the original \
+                     sender: {}",
                     e.report()
                 );
             }
@@ -602,8 +602,8 @@ impl Handler<BinaryMessage> for Session {
                         // we can not do much if sending the error back to the original sender
                         // fails, just log it
                         warn!(
-                            "Could not report the error in `Handler<BinaryMessage>` to original \
-                             sender: {}",
+                            "Could not report the error in `Handler<BinaryMessage>` to the \
+                             original sender: {}",
                             e.report()
                         );
                     }

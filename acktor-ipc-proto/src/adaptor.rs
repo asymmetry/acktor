@@ -1,4 +1,5 @@
 use std::io;
+use std::time::{Duration, Instant};
 
 #[cfg(not(target_arch = "wasm32"))]
 use ahash::HashMap;
@@ -24,7 +25,7 @@ pub struct ParsedActorMessage {
 #[derive(Debug)]
 pub struct ActorAdaptor {
     tag: u64,
-    result_senders: HashMap<u64, Sender<Bytes>>,
+    result_senders: HashMap<u64, (Sender<Bytes>, Instant)>,
 }
 
 impl Default for ActorAdaptor {
@@ -48,6 +49,14 @@ impl ActorAdaptor {
         let tag = self.tag;
         self.tag += 1;
         tag
+    }
+
+    /// Cleans up the expired result senders that have been waiting for responses for longer than
+    /// the specified timeout.
+    pub fn cleanup(&mut self, timeout: Duration) {
+        let now = Instant::now();
+        self.result_senders
+            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < timeout);
     }
 
     /// Sends a message to a remote actor identified by `actor_id` without expecting a response.
@@ -81,7 +90,7 @@ impl ActorAdaptor {
         F: FnOnce(Bytes) -> Result<(), E>,
     {
         let tag = self.next_tag();
-        self.result_senders.insert(tag, result_tx);
+        self.result_senders.insert(tag, (result_tx, Instant::now()));
 
         let ipc_message = message::IpcMessage::actor_message(message::ActorMessage::send(
             actor_id, message_id, message, tag,
@@ -113,7 +122,7 @@ impl ActorAdaptor {
                 response: Some(response),
             })) => match response {
                 message::ResponseType::Ok(ok) => {
-                    if let Some(rx) = self.result_senders.remove(&tag) {
+                    if let Some((rx, _)) = self.result_senders.remove(&tag) {
                         let _ = rx.try_send(ok);
                     }
 
