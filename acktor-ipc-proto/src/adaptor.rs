@@ -1,9 +1,12 @@
 use std::io;
 
+#[cfg(not(target_arch = "wasm32"))]
 use ahash::HashMap;
 use bytes::Bytes;
 use crossbeam_channel::Sender;
 use prost::Message as _;
+#[cfg(target_arch = "wasm32")]
+use rustc_hash::FxHashMap as HashMap;
 
 use crate::message;
 
