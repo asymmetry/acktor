@@ -86,7 +86,8 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                             ::acktor::MessageResponse::<Self, #m>::handle(result, ctx, Some(tx))
                                 .await;
                             let result = rx.await;
-                            send_result(result, result_tx, encode_res_ctx);
+                            let m_name = ::acktor::utils::ShortName::of::<#m>();
+                            send_result(result, result_tx, encode_res_ctx, m_name);
                         }
                         else {
                             ::acktor::MessageResponse::<Self, #m>::handle(result, ctx, None)
@@ -94,8 +95,8 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                         }
                     }
                     ::core::result::Result::Err(e) => {
-                        ::acktor::tracing::debug!(
-                            "Could not decode the message: {}",
+                        ::acktor::tracing::warn!(
+                            "Could not handle the binary message: {}",
                             ::acktor::ErrorReport::report(&e)
                         );
                         if let ::core::option::Option::Some(tx) = result_tx {
@@ -133,8 +134,8 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                     err: impl ::core::convert::Into<::acktor::error::BoxError>,
                 ) {
                     if let Err(e) = tx.send_err(err) {
-                        ::acktor::tracing::debug!(
-                            "Could not report the error to the sender: {}",
+                        ::acktor::tracing::warn!(
+                            "Could not report the error to the original sender: {}",
                             ::acktor::ErrorReport::report(&e)
                         );
                     }
@@ -154,6 +155,7 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                                 + ::core::marker::Sync,
                         >,
                     >,
+                    m_name: ::acktor::utils::ShortName,
                 ) {
                     match result {
                         ::core::result::Result::Ok(result) => {
@@ -163,14 +165,15 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                             match ::acktor::codec::Encode::encode_to_bytes(&result, encode_ctx) {
                                 ::core::result::Result::Ok(bytes) => {
                                     if let Err(e) = tx.send(bytes) {
-                                        ::acktor::tracing::debug!(
-                                            "Could not send the message response to the sender: {}",
+                                        ::acktor::tracing::warn!(
+                                            "Could not send the message response to the original \
+                                             sender: {}",
                                             ::acktor::ErrorReport::report(&e)
                                         );
                                     }
                                 }
                                 ::core::result::Result::Err(e) => {
-                                    ::acktor::tracing::debug!(
+                                    ::acktor::tracing::warn!(
                                         "Could not encode the message response: {}",
                                         ::acktor::ErrorReport::report(&e)
                                     );
@@ -179,8 +182,10 @@ pub fn expand(ast: &syn::DeriveInput) -> TokenStream {
                             }
                         }
                         ::core::result::Result::Err(e) => {
-                            ::acktor::tracing::debug!(
-                                "Could not receive the message response from the handler: {}",
+                            ::acktor::tracing::warn!(
+                                "Could not handle the binary message: could not receive the \
+                                 message response from Handler<{}>: {}",
+                                m_name,
                                 ::acktor::ErrorReport::report(&e)
                             );
                             send_err(tx, e);

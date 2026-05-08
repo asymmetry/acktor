@@ -1,6 +1,6 @@
 [package]
 name = "acktor-ipc"
-version = "1.0.9"
+version = "1.0.10"
 description = "Interprocess communication support for the acktor actor framework"
 edition.workspace = true
 rust-version.workspace = true
@@ -57,7 +57,6 @@ anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
 pretty_assertions.workspace = true
-
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "time"] }
 tracing-subscriber.workspace = true
 

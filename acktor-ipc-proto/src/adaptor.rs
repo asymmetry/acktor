@@ -1,9 +1,13 @@
 use std::io;
+use std::time::{Duration, Instant};
 
+#[cfg(not(target_arch = "wasm32"))]
 use ahash::HashMap;
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use crossbeam_channel::Sender;
 use prost::Message as _;
+#[cfg(target_arch = "wasm32")]
+use rustc_hash::FxHashMap as HashMap;
 
 use crate::message;
 
@@ -21,8 +25,7 @@ pub struct ParsedActorMessage {
 #[derive(Debug)]
 pub struct ActorAdaptor {
     tag: u64,
-    result_senders: HashMap<u64, Sender<Bytes>>,
-    buffer: BytesMut,
+    result_senders: HashMap<u64, (Sender<Bytes>, Instant)>,
 }
 
 impl Default for ActorAdaptor {
@@ -31,7 +34,6 @@ impl Default for ActorAdaptor {
         Self {
             tag: 0,
             result_senders: HashMap::default(),
-            buffer: BytesMut::with_capacity(8192),
         }
     }
 }
@@ -49,33 +51,35 @@ impl ActorAdaptor {
         tag
     }
 
+    /// Cleans up the expired result senders that have been waiting for responses for longer than
+    /// the specified timeout.
+    pub fn cleanup(&mut self, timeout: Duration) {
+        let now = Instant::now();
+        self.result_senders
+            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < timeout);
+    }
+
     /// Sends a message to a remote actor identified by `actor_id` without expecting a response.
-    pub fn do_send<'a, F, E>(
-        &'a mut self,
+    pub fn do_send<F, E>(
+        &mut self,
         actor_id: u64,
         message_id: u64,
         message: Bytes,
         send_func: F,
     ) -> Result<(), E>
     where
-        F: FnOnce(&'a [u8]) -> Result<(), E>,
+        F: FnOnce(Bytes) -> Result<(), E>,
     {
         let ipc_message = message::IpcMessage::actor_message(message::ActorMessage::do_send(
             actor_id, message_id, message,
         ));
 
-        let len = ipc_message.encoded_len();
-        self.buffer.resize(len, 0);
-
-        // buffer has been resized, this is infallible
-        let _ = ipc_message.encode(&mut self.buffer);
-
-        send_func(&self.buffer[..len])
+        send_func(ipc_message.encode_to_vec().into())
     }
 
     /// Sends a message to a remote actor identified by `actor_id` and expects a response.
-    pub fn send<'a, F, E>(
-        &'a mut self,
+    pub fn send<F, E>(
+        &mut self,
         actor_id: u64,
         message_id: u64,
         message: Bytes,
@@ -83,22 +87,16 @@ impl ActorAdaptor {
         send_func: F,
     ) -> Result<(), E>
     where
-        F: FnOnce(&'a [u8]) -> Result<(), E>,
+        F: FnOnce(Bytes) -> Result<(), E>,
     {
         let tag = self.next_tag();
-        self.result_senders.insert(tag, result_tx);
+        self.result_senders.insert(tag, (result_tx, Instant::now()));
 
         let ipc_message = message::IpcMessage::actor_message(message::ActorMessage::send(
             actor_id, message_id, message, tag,
         ));
 
-        let len = ipc_message.encoded_len();
-        self.buffer.resize(len, 0);
-
-        // buffer has been resized, this is infallible
-        let _ = ipc_message.encode(&mut self.buffer);
-
-        send_func(&self.buffer[..len])
+        send_func(ipc_message.encode_to_vec().into())
     }
 
     pub fn parse(&mut self, msg: Bytes) -> Result<Option<ParsedActorMessage>, io::Error> {
@@ -124,7 +122,7 @@ impl ActorAdaptor {
                 response: Some(response),
             })) => match response {
                 message::ResponseType::Ok(ok) => {
-                    if let Some(rx) = self.result_senders.remove(&tag) {
+                    if let Some((rx, _)) = self.result_senders.remove(&tag) {
                         let _ = rx.try_send(ok);
                     }
 
@@ -134,7 +132,7 @@ impl ActorAdaptor {
                 message::ResponseType::Err(err) => Err(io::Error::other(err)),
             },
 
-            _ => Err(io::Error::other("unsupported ipc message type")),
+            _ => Err(io::Error::other("unsupported ipc message")),
         }
     }
 }
