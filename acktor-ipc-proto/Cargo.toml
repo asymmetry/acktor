@@ -1,6 +1,6 @@
 [package]
 name = "acktor-ipc-proto"
-version = "1.0.7"
+version = "1.0.8"
 description = "Interprocess communication protocol for the acktor actor framework"
 edition.workspace = true
 rust-version.workspace = true
