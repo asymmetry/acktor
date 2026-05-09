@@ -16,7 +16,7 @@ rustc-args = ["--cfg", "tokio_unstable"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["derive", "websocket"]
+default = ["derive"]
 derive = ["dep:acktor-derive", "acktor/derive"]
 # pre-implemented IPC methods
 # enable one of these features to select the IPC method to use

@@ -1,3 +1,7 @@
+//! # acktor-derive
+//!
+//! Derive macros for the [`acktor`](https://github.com/asymmetry/acktor) actor framework.
+
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 use proc_macro::TokenStream;
@@ -14,9 +18,9 @@ mod decode;
 #[cfg(feature = "ipc")]
 mod encode;
 #[cfg(feature = "ipc")]
-mod remote;
-#[cfg(feature = "ipc")]
 mod remote_addressable;
+#[cfg(feature = "ipc")]
+mod remote_attr;
 
 /// Derive the [`Message`] trait for a struct or enum.
 ///
@@ -295,5 +299,5 @@ pub fn remote_addressable_derive(input: TokenStream) -> TokenStream {
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]
 #[proc_macro_attribute]
 pub fn remote(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    remote::expand(item.into()).into()
+    remote_attr::expand(item.into()).into()
 }
