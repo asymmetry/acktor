@@ -154,6 +154,10 @@ impl CronActor for Heartbeat {
 }
 ```
 
+## IPC Support
+
+Actors in different processes can talk to each other through the [`acktor-ipc`](./acktor-ipc) crate. Enable the `ipc` feature on `acktor`, add `acktor-ipc` to your dependencies, mark the actors you want to expose with `#[derive(RemoteAddressable)]` + `#[remote]`, and connect them through a `Node` over a `pipe` or `websocket` transport. See the [`acktor-ipc` README](./acktor-ipc/README.md) and the [`pingpong` example](./acktor-ipc/examples/pingpong) for a full walkthrough.
+
 ## Feature Flags
 
 Defaults: `derive`, `observer`, `cron`.
