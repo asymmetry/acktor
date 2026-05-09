@@ -155,7 +155,7 @@
 //! | `observer` | Yes | Enables the [`observer`] module. |
 //! | `cron` | Yes | Enables the [`cron`] module. |
 //! | `identifier` | No | Enables stable type identifiers ([`stable_type_id`], [`MessageId`]). |
-//! | `ipc` | No | Enables IPC support: the [`codec`] module, [`BinaryMessage`][message::BinaryMessage], remote addressing ([`RemoteAddressable`][actor::RemoteAddressable], [`RemoteSpawnable`][actor::RemoteSpawnable], [`RemoteProxy`][address::RemoteProxy]), and the `proto` re-export. Implies `identifier`. |
+//! | `ipc` | No | Enables IPC support: the [`codec`] module, [`BinaryMessage`][message::BinaryMessage], remote addressing ([`RemoteAddressable`], [`RemoteSpawnable`], [`RemoteProxy`]), and the `proto` re-export. Implies `identifier`. |
 //! | `prost-codec` | No | Use an all-prost primitive codec instead of the default zerocopy + prost mix (useful for cross-language interop). |
 //! | `bottleneck-warning` | No | Emits `tracing::debug!` logs when an observer's mailbox is full during notification, useful for spotting slow consumers. |
 //! | `tokio-tracing` | No | Names spawned actor tasks for [`tokio-console`](https://docs.rs/console-subscriber). Requires building with `RUSTFLAGS="--cfg tokio_unstable"`. |

@@ -44,7 +44,7 @@ acktor/                  # workspace root
 ## Build & Test Commands
 
 ```sh
-# Test (if `cargo nextest` is available, use it)
+# Test
 RUSTFLAGS="--cfg tokio_unstable" cargo test --all-features --workspace
 
 # Lint

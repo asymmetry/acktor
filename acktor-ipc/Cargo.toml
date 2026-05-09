@@ -19,7 +19,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = ["derive"]
 derive = ["dep:acktor-derive", "acktor/derive"]
 # pre-implemented IPC methods
-# enable one of these features to select the IPC method to use
+# enable below features to pick the IPC transport(s) you want
 pipe = [
     "dep:interprocess",
     "dep:tokio-util",

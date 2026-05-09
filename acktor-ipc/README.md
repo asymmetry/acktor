@@ -60,7 +60,7 @@ WebSocket transport.
 
 ## Feature Flags
 
-Defaults: `derive`, `websocket`.
+Defaults: `derive`.
 
 | Feature     | Purpose                                        |
 | ----------- | ---------------------------------------------- |
@@ -68,7 +68,7 @@ Defaults: `derive`, `websocket`.
 | `pipe`      | Pipe transport (Unix sockets / Windows pipes). |
 | `websocket` | WebSocket transport.                           |
 
-`pipe` and `websocket` are not mutually exclusive — enable whichever transports you need.
+Neither transport is enabled by default — enable `pipe` and/or `websocket` to pick the transports you want.
 
 ## License
 
