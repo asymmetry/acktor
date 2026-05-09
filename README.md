@@ -62,7 +62,7 @@ impl Handler<CounterMsg> for Counter {
 
 #[tokio::main]
 async fn main() {
-    let (addr, handle) = Counter(0).run("counter").unwrap();
+    let (addr, handle) = Counter(0).start("counter").unwrap();
 
     // fire-and-forget
     addr.do_send(CounterMsg::Increment).await.unwrap();
@@ -75,6 +75,103 @@ async fn main() {
     handle.await.unwrap();
 }
 ```
+
+## Supervision
+
+Implement `Handler<SupervisionEvent<A>>` on the supervisor actor. Use the command `Supervisor::Set` to attach the supervisor actor to the child (or `Supervisor::Unset` to detach). Since every actor handles `Supervisor<A>` automatically, no extra wiring is needed on the child side.
+
+```rust
+use acktor::{Actor, Context, Handler, supervisor::SupervisionEvent};
+
+struct Worker;
+
+impl Actor for Worker {
+    type Context = Context<Self>;
+    type Error = String;
+}
+
+#[derive(Default)]
+struct Watchdog;
+
+impl Actor for Watchdog {
+    type Context = Context<Self>;
+    type Error = String;
+}
+
+impl Handler<SupervisionEvent<Worker>> for Watchdog {
+    type Result = ();
+
+    async fn handle(&mut self, event: SupervisionEvent<Worker>, _ctx: &mut Self::Context) {
+        println!("worker event: {:?}", event);
+    }
+}
+```
+
+## Observer
+
+For a subject actor, implement the `SubjectActor<Event>` trait so it can emit `Event`s to registered observers. Every subject actor automatically gets a `Handler<Observer<Event>>` implementation that manages the observers, so the observers can be registered by sending `Observer::Register` commands to the subject actor (or `Observer::Unregister` to stop receiving events).
+
+```rust
+use acktor::{Actor, Context, Message, observer::{ObserverSet, SubjectActor}};
+
+#[derive(Clone, Message)]
+#[result_type(())]
+struct Tick;
+
+#[derive(Default)]
+struct Clock { observers: ObserverSet<Tick> }
+
+impl Actor for Clock {
+    type Context = Context<Self>;
+    type Error = String;
+}
+
+impl SubjectActor<Tick> for Clock {
+    fn observers_mut(&mut self) -> &mut ObserverSet<Tick> { &mut self.observers }
+}
+```
+
+## Cron Tasks
+
+Use `CronContext<Self>` as the actor's context and implement `CronActor` trait to opt in this feature. `CronActor` trait defines a `task` method that is invoked repeatedly with a delay determined by its return value.
+
+```rust
+use std::time::Duration;
+use acktor::{Actor, cron::{CronActor, CronContext}};
+
+struct Heartbeat;
+
+impl Actor for Heartbeat {
+    type Context = CronContext<Self>;
+    type Error = String;
+}
+
+impl CronActor for Heartbeat {
+    async fn task(&mut self, _ctx: &mut Self::Context) -> Result<Duration, Self::Error> {
+        println!("tick");
+        Ok(Duration::from_secs(1))
+    }
+}
+```
+
+## IPC Support
+
+Actors in different processes can talk to each other through the [`acktor-ipc`](./acktor-ipc) crate. Enable the `ipc` feature on `acktor`, add `acktor-ipc` to your dependencies, mark the actors you want to expose with `#[derive(RemoteAddressable)]` + `#[remote]`, and connect them through a `Node` over a `pipe` or `websocket` transport. See the [`acktor-ipc` README](./acktor-ipc/README.md) and the [`pingpong` example](./acktor-ipc/examples/pingpong) for a full walkthrough.
+
+## Feature Flags
+
+Defaults: `derive`, `observer`, `cron`.
+
+| Feature              | Purpose                                                         |
+| -------------------- | --------------------------------------------------------------- |
+| `derive`             | Re-exports the derive macros from `acktor-derive`.              |
+| `observer`           | Enables the observer module.                                    |
+| `cron`               | Enables the cron module.                                        |
+| `identifier`         | Enables stable type identifiers.                                |
+| `ipc`                | Enables IPC support (codec module, remote addressing).          |
+| `prost-codec`        | Use an all-prost primitive codec instead of the zerocopy mix.   |
+| `bottleneck-warning` | Logs when an observer's mailbox is full.                        |
+| `tokio-tracing`      | Names actor tasks for `tokio-console` (needs `tokio_unstable`). |
 
 ## License
 
