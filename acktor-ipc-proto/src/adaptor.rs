@@ -1,5 +1,4 @@
 use std::io;
-use std::time::{Duration, Instant};
 
 #[cfg(not(target_arch = "wasm32"))]
 use ahash::HashMap;
@@ -25,7 +24,7 @@ pub struct ParsedActorMessage {
 #[derive(Debug)]
 pub struct ActorAdaptor {
     tag: u64,
-    result_senders: HashMap<u64, (Sender<Bytes>, Instant)>,
+    result_senders: HashMap<u64, (Sender<Bytes>, i64)>,
 }
 
 impl Default for ActorAdaptor {
@@ -53,10 +52,9 @@ impl ActorAdaptor {
 
     /// Cleans up the expired result senders that have been waiting for responses for longer than
     /// the specified timeout.
-    pub fn cleanup(&mut self, timeout: Duration) {
-        let now = Instant::now();
+    pub fn cleanup(&mut self, now: i64, timeout: i64) {
         self.result_senders
-            .retain(|_, (_, timestamp)| now.duration_since(*timestamp) < timeout);
+            .retain(|_, (_, timestamp)| now - *timestamp < timeout);
     }
 
     /// Sends a message to a remote actor identified by `actor_id` without expecting a response.
@@ -84,13 +82,14 @@ impl ActorAdaptor {
         message_id: u64,
         message: Bytes,
         result_tx: Sender<Bytes>,
+        timestamp: i64,
         send_func: F,
     ) -> Result<(), E>
     where
         F: FnOnce(Bytes) -> Result<(), E>,
     {
         let tag = self.next_tag();
-        self.result_senders.insert(tag, (result_tx, Instant::now()));
+        self.result_senders.insert(tag, (result_tx, timestamp));
 
         let ipc_message = message::IpcMessage::actor_message(message::ActorMessage::send(
             actor_id, message_id, message, tag,
