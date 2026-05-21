@@ -10,4 +10,3 @@ about: Suggest a new feature
 ## Proposed solution
 
 ## Alternatives considered
-
