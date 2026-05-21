@@ -1,7 +1,7 @@
 [workspace]
-resolver = "2"
 members = ["acktor", "acktor-derive", "acktor-ipc", "acktor-ipc-proto"]
 exclude = ["ipc-proto-gen"]
+resolver = "3"
 
 [workspace.package]
 edition = "2024"
