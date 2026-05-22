@@ -62,14 +62,14 @@ async fn test_add_remove_listener() -> anyhow::Result<()> {
 
     // 1st add
     let port_1 = pick_free_port().await?;
-    let bind_addr_1 = format!("127.0.0.1:{port_1}");
+    let bind_addr_1 = format!("127.0.0.1:{}", port_1);
     let listener_1 = WebSocketListener::bind(&bind_addr_1).await?;
     let succeed = node.send(command::AddListener(listener_1)).await?.await?;
     assert!(succeed);
 
     // 2nd add
     let port_2 = pick_free_port().await?;
-    let bind_addr_2 = format!("127.0.0.1:{port_2}");
+    let bind_addr_2 = format!("127.0.0.1:{}", port_2);
     let listener_2 = WebSocketListener::bind(&bind_addr_2).await?;
     let succeed = node.send(command::AddListener(listener_2)).await?.await?;
     assert!(succeed);
@@ -144,8 +144,8 @@ async fn test_add_remove_actor() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_actor_commands() -> anyhow::Result<()> {
     let port = pick_free_port().await?;
-    let bind_addr = format!("127.0.0.1:{port}");
-    let endpoint = format!("ws://{bind_addr}");
+    let bind_addr = format!("127.0.0.1:{}", port);
+    let endpoint = format!("ws://{}", bind_addr);
 
     let (server, server_join_handle) = start_websocket_server(&bind_addr).await?;
     let (client, client_join_handle) = start_client()?;
@@ -207,7 +207,7 @@ async fn test_actor_commands() -> anyhow::Result<()> {
 async fn test_debug_fmt() -> anyhow::Result<()> {
     // AddListener
     let port = pick_free_port().await?;
-    let bind_addr = format!("127.0.0.1:{port}");
+    let bind_addr = format!("127.0.0.1:{}", port);
     let listener = WebSocketListener::bind(&bind_addr).await?;
     let cmd = command::AddListener(listener);
     assert_eq!(

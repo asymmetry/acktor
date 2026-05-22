@@ -21,7 +21,7 @@ Install `acktor` by adding it to your `Cargo.toml`:
 acktor = "1.0"
 ```
 
-Requires Rust 1.85 or later.
+Requires Rust 1.88 or later.
 
 ## Quick Start
 
@@ -69,7 +69,7 @@ async fn main() {
 
     // request-reply
     let result = addr.send(CounterMsg::Get).await.unwrap().await.unwrap();
-    println!("Counter: {result}"); // Counter: 1
+    println!("Counter: {}", result); // Counter: 1
 
     addr.do_send(Signal::Stop).await.unwrap();
     handle.await.unwrap();

@@ -180,7 +180,7 @@ mod tests {
         let probe = TcpListener::bind("127.0.0.1:0").await?;
         let addr = probe.local_addr()?;
         drop(probe);
-        WebSocketConnection::connect(&format!("ws://{addr}"))
+        WebSocketConnection::connect(&format!("ws://{}", addr))
             .await
             .expect_err("connect with no server must fail");
 
@@ -191,7 +191,7 @@ mod tests {
     async fn test_connection() -> anyhow::Result<()> {
         let listener = WebSocketListener::bind("127.0.0.1:0").await?;
         let addr = listener.listener.local_addr()?;
-        let url = format!("ws://{addr}");
+        let url = format!("ws://{}", addr);
 
         let server = tokio::spawn(async move {
             // 1st client: echo roundtrip
@@ -232,7 +232,7 @@ mod tests {
     async fn test_websocket_control_frames() -> anyhow::Result<()> {
         let tcp = TcpListener::bind("127.0.0.1:0").await?;
         let addr = tcp.local_addr()?;
-        let url = format!("ws://{addr}");
+        let url = format!("ws://{}", addr);
 
         let server = tokio::spawn(async move {
             // session 1: Ping -> client should reply with Pong, then consume the Binary

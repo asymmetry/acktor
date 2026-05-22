@@ -66,6 +66,7 @@
 //! transports you want.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![allow(clippy::uninlined_format_args)]
 
 pub mod error;
 pub use error::{NodeError, SessionError};
@@ -93,3 +94,6 @@ pub use acktor::codec::{Decode, DecodeContext, DecodeError, Encode, EncodeContex
 pub use acktor_derive::remote;
 
 pub mod double_map;
+
+#[cfg(test)]
+mod test_utils;

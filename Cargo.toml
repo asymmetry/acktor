@@ -1,11 +1,11 @@
 [workspace]
-resolver = "2"
 members = ["acktor", "acktor-derive", "acktor-ipc", "acktor-ipc-proto"]
 exclude = ["ipc-proto-gen"]
+resolver = "3"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["Chao Gu"]
 license = "MIT"
 repository = "https://github.com/asymmetry/acktor"
@@ -39,6 +39,7 @@ rkyv = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-test = "0.2"
 trybuild = "1.0"
 
 # workspace

@@ -66,18 +66,19 @@ pub fn detect_codec_config(ast: &syn::DeriveInput) -> syn::Result<CodecConfig> {
                      `rkyv`",
                 ));
             };
-            if let Some(bridge) = &args.bridge {
-                if is_self_type(bridge, &ast.ident) {
-                    return Err(syn::Error::new_spanned(
-                        bridge,
-                        "bridge type must differ from the derived type",
-                    ));
-                }
+            if let Some(bridge) = &args.bridge
+                && is_self_type(bridge, &ast.ident)
+            {
+                Err(syn::Error::new_spanned(
+                    bridge,
+                    "bridge type must differ from the derived type",
+                ))
+            } else {
+                Ok(CodecConfig {
+                    method: backend,
+                    bridge: args.bridge,
+                })
             }
-            Ok(CodecConfig {
-                method: backend,
-                bridge: args.bridge,
-            })
         }
         _ => Err(syn::Error::new_spanned(
             attr,

@@ -240,26 +240,26 @@ mod tests {
     fn test_error() {
         // SendError Display
         let err: SendError<()> = SendError::Closed(());
-        assert_eq!(format!("{err}"), "sending on a closed channel");
+        assert_eq!(err.to_string(), "sending on a closed channel");
 
         let err: SendError<()> = SendError::Full(());
-        assert_eq!(format!("{err}"), "sending on a full channel");
+        assert_eq!(err.to_string(), "sending on a full channel");
 
         let err: SendError<()> = SendError::Timeout(());
-        assert_eq!(format!("{err}"), "timed out waiting on sending");
+        assert_eq!(err.to_string(), "timed out waiting on sending");
 
         let err: SendError<()> = SendError::other(io::Error::other("io-level"), ());
-        assert_eq!(format!("{err}"), "io-level");
+        assert_eq!(err.to_string(), "io-level");
 
         // SendError Debug
         let err: SendError<()> = SendError::Closed(());
-        assert_eq!(format!("{err:?}"), "Closed(..)");
+        assert_eq!(format!("{:?}", err), "Closed(..)");
 
         let err: SendError<()> = SendError::Full(());
-        assert_eq!(format!("{err:?}"), "Full(..)");
+        assert_eq!(format!("{:?}", err), "Full(..)");
 
         let err: SendError<()> = SendError::Timeout(());
-        assert_eq!(format!("{err:?}"), "Timeout(..)");
+        assert_eq!(format!("{:?}", err), "Timeout(..)");
 
         // RecvError Display
         assert_eq!(
@@ -282,10 +282,10 @@ mod tests {
 
         // From<String> for RecvError
         let err: RecvError = String::from("string-error").into();
-        assert_eq!(format!("{err}"), "string-error");
+        assert_eq!(err.to_string(), "string-error");
 
         // From<&str> for RecvError
         let err: RecvError = "str-error".into();
-        assert_eq!(format!("{err}"), "str-error");
+        assert_eq!(err.to_string(), "str-error");
     }
 }

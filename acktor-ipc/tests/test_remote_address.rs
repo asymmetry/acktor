@@ -56,8 +56,8 @@ impl Handler<Echo> for EchoServer {
 #[tokio::test]
 async fn test_remote_address() -> Result<()> {
     let port = pick_free_port().await?;
-    let bind_addr = format!("127.0.0.1:{port}");
-    let endpoint = format!("ws://{bind_addr}");
+    let bind_addr = format!("127.0.0.1:{}", port);
+    let endpoint = format!("ws://{}", bind_addr);
 
     // spawn the echo actor and register it on the server node (clone the address so we can
     // terminate it explicitly at the end of the test)
