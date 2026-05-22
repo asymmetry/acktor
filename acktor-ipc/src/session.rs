@@ -648,9 +648,14 @@ impl Handler<MessageResponse> for Session {
 
 #[cfg(test)]
 mod tests {
+    use acktor::RecvError;
+    use anyhow::Result;
     use pretty_assertions::assert_eq;
+    use tracing_test::traced_test;
 
     use super::*;
+    use crate::actor_ref::ActorRef;
+    use crate::test_utils::{Echo, start_failing_session};
 
     #[test]
     fn test_debug_fmt() {
@@ -665,5 +670,126 @@ mod tests {
             result: Err("boom".to_string()),
         };
         assert_eq!(format!("{:?}", err), "MessageResponse(7)");
+    }
+
+    /// When the outbound IPC send fails for a `send` (response-expected) message, the handler must
+    /// log the failure and report the error back to the original sender instead of leaving it
+    /// hanging.
+    #[tokio::test]
+    #[traced_test]
+    async fn test_binary_message_send_reports_failure() -> Result<()> {
+        let session = start_failing_session();
+
+        let (tx, rx) = oneshot::channel::<Bytes>();
+
+        session
+            .do_send(BinaryMessage::send(1, 2, Bytes::new(), tx))
+            .await?;
+
+        let result = rx.await;
+        assert!(
+            matches!(result, Err(RecvError::Other(e)) if e.to_string() == "could not send the outbound remote message to the remote node")
+        );
+
+        assert!(logs_contain("Could not send `ActorMessage` to remote node"));
+
+        Ok(())
+    }
+
+    /// When the outbound IPC send fails for a `do_send` (fire-and-forget) message, the error is
+    /// only logged and the session must keep running. We prove it survived by following up with a
+    /// `send` message and still receiving the reported failure.
+    #[tokio::test]
+    #[traced_test]
+    async fn test_binary_message_do_send_survives_failure() -> Result<()> {
+        let session = start_failing_session();
+
+        // do_send variant: no result channel; failure is swallowed (logged) by the handler.
+        session
+            .do_send(BinaryMessage::do_send(1, 2, Bytes::new()))
+            .await?;
+
+        // The session is still alive and processes the next message.
+        let (tx, rx) = oneshot::channel::<Bytes>();
+        session
+            .do_send(BinaryMessage::send(3, 4, Bytes::new(), tx))
+            .await?;
+
+        assert!(matches!(rx.await, Err(RecvError::Other(_))));
+        assert!(logs_contain(
+            "Could not do_send `ActorMessage` to remote node"
+        ));
+
+        Ok(())
+    }
+
+    /// A failed outbound send while serving a `MessageResponse` (the relayed result of an inbound
+    /// request) is only logged; the session must keep running.
+    #[tokio::test]
+    #[traced_test]
+    async fn test_message_response_survives_failure() -> Result<()> {
+        let session = start_failing_session();
+
+        session
+            .do_send(MessageResponse {
+                tag: 1,
+                result: Ok(Bytes::from_static(b"payload")),
+            })
+            .await?;
+
+        // Still responsive afterwards.
+        let (tx, rx) = oneshot::channel::<Bytes>();
+        session
+            .do_send(BinaryMessage::send(2, 3, Bytes::new(), tx))
+            .await?;
+
+        assert!(matches!(rx.await, Err(RecvError::Other(_))));
+        assert!(logs_contain(
+            "Could not send `MessageResponse` to remote node"
+        ));
+
+        Ok(())
+    }
+
+    /// `RemoteCreateActor` must surface a failed outbound send to the caller as an error rather
+    /// than hanging on the response, and log the failure.
+    #[tokio::test]
+    #[traced_test]
+    async fn test_remote_create_actor_reports_failure() -> Result<()> {
+        let session = start_failing_session();
+
+        let result = session
+            .send(command::RemoteCreateActor::<Echo>::new("remote-echo", None))
+            .await?
+            .await?;
+
+        assert!(result.is_err());
+        assert!(logs_contain(
+            "Could not send `NodeMessage::CreateActor` to remote node"
+        ));
+
+        Ok(())
+    }
+
+    /// `RemoteGetActor` must likewise surface a failed outbound send to the caller as an error,
+    /// and log the failure.
+    #[tokio::test]
+    #[traced_test]
+    async fn test_remote_get_actor_reports_failure() -> Result<()> {
+        let session = start_failing_session();
+
+        let result = session
+            .send(command::RemoteGetActor::<Echo>::new(ActorRef::Label(
+                "remote-echo".to_string(),
+            )))
+            .await?
+            .await?;
+
+        assert!(result.is_err());
+        assert!(logs_contain(
+            "Could not send `NodeMessage::GetActor` to remote node"
+        ));
+
+        Ok(())
     }
 }

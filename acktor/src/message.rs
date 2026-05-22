@@ -108,7 +108,7 @@ where
         {
             debug!(
                 "Could not send the result back to the sender since the channel is closed, \
-                    log the dropped error: {}",
+                 log the dropped error: {}",
                 e.into().report()
             );
         }
@@ -297,6 +297,22 @@ mod tests {
         assert_eq!(roundtrip(vec![1_u8, 2, 3]).await?, vec![1, 2, 3]);
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_result_response_tx_closed() {
+        let mut ctx = Context::<A>::with_capacity("test".into(), 1);
+        let (tx, rx) = oneshot::channel::<std::result::Result<i32, String>>();
+
+        // Close the channel so the response can no longer be delivered. The `Err` variant
+        // drives the impl into its tx-closed branch, which logs the dropped error instead
+        // of panicking.
+        drop(rx);
+
+        type R = std::result::Result<i32, String>;
+        let response: R = Err(String::from("dropped"));
+        // Should complete cleanly even though the receiver is gone.
+        <R as MessageResponse<A, M<R>>>::handle(response, &mut ctx, Some(tx)).await;
     }
 
     #[test]
