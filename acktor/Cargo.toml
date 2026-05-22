@@ -1,6 +1,6 @@
 [package]
 name = "acktor"
-version = "1.1.0"
+version = "1.1.1"
 description = "Pure-Rust actor framework built on top of the Tokio async runtime"
 edition.workspace = true
 rust-version.workspace = true
@@ -18,7 +18,7 @@ rustc-args = ["--cfg", "tokio_unstable"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["derive", "observer", "cron", "ipc"]
+default = ["derive", "observer", "cron"]
 derive = ["dep:acktor-derive"]
 observer = ["dep:ahash"]
 cron = []
