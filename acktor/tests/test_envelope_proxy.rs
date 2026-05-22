@@ -69,7 +69,7 @@ async fn test_unpack_message() -> Result<()> {
     let recovered = match address.try_send(timed) {
         Ok(_) => panic!("send should fail after the actor is terminated"),
         Err(SendError::Closed(timed)) => timed,
-        Err(other) => panic!("expected Closed, got {other:?}"),
+        Err(other) => panic!("expected Closed, got {:?}", other),
     };
     let (work, budget) = recovered.into_parts();
     assert_eq!(work.value, 99);

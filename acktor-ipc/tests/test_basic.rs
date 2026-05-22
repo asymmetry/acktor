@@ -8,8 +8,8 @@ use common::{connect, pick_free_port, start_client, start_pipe_server, start_web
 #[tokio::test]
 async fn test_basic_websocket() -> Result<()> {
     let port = pick_free_port().await?;
-    let bind_addr = format!("127.0.0.1:{port}");
-    let endpoint = format!("ws://{bind_addr}");
+    let bind_addr = format!("127.0.0.1:{}", port);
+    let endpoint = format!("ws://{}", bind_addr);
 
     let (server, server_join_handle) = start_websocket_server(&bind_addr).await?;
     let (client, client_join_handle) = start_client()?;

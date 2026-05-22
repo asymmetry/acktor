@@ -66,6 +66,7 @@
 //! transports you want.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![allow(clippy::uninlined_format_args)]
 
 pub mod error;
 pub use error::{NodeError, SessionError};

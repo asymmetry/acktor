@@ -46,7 +46,7 @@ impl Handler<Payload> for Node {
             return;
         }
 
-        if msg.0 % 498989 == 0 {
+        if msg.0.is_multiple_of(498989) {
             println!(
                 "Actor {} received message {} of {} ({:.2}%)",
                 self.id,
@@ -74,7 +74,7 @@ async fn main() {
 
     let limit = n_nodes * n_rounds;
 
-    println!("Setting up {n_nodes} nodes");
+    println!("Setting up {} nodes", n_nodes);
 
     let (address, join_handle) = Node::create(format!("Node {}", 0), |ctx| {
         if n_nodes == 1 {
@@ -99,7 +99,7 @@ async fn main() {
                 limit,
                 next: next_address,
             }
-            .start(format!("Node {id}"))
+            .start(format!("Node {}", id))
             .unwrap();
         }
 
@@ -111,7 +111,10 @@ async fn main() {
     })
     .unwrap();
 
-    println!("Sending start message and waiting for termination after {limit} messages...");
+    println!(
+        "Sending start message and waiting for termination after {} messages...",
+        limit
+    );
 
     let now = Instant::now();
 

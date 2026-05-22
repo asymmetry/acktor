@@ -158,7 +158,7 @@ mod tests {
         let server = tokio::spawn(async move {
             // 1st client: echo roundtrip; peer_endpoint uses the `#0` suffix
             let mut c1 = listener.accept().await?;
-            assert_eq!(c1.peer_endpoint(), format!("{server_name}#0"));
+            assert_eq!(c1.peer_endpoint(), format!("{}#0", server_name));
             let msg = c1.recv().await?;
             c1.send(msg).await?;
             c1.close().await?;
@@ -166,7 +166,7 @@ mod tests {
             // 2nd client: accept counter increments to `#1`; drop without writing to exercise
             // the client-side ConnectionAborted path
             let c2 = listener.accept().await?;
-            assert_eq!(c2.peer_endpoint(), format!("{server_name}#1"));
+            assert_eq!(c2.peer_endpoint(), format!("{}#1", server_name));
             drop(c2);
 
             Ok::<_, anyhow::Error>(())

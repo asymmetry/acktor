@@ -94,34 +94,22 @@ impl Session {
         }
     }
 
-    // TODO: once MSRV is bumped to 1.88, rewrite the two collect-then-remove loops with
-    // `HashMap::extract_if`.
     fn cleanup_message_res_tx_map(&mut self) {
         let now = Instant::now();
 
-        let tags_to_remove = self
-            .message_res_tx_map
-            .iter()
-            .filter_map(|(tag, (tx, timestamp))| {
-                if tx.is_closed() || now.duration_since(*timestamp) >= RESPONSE_TIMEOUT {
-                    Some(*tag)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+        let expired = self.message_res_tx_map.extract_if(|_, (tx, timestamp)| {
+            tx.is_closed() || now.duration_since(*timestamp) >= RESPONSE_TIMEOUT
+        });
 
-        for tag in tags_to_remove {
-            if let Some((tx, _)) = self.message_res_tx_map.remove(&tag) {
-                if tx.is_closed() {
-                    debug!(
-                        "The sender of message with tag {} has closed the response rx, \
-                         remove the corresponding response tx",
-                        tag
-                    );
-                } else {
-                    let _ = tx.send_err(SessionError::ResponseTimeout);
-                }
+        for (tag, (tx, _)) in expired {
+            if tx.is_closed() {
+                debug!(
+                    "The sender of message with tag {} has closed the response rx, remove the \
+                     corresponding response tx",
+                    tag
+                );
+            } else {
+                let _ = tx.send_err(SessionError::ResponseTimeout);
             }
         }
     }

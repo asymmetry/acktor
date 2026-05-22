@@ -65,8 +65,8 @@ impl Handler<Inc> for Counter {
 #[tokio::test]
 async fn test_remote_spawnable() -> anyhow::Result<()> {
     let port = pick_free_port().await?;
-    let bind_addr = format!("127.0.0.1:{port}");
-    let endpoint = format!("ws://{bind_addr}");
+    let bind_addr = format!("127.0.0.1:{}", port);
+    let endpoint = format!("ws://{}", bind_addr);
 
     let listener = WebSocketListener::bind(&bind_addr).await?;
     // start a server with a pre-registered local actor

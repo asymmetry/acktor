@@ -333,10 +333,10 @@ where
     ) -> Self::Result {
         debug_trace!("Handle command {:?}", msg);
 
-        if let Some(actor_mgr) = &self.actor_mgr {
-            if let Ok(rx) = actor_mgr.send(msg).await {
-                return rx.await.unwrap_or(false);
-            }
+        if let Some(actor_mgr) = &self.actor_mgr
+            && let Ok(rx) = actor_mgr.send(msg).await
+        {
+            return rx.await.unwrap_or(false);
         }
 
         false
@@ -353,10 +353,10 @@ impl Handler<command::RemoveActor> for Node {
     ) -> Self::Result {
         debug_trace!("Handle command {:?}", msg);
 
-        if let Some(actor_mgr) = &self.actor_mgr {
-            if let Ok(rx) = actor_mgr.send(msg).await {
-                return rx.await.unwrap_or(false);
-            }
+        if let Some(actor_mgr) = &self.actor_mgr
+            && let Ok(rx) = actor_mgr.send(msg).await
+        {
+            return rx.await.unwrap_or(false);
         }
 
         false

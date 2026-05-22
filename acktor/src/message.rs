@@ -103,14 +103,14 @@ where
         _ctx: &mut A::Context,
         tx: Option<oneshot::Sender<M::Result>>,
     ) -> impl Future<Output = ()> + Send {
-        if let Some(tx) = tx {
-            if let Err(SendError::Closed(Err(e))) = tx.send(self) {
-                debug!(
-                    "Could not send the result back to the sender since the channel is closed, \
+        if let Some(tx) = tx
+            && let Err(SendError::Closed(Err(e))) = tx.send(self)
+        {
+            debug!(
+                "Could not send the result back to the sender since the channel is closed, \
                     log the dropped error: {}",
-                    e.into().report()
-                );
-            }
+                e.into().report()
+            );
         }
         // tx is None means the sender does not care about the result, so we simply drop it
         future::ready(())

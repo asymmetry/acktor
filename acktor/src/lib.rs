@@ -52,7 +52,7 @@
 //!
 //!     // request-reply
 //!     let result = addr.send(CounterMsg::Get).await.unwrap().await.unwrap();
-//!     println!("Counter: {result}"); // Counter: 1
+//!     println!("Counter: {}", result); // Counter: 1
 //!
 //!     addr.do_send(Signal::Stop).await.unwrap();
 //!     handle.await.unwrap();
@@ -162,6 +162,7 @@
 //!
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![allow(clippy::uninlined_format_args)]
 
 pub mod error;
 pub use error::{ErrorReport, RecvError, SendError};
