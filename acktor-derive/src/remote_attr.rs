@@ -9,8 +9,8 @@ pub fn expand(input: TokenStream) -> TokenStream {
     };
 
     match &item.trait_ {
-        Some((_, path, _)) if path.segments.last().is_some_and(|s| s.ident == "Actor") => {}
-        Some((_, path, _)) => {
+        Some((path, _)) if path.segments.last().is_some_and(|s| s.ident == "Actor") => {}
+        Some((path, _)) => {
             return syn::Error::new_spanned(
                 path,
                 "#[remote] must be applied to an `impl Actor for ..` block",

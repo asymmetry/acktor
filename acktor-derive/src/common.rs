@@ -89,7 +89,12 @@ pub fn detect_codec_config(ast: &syn::DeriveInput) -> syn::Result<CodecConfig> {
 
 /// Returns `true` if `ty` is a simple path that matches the identifier `name`.
 fn is_self_type(ty: &syn::Type, name: &syn::Ident) -> bool {
-    if let syn::Type::Path(syn::TypePath { qself: None, path }) = ty {
+    if let syn::Type::Path(syn::TypePath {
+        qself: None,
+        path,
+        attrs: _,
+    }) = ty
+    {
         path.is_ident(name)
     } else {
         false
