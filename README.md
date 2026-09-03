@@ -21,7 +21,7 @@ Install `acktor` by adding it to your `Cargo.toml`:
 acktor = "1.0"
 ```
 
-Requires Rust 1.88 or later.
+Requires Rust 1.89 or later.
 
 ## Quick Start
 
