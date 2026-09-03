@@ -191,7 +191,7 @@ mod context;
 pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
 
 pub mod drain;
-pub use drain::{DrainPolicy, Drainable, NoDrain};
+pub use drain::Drainable;
 
 pub mod address;
 #[cfg(feature = "ipc")]
