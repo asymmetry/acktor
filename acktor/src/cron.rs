@@ -13,6 +13,7 @@ use crate::actor::{Actor, ActorContext, ActorId, ActorState, JoinHandle, Stoppin
 use crate::address::{Address, Mailbox, Recipient, SenderInfo};
 use crate::channel::mpsc;
 use crate::context::DEFAULT_MAILBOX_CAPACITY;
+use crate::drain::{DrainPolicy, Drainable, NoDrain};
 use crate::envelope::EnvelopeProxy;
 use crate::error::RecvError;
 use crate::message::{Handler, Message};
@@ -61,25 +62,32 @@ where
 }
 
 /// The default implementation of an actor context which can execute repetitive tasks.
+///
+/// The `D` type parameter selects the mailbox draining behavior. It defaults to [`NoDrain`],
+/// which compiles the draining machinery out entirely; use
+/// [`CronContext<Self, Drainable>`][crate::drain::Drainable] to gain
+/// [`drain_mailbox`][CronContext::drain_mailbox].
 #[derive(Debug)]
-pub struct CronContext<A>
+pub struct CronContext<A, D = NoDrain>
 where
     A: Actor<Context = Self> + CronActor,
+    D: DrainPolicy,
 {
     label: String,
     state: ActorState,
     doorplate: Address<A>,
     mailbox: Option<Mailbox<A>>,
-    drain_mailbox: bool,
+    drain: D::State,
     cron_state: CronState,
     cron_join_handle: Option<JoinHandle<()>>,
     supervisor: Option<Recipient<SupervisionEvent<A>>>,
     error: Option<A::Error>, // if an error happened during message handling
 }
 
-impl<A> CronContext<A>
+impl<A, D> CronContext<A, D>
 where
     A: Actor<Context = Self> + CronActor,
+    D: DrainPolicy,
 {
     /// Constructs a new [`CronContext`] with a specific capacity.
     pub fn with_capacity(label: String, capacity: usize) -> Self {
@@ -89,7 +97,7 @@ where
             state: ActorState::Unstarted,
             doorplate: Address::new(tx),
             mailbox: Some(Mailbox::new(rx)),
-            drain_mailbox: false,
+            drain: D::State::default(),
             cron_state: CronState::Normal,
             cron_join_handle: None,
             supervisor: None,
@@ -103,15 +111,6 @@ where
     /// the current message.
     pub fn save_error(&mut self, error: A::Error) {
         self.error = Some(error);
-    }
-
-    /// Schedules a one-time discard of messages already queued in the mailbox.
-    ///
-    /// Sets a flag; the processing loop acts on it on its next iteration by snapshotting
-    /// `mailbox.len()` and discarding exactly that many messages. Messages enqueued after
-    /// the snapshot are delivered normally.
-    pub fn drain_mailbox(&mut self) {
-        self.drain_mailbox = true;
     }
 
     fn take_error(&mut self) -> Result<(), A::Error> {
@@ -160,7 +159,11 @@ where
 
         if async_wait {
             match mailbox.recv().await {
-                Ok(mut envelope) => envelope.handle(actor, self).await,
+                Ok(mut envelope) => {
+                    D::snapshot(&mut self.drain, mailbox);
+                    envelope.handle(actor, self).await;
+                    D::apply(&mut self.drain, mailbox);
+                }
                 Err(_) => {
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
@@ -168,7 +171,11 @@ where
             };
         } else {
             match mailbox.try_recv() {
-                Ok(mut envelope) => envelope.handle(actor, self).await,
+                Ok(mut envelope) => {
+                    D::snapshot(&mut self.drain, mailbox);
+                    envelope.handle(actor, self).await;
+                    D::apply(&mut self.drain, mailbox);
+                }
                 Err(RecvError::Closed) => {
                     warn!("Mailbox is dropped, terminate the actor");
                     self.set_state(ActorState::Stopped);
@@ -181,9 +188,10 @@ where
     }
 }
 
-impl<A> ActorContext<A> for CronContext<A>
+impl<A, D> ActorContext<A> for CronContext<A, D>
 where
     A: Actor<Context = Self> + CronActor,
+    D: DrainPolicy,
 {
     fn new(label: String) -> Self {
         Self::with_capacity(label, DEFAULT_MAILBOX_CAPACITY)
@@ -216,15 +224,6 @@ where
 
     async fn run_loop(&mut self, actor: &mut A, mailbox: &mut Mailbox<A>) -> Result<(), A::Error> {
         while self.state() == ActorState::Running {
-            if self.drain_mailbox {
-                let count = mailbox.len();
-                for _ in 0..count {
-                    // the mailbox contains `count` messages, so try_recv never fail
-                    let _ = mailbox.try_recv();
-                }
-                self.drain_mailbox = false;
-            }
-
             let result = self.process_one(actor, mailbox).await;
 
             if result.is_err() && self.state() == ActorState::Running {
@@ -283,9 +282,10 @@ where
     }
 }
 
-impl<A> CronActorContext<A> for CronContext<A>
+impl<A, D> CronActorContext<A> for CronContext<A, D>
 where
     A: Actor<Context = Self> + CronActor,
+    D: DrainPolicy,
 {
     fn pause_task(&mut self) {
         if let Some(join_handle) = self.cron_join_handle.take() {
@@ -299,6 +299,22 @@ where
             join_handle.abort();
         }
         self.cron_state = CronState::Normal;
+    }
+}
+
+impl<A> CronContext<A, Drainable>
+where
+    A: Actor<Context = Self> + CronActor,
+{
+    /// Schedules a one-time discard of messages already queued in the mailbox.
+    ///
+    /// It should be called from a message handler. The length of the mailbox is snapshotted
+    /// right before the message handler is invoked, which means messages received during the
+    /// current message handler will not be discarded.
+    ///
+    /// This method is only available on a context using the [`Drainable`] policy.
+    pub fn drain_mailbox(&mut self) {
+        self.drain.request();
     }
 }
 

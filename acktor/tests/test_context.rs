@@ -4,8 +4,8 @@ use anyhow::Result;
 use pretty_assertions::assert_eq;
 
 use acktor::{
-    Actor, ActorContext, Address, Context, Handler, JoinHandle, Message, Signal, Stopping,
-    supervisor::SupervisionEvent,
+    Actor, ActorContext, Address, Context, Drainable, Handler, JoinHandle, Message, Signal,
+    Stopping, supervisor::SupervisionEvent,
 };
 
 #[derive(Debug)]
@@ -16,7 +16,7 @@ struct TestActor {
 }
 
 impl Actor for TestActor {
-    type Context = Context<Self>;
+    type Context = Context<Self, Drainable>;
     type Error = anyhow::Error;
 
     async fn stopping(&mut self, _ctx: &mut Self::Context) -> Result<Stopping, Self::Error> {
@@ -104,6 +104,8 @@ impl Handler<Drain> for TestActor {
     async fn handle(&mut self, _msg: Drain, ctx: &mut Self::Context) -> Self::Result {
         self.count += 1;
         ctx.drain_mailbox();
+        // enqueued during the handler, so it must survive the drain
+        ctx.address().do_send(Increment).await.unwrap();
     }
 }
 
@@ -301,8 +303,10 @@ async fn test_drain_mailbox() -> Result<()> {
 
     // count arrives after the mailbox has been drained
     let count = actor.send(GetCount).await?.await?;
-    // only Increment, Increment, Drain were processed (count = 3)
-    assert_eq!(count, 3);
+    // Increment, Increment, Drain, plus the Increment the Drain handler enqueued after
+    // requesting the drain: the two Increments queued before the handler ran are
+    // discarded, the one queued during it is not (count = 4)
+    assert_eq!(count, 4);
 
     Ok(())
 }
