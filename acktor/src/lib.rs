@@ -190,6 +190,9 @@ pub use actor::{RemoteAddressable, RemoteSpawnable};
 mod context;
 pub use context::{Context, DEFAULT_MAILBOX_CAPACITY};
 
+pub mod drain;
+pub use drain::{DrainPolicy, Drainable, NoDrain};
+
 pub mod address;
 #[cfg(feature = "ipc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ipc")))]

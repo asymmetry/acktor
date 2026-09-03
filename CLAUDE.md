@@ -62,7 +62,7 @@ RUSTFLAGS="--cfg tokio_unstable" cargo build --workspace --all-features
 
 ## Key Design Decisions
 
-- Rust edition 2024, MSRV 1.88. No `async_trait` — uses RPITIT instead.
+- Rust edition 2024, MSRV 1.89. No `async_trait` — uses RPITIT instead.
 - `Context<A>` is the default `ActorContext`; set `Actor::Context = Context<Self>`.
 - Actors are started via `Actor::start(label)` or `Actor::create(label, f)`, returning `(Address<A>, JoinHandle<()>)`.
 - `Address<A>` is an enum of `Local | Remote` (Remote variant only when feature `ipc` is enabled).
